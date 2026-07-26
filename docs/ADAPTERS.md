@@ -16,7 +16,7 @@ board (see the matrix below).
 | Vgate vLinker MS | BLE | `crowpanel_obd` | **Validated on the dash** | GATT captured on the truck: service `0x18f0`, notify `0x2af0`, write `0x2af1` — the first profile the firmware tries (`src/ble_obd_source.cpp:17-20`, `:384`). |
 | Vgate iCar Pro BLE 4.0 | BLE | `crowpanel_obd` | Should work — not bench-tested | Standard GATT profile, and `icar` is in the name-hint list (`src/ble_rank.cpp:21`), so it ranks ahead of unrelated BLE devices during scan. Never tried against real hardware. See the WiFi-variant footnote below. |
 | Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | Should work — not bench-tested | Firmware tries both `0xFFF0` (3-characteristic) and `0xFFE0` (notify+write share one `0xFFE1` characteristic) profiles (`src/ble_obd_source.cpp:385-386`). Coded from spec, never confirmed on hardware. |
-| Any PIN-pairing classic-BT ELM327 | Classic BT | `elecrow_obd` | Needs the other board | The `crowpanel_obd` build is BLE-only; classic Bluetooth (SPP, PIN pairing) is a different radio stack entirely. `elecrow_obd` targets the retired ESP32-WROVER board with ELMduino over classic BT instead (`platformio.ini:52-90`). |
+| Any PIN-pairing classic-BT ELM327 | Classic BT | `elecrow_obd` | Needs the `elecrow_obd` build | The `crowpanel_obd` build is BLE-only; classic Bluetooth (SPP, PIN pairing) is a different radio stack entirely. `elecrow_obd` targets the retired ESP32-WROVER board with ELMduino over classic BT instead (`platformio.ini:52-90`). |
 | OBDLink MX+ / CX | BLE (proprietary) | — | **Unsupported** | Investigated and abandoned 2026-07-25. See below — this is not a missing-GATT-profile bug the project can fix from source alone. |
 
 **Do not upgrade any verdict above.** "Should work" means coded against the adapter's published
@@ -39,8 +39,8 @@ first one whose service and both characteristics exist on the connected device
 Profile 1 (`0x18f0`) is the vLinker MS's actual GATT layout, captured on the truck (comment at
 `src/ble_obd_source.cpp:17`). Profiles 2–3 cover the common CC2541/HM-10-family clones. Profile 4
 is the Nordic UART Service, present on some BLE-ELM327 clones built on Nordic silicon. If none of
-the four match, the connect attempt is abandoned and the firmware moves on to the next scanned
-candidate (`src/ble_obd_source.cpp:406`).
+the four match, `bindChars()` returns false (`src/ble_obd_source.cpp:406`) and its caller
+disconnects and moves on to the next scanned candidate (`src/ble_obd_source.cpp:363-364`).
 
 These four are **exactly** what the firmware tries — nothing else is in scope for `crowpanel_obd`.
 
@@ -72,24 +72,28 @@ it advertised a matching name. It doesn't; see below.
 
 ## Why the OBDLink MX+ / CX cannot work
 
-Investigated and abandoned 2026-07-25. Three independent findings, none of them fixable from this
-project's source:
+Investigated and abandoned per field testing on 2026-07-25; the findings below are **not
+independently verifiable from this repository's source** — they come from bench notes on the
+physical adapter, not from anything checkable in `src/`:
 
 - **It advertises with no name.** The scan list would show it as a bare MAC address among ~26
   other devices in a typical scan — nothing for the name-hint ranking to catch, so it sorts
   purely on RSSI and may not even appear in the top 12 tried.
-- **It exposes no standard ELM327 GATT service.** None of the four profiles above (or any other
-  service visible during inspection) match what the MX+/CX presents.
+- **None of the four GATT profiles above bound to it.** The dash's own scan-and-connect attempt
+  never found a matching service among the four profiles this firmware tries. This was a
+  dash-side connect attempt, not a full GATT service enumeration — the adapter was never
+  inspected with a general-purpose BLE tool, so whether it exposes some *other*, unrelated
+  service is unknown.
 - **LightBlue on iOS could not connect to it either.** This was checked independently of this
-  firmware, using a generic BLE inspector app — ruling out "the firmware's NimBLE stack is doing
-  something wrong" as the cause. The adapter's BLE service appears to require OBDLink's own app to
-  unlock.
+  firmware, using a generic BLE inspector app, as a sanity check against "the firmware's NimBLE
+  stack is doing something wrong" — ruling that out as the cause without itself being a full
+  GATT enumeration. The adapter's BLE service appears to require OBDLink's own app to unlock.
 
 This is not a missing-profile problem the project can fix by adding a fifth entry to the
 `PROFILES` table. **It will not be revisited without an actual nRF Connect or LightBlue GATT dump
-from the device** — i.e., someone with an MX+/CX in hand exporting its full service/characteristic
-list, so a real profile (if one exists to unlock) can be identified before writing any code
-against it.
+from the device** — i.e., someone with an MX+/CX in hand running a full service/characteristic
+enumeration (which has not yet been done), so a real profile (if one exists to unlock) can be
+identified before writing any code against it.
 
 ## Reporting a working adapter
 
