@@ -5,7 +5,6 @@
 #include "ui.h"
 #include "obd_source.h"
 #include "mock_obd_source.h"
-#include "real_obd_source.h"
 #include "ble_obd_source.h"
 #include "button_input.h"
 #include "history.h"
@@ -34,10 +33,8 @@ static GaugeSet gauges;
 static NavState navState;
 #if MOCK_OBD
 static MockObdSource g_obd;   // bench: synthetic data (safe-band default)
-#elif defined(BLE_OBD)
-static BleObdSource g_obd;    // CrowPanel S3: live OBD over BLE (vLinker MS)
 #else
-static RealObdSource g_obd;   // old board: live OBD over classic Bluetooth
+static BleObdSource g_obd;    // CrowPanel S3: live OBD over BLE (vLinker MS)
 #endif
 static Settings settings;            // persisted display settings (NVS)
 static Theme    theme = Theme::Day;
