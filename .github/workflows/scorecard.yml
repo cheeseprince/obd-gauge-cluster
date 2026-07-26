@@ -24,6 +24,11 @@ on:
     - cron: '27 5 * * 2'
   push:
     branches: [main]
+  # Manual trigger: Scorecard deliberately does not run on pull_request (most of
+  # its checks need repo context a PR cannot give), which means a change to this
+  # workflow is otherwise unverifiable until after it merges. This makes it
+  # runnable on demand instead of only on a schedule.
+  workflow_dispatch:
 
 # Least privilege at the workflow level; the job widens only what it needs.
 permissions: read-all
@@ -38,6 +43,11 @@ jobs:
       # Scorecard reads workflow run history for some checks.
       actions: read
       contents: read
+      # Required by publish_results:true — Scorecard mints an OIDC token to
+      # prove to the public OpenSSF API that this result really came from a
+      # workflow run in this repository, so scores cannot be forged. It grants
+      # no repository access.
+      id-token: write
 
     steps:
       - name: Checkout
@@ -50,13 +60,15 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          # publish_results:false keeps this repo's posture metadata OFF the
-          # public OpenSSF API. It publishes practices data, not code or PII,
-          # but this project defaults to not emitting anything it doesn't have
-          # to. Findings still reach the Security tab either way; the only thing
-          # given up is the public Scorecard badge. Flip to true if you ever
-          # want that badge.
-          publish_results: false
+          # Publishes this repo's SECURITY-PRACTICES metadata (are actions
+          # pinned, is branch protection on, and the resulting scores) to the
+          # public OpenSSF API. That publication is what makes the README badge
+          # work — the badge reads from that API, so there is no badge without
+          # it. What leaves the repo is posture data only: no source, no PII,
+          # nothing not already visible in a public repository. Set to false to
+          # keep it off that API; findings still reach the Security tab either
+          # way, and the only thing lost is the badge.
+          publish_results: true
           # NOTE: the Branch-Protection check cannot read protection rules with
           # the default GITHUB_TOKEN and will report as inconclusive. Fixing it
           # needs a PAT with repo scope stored as a secret and passed as

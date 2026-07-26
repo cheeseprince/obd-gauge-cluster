@@ -10,8 +10,9 @@ vehicle.
 Please **do not open a public issue** for a security problem. Use GitHub's private
 reporting instead:
 
-- Go to the **Security** tab → **Report a vulnerability** (private vulnerability reporting
-  is enabled on this repository).
+- **[Open a private security advisory](https://github.com/cheeseprince/obd-gauge-cluster/security/advisories/new)**
+  — or go to the **Security** tab → **Report a vulnerability** (private vulnerability
+  reporting is enabled on this repository).
 
 That routes it privately to the maintainer. Include what the issue is, how to reproduce it,
 and the impact you see. There is no formal SLA on a hobby project, but reports are

@@ -1,5 +1,7 @@
 # OBD Gauge Cluster
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cheeseprince/obd-gauge-cluster/badge)](https://scorecard.dev/viewer/?uri=github.com/cheeseprince/obd-gauge-cluster)
+
 An in-cab gauge display that shows what your factory dash doesn't. It reads standard OBD-II
 on any vehicle, and where a profile exists it also reads the **manufacturer-specific**
 parameters — transmission temperature, oil pressure, EGT, DPF pressure, fuel rail pressure,
