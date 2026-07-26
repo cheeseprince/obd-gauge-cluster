@@ -41,6 +41,40 @@ is _not_ reachable through a plain ELM327 on this vehicle.**
   tracking coolant) but the drive was **warm-started** — no
   cold→hot ramp to pin them. They stay off until a cold-start focused drive.
 
+## Alarm thresholds — researched 2026-07-26
+
+The N55 runs deliberately hot, which is why the profile shipped with alarms off rather than
+inheriting a generic limit. BMW's cooling documentation gives the DME's own targets:
+
+| DME mode | Target |
+| :--- | :--- |
+| Economy | **108 °C / 226 °F** |
+| Normal | 104 °C / 219 °F |
+| High | 95 °C / 203 °F |
+| High, characteristic-map thermostat | 90 °C / 194 °F |
+
+**226 °F is normal operation on this engine.** A generic 235 °F warn would leave nine degrees
+of headroom above the DME's own Economy target and nuisance-fire on a hot day.
+
+**COOLANT is now the one alarmed row:** warn **239 °F (115 °C)**, critical **248 °F (120 °C)**.
+The critical value sits deliberately *below* the ~125 °C at which the car raises its own
+warning and drops into limp — this display exists to show what the cluster hides, so it should
+lead the OEM warning rather than echo it.
+
+**Confidence: HIGH** on the DME target range (BMW service documentation). **MEDIUM** on the
+warn/critical values themselves — they are derived from that range plus owner reports of the
+band outside normal operation, *not* from a published OEM fault threshold. Revisit if an
+ISTA/TIS threshold table becomes available.
+
+### Rows deliberately left with alarms off
+
+| Row | Why |
+| :--- | :--- |
+| **OIL P** | Reachable via `22586F` byte 0, but the **scale is unverified**. A threshold on a guessed scale either cries wolf or stays silent through a real loss of pressure — worse than none. Needs the cold-start drive |
+| TRANS (ATF) | Lives on the EGS module, gateway-blocked on this car |
+| OIL (temp) | Candidate DIDs never pinned — the only drive was warm-started |
+| BOOST / LOAD / INTAKE / AMBIENT | Decode is sound, but no N55-specific limits are established. Inventing a number buys nothing |
+
 ## Next step to finish the profile
 
 A **cold-start focused drive** (`log --pids 22586F,225817,2258EB,22587E,…`,

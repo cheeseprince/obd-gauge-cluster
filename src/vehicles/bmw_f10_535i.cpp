@@ -72,12 +72,38 @@ static const float NA = NAN;
 
 // Row order MUST match StatId. Active = cmd set; computed = nullptr + RF_COMPUTED;
 // unsupported = nullptr, no flag (never scheduled). decNone keeps check 2 happy.
+// ---- Alarm thresholds (VEH-3, researched 2026-07-26) ----------------------
+// COOLANT is the ONLY row that gets a threshold. The N55 runs deliberately hot:
+// the DME targets 108C/226F in Economy, 104C/219F Normal, 95C/203F High and
+// 90C/194F High with the characteristic-map thermostat. So 226F is NORMAL here,
+// not a fault — the generic GM-style 235F warn leaves only 9F of headroom and
+// would nuisance-fire on a hot day in Economy mode.
+//   warn 239F (115C) - clearly above every DME target; owners report this band
+//                      as outside normal operation.
+//   crit 248F (120C) - deliberately BELOW the ~125C at which the car raises its
+//                      own warning and drops into limp. This display exists to
+//                      show what the cluster hides, so it should lead the OEM
+//                      warning rather than echo it.
+// Confidence: HIGH on the DME target range (BMW service documentation for the
+// N55 cooling system). MEDIUM on warn/crit themselves - derived from that range
+// plus owner reports, NOT from a published OEM fault threshold. Revisit if an
+// ISTA/TIS threshold table or a cold-start drive becomes available.
+//
+// EVERY OTHER ROW STAYS AT T(NA,NA,NA,NA), deliberately:
+//   OIL P  - reachable (22586F byte 0) but its SCALE IS UNVERIFIED. A threshold
+//            on a guessed scale is worse than none: it either cries wolf or stays
+//            silent through a real loss of pressure. Needs the cold-start drive.
+//   TRANS  - ATF lives on the EGS module, gateway-blocked on this car.
+//   OIL    - oil-temp candidates were never pinned (warm-start drive only).
+//   BOOST / LOAD / INTAKE / AMBIENT - decode is sound, but no N55-specific limits
+//            are established, and inventing one buys nothing.
+// --------------------------------------------------------------------------
 static const ReadoutDef BMW_READOUTS[] = {
   // name        unit           dec  thr              full   cmd        hdr tier decode           quantity        flags
   {"TRANS",     "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  1,  decNone,         Quantity::Temp},                // ATF: EGS unreachable via plain ELM327 (gateway) — stub
   {"OIL",       "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  1,  decNone,         Quantity::Temp},                // DA25@618 silent; 7DF candidates 225817/2258EB — cold-start pending
   {"BOOST",     "psi",          1,   T(NA,NA,NA,NA),  30,    "010B",    0,  0,  decBmwBoostPsi,  Quantity::Press},               // ACTIVE — MAP (010B) gauge vs fixed baseline
-  {"COOLANT",   "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   "0105",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01; N55 thresholds not sourced -> alarms off
+  {"COOLANT",   "\xC2\xB0""F",  0,   T(239,248,NA,NA),300,   "0105",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01; thresholds sourced 2026-07-26, see note above
   {"VOLTS",     "V",            1,   T(NA,NA,11.0f,10.2f),18,"0142",    0,  1,  decVolts,        Quantity::None},                // ACTIVE Mode-01; universal low-12V floor (generic_obd.cpp precedent)
   {"INTAKE",    "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   "010F",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01 IAT
   {"RPM",       "",             0,   T(NA,NA,NA,NA),  7000,  "010C",    0,  0,  decRpm,          Quantity::None},                // ACTIVE Mode-01
