@@ -24,6 +24,11 @@ on:
     - cron: '27 5 * * 2'
   push:
     branches: [main]
+  # Manual trigger: Scorecard deliberately does not run on pull_request (most of
+  # its checks need repo context a PR cannot give), which means a change to this
+  # workflow is otherwise unverifiable until after it merges. This makes it
+  # runnable on demand instead of only on a schedule.
+  workflow_dispatch:
 
 # Least privilege at the workflow level; the job widens only what it needs.
 permissions: read-all

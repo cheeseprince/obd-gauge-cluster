@@ -56,6 +56,27 @@ gh api -X PUT "repos/$REPO/branches/main/protection" --input - <<'JSON'
 }
 JSON
 
+echo "== CodeQL default setup: all three languages, security-extended =="
+# Code scanning was previously invisible to this script: default setup is
+# configured in repo SETTINGS and writes no workflow file, so a repo recreate
+# would silently come back with no SAST at all — and nothing in the tree would
+# show it was missing. Assert it here instead.
+#
+# security-extended over the default suite: the default suite found nothing on
+# this codebase, extended immediately found an unpinned third-party action in
+# the release job (the one that holds OTA_SIGNING_KEY). The extra rules earn
+# their noise.
+#
+# NOTE: this PATCH is applied ASYNCHRONOUSLY — it returns a run_id and the
+# config only reflects the change once that run completes. Re-reading
+# query_suite immediately after will still say "default"; that is a race, not a
+# failure. Give it a minute before verifying.
+gh api -X PATCH "repos/$REPO/code-scanning/default-setup" \
+  -f state=configured \
+  -f query_suite=extended \
+  -f 'languages[]=actions' -f 'languages[]=c-cpp' -f 'languages[]=python' \
+  --silent || echo "  (CodeQL default setup unchanged or already matching)"
+
 echo "== done. Secret scanning + push protection default ON for public repos. =="
 cat <<'MANUAL'
 
