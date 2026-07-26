@@ -135,6 +135,19 @@ excluded from alarming entirely (`src/ui.cpp:700`).
 Press a tile to zoom into it. Focus view shows a rolling trend graph for that stat, with each
 sample coloured by the alarm zone it was in when it was recorded.
 
+The trend window's length is **board-dependent**, because it's a fixed-size ring buffer
+(`HISTORY_LEN` samples at 1 Hz, `src/history.h:11,13`) and the buffer lives in DRAM on boards
+without PSRAM:
+
+| Build | `HISTORY_LEN` | Window |
+| :--- | :--- | :--- |
+| CrowPanel builds (default) | 300 | **5 minutes** |
+| `elecrow_obd` | 210 (`platformio.ini:67`) | **3.5 minutes** |
+
+The elecrow WROVER-B doesn't enable PSRAM, so the history ring has to fit in DRAM — 33 stats ×
+300 samples × 4 bytes doesn't fit, hence the smaller buffer on that build. If your graph looks
+shorter than 5 minutes, check which board you flashed.
+
 ## Theming
 
 The display switches between day and night themes based on solar position combined with the
