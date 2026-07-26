@@ -42,6 +42,27 @@ clang, Python 3.12). The PlatformIO device build is host-OS-independent.
 
 Match the style of the surrounding code. Keep changes focused.
 
+## Repository layout
+
+```
+platformio.ini          PlatformIO project
+src/                     firmware
+  vehicles/              per-vehicle PID tables, decoders, thresholds, layout
+test/                    host unit tests (+ fuzz)
+tools/
+  obd_scan/              the discovery scanner (read-only)
+  analyze_logs.py        drive-CSV self-audit + alarm replay
+  ui_snapshot/           pixel-exact host render of the real UI
+  stl_render.py          isometric STL preview
+hardware/                3D-printable enclosure — BOM + Printables link
+docs/                    porting method, per-vehicle status, acceptance runbook, images
+publish_ota.sh          local build + publish (CI does this on a tag)
+.github/workflows/      CI (tests + build) and release (build + publish)
+```
+
+Adding a vehicle touches exactly two of these: a new file under `src/vehicles/` and one
+line in the profile registry. See [Adding a vehicle](#adding-a-vehicle) above.
+
 ## Pull requests
 
 `main` is protected — every change goes through a PR, and three checks must pass before it
