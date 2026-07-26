@@ -27,9 +27,10 @@ class BleObdSource : public ObdSource {
   void poll(uint32_t nowMs) override;
   ObdReadings latest() const override;
 
-  // Console hooks, driven by the serial key handler in main.cpp.
-  void requestPair();   // 'p' — drop the cached adapter and re-discover
-  void forget();        // 'f' — clear cached adapter from NVS
+  // Console/menu hooks. requestPair() was removed with the serial 'p' key
+  // (F-11): it was forget() plus an immediate retry, and forget() is what the
+  // settings menu calls.
+  void forget();        // Settings -> Forget adapter: clear cached adapter from NVS
   bool pairing() const { return false; }   // discovery is automatic; never owns the console
   void requestDiag() { diagReq_ = true; }   // 'e' — dump raw EGT/DPF replies once
   void requestScan() { scanReq_ = true; }    // 'x' — sweep enhanced PID ranges + candidates once
@@ -66,7 +67,11 @@ class BleObdSource : public ObdSource {
 
   String   addr_;             // cached adapter BLE address ("" = none)
   uint8_t  addrType_ = 0;     // public/random
-  volatile uint32_t nextRetryMs_ = 0;   // requestPair() zeroes it on core 1; poll() uses it on core 0
+  // Reconnect backoff. Now read AND written only by poll() on core 0 — the one
+  // cross-core writer was requestPair(), removed with the serial 'p' key (F-11).
+  // `volatile` is kept rather than dropped: it costs nothing here and removing it
+  // is a memory-model change that wants its own commit, not a drive-by.
+  volatile uint32_t nextRetryMs_ = 0;
 
   // Connecting-overlay status. Written on core 0 (poll/connect), read on core 1
   // (connStatus). Each field is volatile, but the trio is read without a lock —
@@ -84,7 +89,7 @@ class BleObdSource : public ObdSource {
     addrBuf_[n] = 0;
   }
 
-  volatile bool forgetReq_ = false;   // set by forget()/requestPair() (core 1), consumed in poll() (core 0)
+  volatile bool forgetReq_ = false;   // set by forget() (core 1), consumed in poll() (core 0)
   volatile bool resetTripReq_ = false;  // set by resetTrip() (core 1), consumed in poll() (core 0)
   volatile bool diagReq_ = false;   // set by 'e' key (core 1), consumed in poll() (core 0)
   volatile bool scanReq_ = false;   // set by 'x' key (core 1), consumed in poll() (core 0)
