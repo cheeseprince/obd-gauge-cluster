@@ -13,6 +13,22 @@ gh repo edit "$REPO" \
   --add-topic lvgl --add-topic platformio --add-topic gauge-cluster \
   --add-topic vehicle-diagnostics --add-topic ota
 
+echo "== merge strategy: SQUASH ONLY =="
+# While the project bootstraps we want public history to stay one-commit-per-PR:
+# easy to read, easy to revert, and no WIP/fixup commits leaking into main.
+# Merge commits and rebase merges are disabled so the choice can't be made by
+# accident in the UI. Squash title/body come from the PR itself (PR_TITLE/PR_BODY)
+# rather than the branch's commit messages — concatenating those back in is exactly
+# the noise squashing is meant to remove.
+gh api -X PATCH "repos/$REPO" \
+  -F allow_squash_merge=true \
+  -F allow_merge_commit=false \
+  -F allow_rebase_merge=false \
+  -f squash_merge_commit_title=PR_TITLE \
+  -f squash_merge_commit_message=PR_BODY \
+  -F delete_branch_on_merge=true \
+  --silent
+
 echo "== Dependabot alerts + security updates =="
 gh api -X PUT "repos/$REPO/vulnerability-alerts"
 gh api -X PUT "repos/$REPO/automated-security-fixes"
