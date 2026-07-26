@@ -5,8 +5,10 @@
 // Rolling per-stat sample history for the Focus-view trend graph.
 // Pure logic (no Arduino/LVGL) so it is host-unit-tested.
 
-// Allow per-board override via -D HISTORY_LEN=N build flag (e.g. elecrow has no PSRAM,
-// so it uses a shorter ring to stay within 320KB DRAM alongside BT stack + LVGL).
+// Overridable via -D HISTORY_LEN=N. No environment currently sets it — the one
+// board has PSRAM and takes the default — but the seam is kept because the ring is
+// 33 stats x N x 4B of contiguous memory, which is the first thing to shrink if a
+// future board is tighter on RAM.
 #ifndef HISTORY_LEN
 #define HISTORY_LEN 300   // default: 5 min @ 1 Hz
 #endif

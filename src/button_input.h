@@ -18,16 +18,14 @@
 
 namespace buttonInput {
 
-// Configure I2C and scan for a PCF8574 expander.  Sets all pins to inputs
-// by writing 0xFF (PCF8574 quasi-bidirectional with weak pull-ups).
+// Bring up the input device and auto-discover it on I2C.
 // Logs found/not-found status over Serial.
 void begin();
 
-// Read one byte from the expander, invert active-low bits, remap to logical
-// button order, and drive NavState (guarded). No-op if no expander present.
+// Poll the device and drive NavState (guarded). No-op if none was found.
 void update(NavState& s);
 
-// Returns true if an expander was detected during begin().
+// Returns true if an input device was detected during begin().
 bool present();
 
 // Cross-core spinlock guarding the shared NavState. The render core brackets its

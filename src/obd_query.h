@@ -135,8 +135,8 @@ inline void pidQueryStep(PidQueryState& q, ObdSchedule& sched, IO& io,
 }
 
 // ---------------------------------------------------------------------------
-// Computed readouts — the SINGLE implementation shared by all live sources
-// (BLE / WiFi / classic-BT). These rows are derived on-device from PIDs already
+// Computed readouts — one implementation, used by the live BLE source and the
+// mock alike. These rows are derived on-device from PIDs already
 // in values[] (no extra queries): trip economy, horsepower, gallons-to-fill.
 // Call once per poll() tick while the link is Up, right after pidQueryStep.
 // Runs on the core-0 OBD task only (economy is single-writer); publishes to cur

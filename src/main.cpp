@@ -122,7 +122,7 @@ void setup() {
   theme = settings.night ? Theme::Night : Theme::Day;
   display::setBacklight(settings.brightnessPct);
   ui::begin();
-  buttonInput::begin();  // scan I2C for PCF8574 expander; no-op if absent
+  buttonInput::begin();  // bring up the Modulino encoder on I2C; no-op if absent
 #if HAS_SD_LOG
   sdBegin();             // init microSD (HSPI) for CSV logging
 #endif

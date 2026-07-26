@@ -1,8 +1,8 @@
 // Nav-input HAL for the CrowPanel Advance — Modulino I2C rotary encoder.
-// Implements the SAME buttonInput:: interface as button_input.cpp (PCF8574), so
-// main.cpp/ioTaskCore0 are unchanged; selected per-env via build_src_filter.
-// (The namespace is named "buttonInput" for interface compatibility — on this
-// board it is the encoder.)
+// Implements the buttonInput:: interface declared in button_input.h. The
+// namespace name is historical — it was a PCF8574 button expander on the retired
+// Elecrow board; on this board it is the rotary encoder. This is the only
+// implementation that ships.
 //
 // Milestone A (this file, display bring-up): begin() discovers the knob and
 // reports it; update() is a no-op so we verify the display/UI in isolation.
