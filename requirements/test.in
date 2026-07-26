@@ -1,0 +1,5 @@
+# Host-test dependencies (CI job: "Host tests"). Compile with:
+#   pip-compile --generate-hashes --output-file=requirements/test.txt requirements/test.in
+pytest
+numpy
+pandas

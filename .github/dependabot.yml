@@ -7,3 +7,19 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci"
+
+  # CI's Python tooling, now that requirements/*.txt exist for it to read.
+  # This entry was pointless before: the workflows installed unpinned packages
+  # inline, so there was no manifest and Dependabot had nothing to act on.
+  # Pinning by hash is what makes an updater both possible and necessary —
+  # pinned deps do not drift into fixes on their own, so something has to
+  # propose the bump.
+  #
+  # Dependabot regenerates the hashes with the pin, so a bump PR stays
+  # installable under --require-hashes.
+  - package-ecosystem: pip
+    directory: /requirements
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
