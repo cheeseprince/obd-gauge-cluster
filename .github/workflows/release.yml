@@ -131,7 +131,11 @@ jobs:
         # (a dry run) but must NOT publish, or it would overwrite the live
         # tagged release on gh-pages with a dev-<hash> build.
         if: github.ref_type == 'tag'
-        uses: peaceiris/actions-gh-pages@v4
+        # Pinned to a commit SHA, not the `v4` tag. This is the one third-party
+        # action in the repo, and it runs in the job that holds OTA_SIGNING_KEY —
+        # a force-pushed tag here would hand an attacker the OTA root of trust.
+        # Dependabot reads the trailing comment and bumps SHA + comment together.
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453  # v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./out

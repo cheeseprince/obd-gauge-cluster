@@ -1,0 +1,81 @@
+name: Scorecard
+
+# OpenSSF Scorecard — checks the repository's CONFIGURATION, which is the gap
+# CodeQL does not cover. CodeQL reads code; Scorecard reads posture: are Actions
+# pinned to immutable SHAs, are workflow token permissions least-privilege, is
+# branch protection on, is there a dangerous workflow pattern (script injection,
+# self-hosted runner, untrusted checkout).
+#
+# Its value here is DRIFT DETECTION, not discovery. The findings it reports on
+# day one are already known; the point is that it keeps reporting when a future
+# change quietly loosens something. Results land in the Security tab alongside
+# CodeQL.
+#
+# NOT a required status check on purpose — see scripts/apply-repo-settings.sh.
+# Scorecard scores posture rather than pass/fail correctness, and gating merges
+# on a score means a upstream scoring change can block an unrelated PR.
+
+on:
+  # Re-run when branch protection changes — this is the event Scorecard exists
+  # to catch, since a loosened rule is invisible in a code diff.
+  branch_protection_rule:
+  schedule:
+    # Weekly, offset from the CodeQL schedule so the two don't contend.
+    - cron: '27 5 * * 2'
+  push:
+    branches: [main]
+
+# Least privilege at the workflow level; the job widens only what it needs.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Upload the SARIF so findings appear in the Security tab.
+      security-events: write
+      # Scorecard reads workflow run history for some checks.
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc  # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # publish_results:false keeps this repo's posture metadata OFF the
+          # public OpenSSF API. It publishes practices data, not code or PII,
+          # but this project defaults to not emitting anything it doesn't have
+          # to. Findings still reach the Security tab either way; the only thing
+          # given up is the public Scorecard badge. Flip to true if you ever
+          # want that badge.
+          publish_results: false
+          # NOTE: the Branch-Protection check cannot read protection rules with
+          # the default GITHUB_TOKEN and will report as inconclusive. Fixing it
+          # needs a PAT with repo scope stored as a secret and passed as
+          # repo_token — deliberately NOT done here: a long-lived admin-scoped
+          # token in CI is a bigger risk than the check is worth, especially in
+          # the repo that also holds OTA_SIGNING_KEY. Branch protection is
+          # already asserted as code in scripts/apply-repo-settings.sh.
+
+      # Kept for debugging: the Security tab shows findings but not the raw
+      # SARIF, and a check that behaves oddly is much easier to diagnose from
+      # the artifact than from a re-run.
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@e58424170fb0262c8d7ed60a2e84b9bffe205c67  # codeql-bundle-v2.26.1
+        with:
+          sarif_file: results.sarif
