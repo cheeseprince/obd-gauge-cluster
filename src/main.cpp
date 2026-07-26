@@ -205,10 +205,7 @@ void loop() {
 #endif
   if (Serial.available()) {
     char k = Serial.read();
-    if (k == 'c') {
-      Serial.println("[CAL] starting touch calibration - tap the 4 corner arrows");
-      display::calibrateTouch();
-    } else if (k == 'n') {
+    if (k == 'n') {
       applyNightCycle("");
     }
 #if MOCK_OBD

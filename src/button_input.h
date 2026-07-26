@@ -1,18 +1,21 @@
 #pragma once
 #include "nav_model.h"
 
-// Device-layer interface for reading physical navigation buttons via a
-// PCF8574 I2C GPIO expander wired to the board's Crowtail I2C port.
+// Navigation input device interface.
 //
-// Hardware: PCF8574T (addr range 0x20..0x27) or PCF8574A (0x38..0x3F).
-// I2C bus: SDA=GPIO22, SCL=GPIO21 (Crowtail connector on the Elecrow board).
-// Buttons wired active-low: pressed = GPIO LOW, released = GPIO HIGH.
+// The name is historical: this was the PCF8574 button-expander driver on the
+// retired Elecrow board. It is now the INTERFACE that navigation input
+// implements, and the one implementation that ships is the Modulino rotary
+// encoder (encoder_input.cpp) on the CrowPanel Advance. The namespace is kept
+// as buttonInput:: because main.cpp and the UI call through it; renaming it
+// would churn several files to no functional end.
 //
 // Call begin() once in setup(). update(navState) is normally called from a
-// dedicated core-0 task (see main.cpp) so button polling never stalls behind the
-// LVGL render/flush on core 1. NavState is shared across cores, so the I2C read
-// is done lock-free and only the ButtonNav state mutation is guarded by a
+// dedicated core-0 task (see main.cpp) so input polling never stalls behind the
+// LVGL render/flush on core 1. NavState is shared across cores, so the device
+// read is done lock-free and only the NavState mutation is guarded by a
 // spinlock; the render core wraps its own NavState access in lockNav()/unlockNav().
+
 namespace buttonInput {
 
 // Configure I2C and scan for a PCF8574 expander.  Sets all pins to inputs

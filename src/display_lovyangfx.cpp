@@ -1,5 +1,5 @@
 // Display HAL for the CrowPanel Advance 3.5" (ESP32-S3) — LovyanGFX backend.
-// Implements the same display:: interface as display_esp32.cpp (TFT_eSPI), so
+// Implements the display:: interface (src/display.h), so
 // ui.cpp/main.cpp are unchanged. Selected per-env via build_src_filter.
 //   - ILI9488 480x320 IPS, setRotation(0) = upright landscape (confirmed).
 //   - LVGL draw buffers in PSRAM (full-screen double buffer, like Elecrow's ref).
@@ -71,6 +71,5 @@ void tick() { lv_timer_handler(); }
 // No touch hardware on this board — report "not pressed".
 bool touch(int16_t* x, int16_t* y) { *x = 0; *y = 0; return false; }
 
-void calibrateTouch() { /* no touch on the CrowPanel Advance */ }
 
 }  // namespace display
