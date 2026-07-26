@@ -33,6 +33,11 @@ jobs:
     permissions:
       # Push the built release to gh-pages, and create the GitHub Release.
       contents: write
+      # Build provenance (see the attest step below). id-token mints the OIDC
+      # token Sigstore uses to bind the attestation to this workflow+repo;
+      # attestations lets the run record it. Neither grants repository access.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -134,6 +139,39 @@ jobs:
             echo "::error::refuse this release. Check that the secret matches."
             exit 1
           fi
+      - name: Attest build provenance
+        # Tag pushes only — a workflow_dispatch dry run must not mint an
+        # attestation for a build nobody can install.
+        if: github.ref_type == 'tag'
+        # Provenance answers a DIFFERENT question than manifest.sig, which is why
+        # both exist. The signature proves someone holding OTA_SIGNING_KEY blessed
+        # these bytes. Provenance proves the bytes came out of THIS workflow, at
+        # THIS commit, in THIS repository — so a key holder who was tricked into
+        # signing an artifact they did not build is detectable, and a .bin
+        # uploaded by hand cannot masquerade as a CI build.
+        #
+        # Signed by Sigstore against the job's OIDC identity and recorded in the
+        # public transparency log. Verify with:
+        #   gh attestation verify crowpanel_obd.bin --repo cheeseprince/obd-gauge-cluster
+        #
+        # Devices do NOT check this — they enforce manifest.sig and the SHA-256,
+        # and have neither the trust root nor the flash for Sigstore. This is for
+        # humans and for tooling auditing the release, not an on-device control.
+        id: attest
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+        with:
+          subject-path: out/crowpanel_obd.bin
+
+      - name: Stage the provenance bundle as a release asset
+        # The action already records the attestation in the repository's
+        # attestation store, which is what `gh attestation verify` reads. This
+        # ALSO drops the bundle next to the .bin as a release asset, for two
+        # reasons: a human downloading the firmware by hand gets the provenance
+        # in the same place, and tooling that looks for a provenance FILE on the
+        # release (rather than querying the attestations API) can find it.
+        if: github.ref_type == 'tag'
+        run: cp "${{ steps.attest.outputs.bundle-path }}" out/crowpanel_obd.bin.intoto.jsonl
+
       - name: Publish to gh-pages
         # Tag pushes only. A manual workflow_dispatch run builds + signs above
         # (a dry run) but must NOT publish, or it would overwrite the live
@@ -163,7 +201,11 @@ jobs:
           # step above fails the run on a tag without a valid signature. Listing it
           # unconditionally means a missing sig fails loudly here rather than
           # silently publishing a Release whose assets don't match the OTA channel.
-          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig"
+          # The provenance bundle is listed unconditionally for the same reason as
+          # manifest.sig: the attest step above is tag-gated and fails the run on
+          # error, so on a tag it is always present. A missing bundle should fail
+          # here rather than quietly ship a release without provenance.
+          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig out/crowpanel_obd.bin.intoto.jsonl"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber --repo "$GITHUB_REPOSITORY"
           else
