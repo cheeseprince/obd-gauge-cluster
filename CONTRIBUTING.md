@@ -42,14 +42,56 @@ clang, Python 3.12). The PlatformIO device build is host-OS-independent.
 
 Match the style of the surrounding code. Keep changes focused.
 
+### Local files: use `.private/`
+
+Anything you don't want committed — scratch notes, generated reports, drive logs,
+experiments — goes in **`.private/`** at the repo root. The whole directory is
+git-ignored, so nothing in it needs its own rule and no new filename can slip
+through. It is not created by the repo; make it when you need it.
+
+Real vehicle data has a stronger rule of its own: `tools/obd_scan` census/sweep/drive
+files contain your VIN, and those patterns are ignored by name as well — see
+[Secrets & PII](#secrets--pii--install-the-pre-commit-hooks) below.
+
+## Repository layout
+
+```
+platformio.ini          PlatformIO project
+src/                     firmware
+  vehicles/              per-vehicle PID tables, decoders, thresholds, layout
+test/                    host unit tests (+ fuzz)
+tools/
+  obd_scan/              the discovery scanner (read-only)
+  analyze_logs.py        drive-CSV self-audit + alarm replay
+  ui_snapshot/           pixel-exact host render of the real UI
+  stl_render.py          isometric STL preview
+hardware/                3D-printable enclosure — BOM + Printables link
+docs/                    porting method, per-vehicle status, acceptance runbook, images
+publish_ota.sh          local build + publish (CI does this on a tag)
+.github/workflows/      CI (tests + build) and release (build + publish)
+```
+
+Adding a vehicle touches exactly two of these: a new file under `src/vehicles/` and one
+line in the profile registry. See [Adding a vehicle](#adding-a-vehicle) above.
+
 ## Pull requests
 
-`main` is protected — every change goes through a PR, and three checks must pass before it
+`main` is protected — every change goes through a PR, and **seven** checks must pass before it
 can merge:
 
-- **Metadata check** — no tracked image or PDF may carry GPS/EXIF/author metadata.
-- **Host tests** — firmware logic + scanner tests.
-- **Device build** — the firmware compiles.
+| Check | What it enforces |
+| :--- | :--- |
+| **Host tests (ubuntu-latest)** | Firmware logic tests + fuzz, and the scanner tests |
+| **Host tests (macos-latest)** | The same suites again on clang — the host tests are cross-platform |
+| **Device build (PlatformIO)** | The firmware actually compiles for the dash boards |
+| **Lint (ruff)** | Python style and errors in `tools/obd_scan` |
+| **Scan images/PDFs for sensitive metadata** | No tracked image or PDF carries GPS/EXIF/author metadata |
+| **PII guard (no real VINs)** | Only synthetic test VINs appear in tracked files |
+| **Secret scan (gitleaks)** | No keys, tokens, or passwords committed |
+
+The last three are the reason a seemingly innocent commit can be rejected: a phone photo with
+GPS EXIF, a real VIN pasted into a test, or a key in a scratch file. The pre-commit hooks below
+catch the last two **before** you commit.
 
 Please also:
 

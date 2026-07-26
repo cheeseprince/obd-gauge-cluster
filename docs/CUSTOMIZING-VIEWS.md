@@ -1,6 +1,6 @@
 # Customizing the views
 
-The screen is a set of pages, each with four tiles. Which tiles appear, in what order, on
+The screen is a set of pages, each with four cells. Which tiles appear, in what order, on
 how many pages, is defined by one table in the vehicle profile — edit it, rebuild, flash.
 
 ## Where the layout lives
@@ -24,7 +24,8 @@ static const StatId PAGES[][4] = {
 static const char* const PAGE_NAMES[] = { "TOW","POWER","REGEN","RANGE","TRIP","DIAG","MISC" };
 ```
 
-- **Each row is one page** of exactly four tiles.
+- **Each row is one page** of exactly four *cells* — a cell may be empty, so a page can show
+  fewer than four tiles.
 - **`_` is an empty cell** (the MISC page above has three tiles).
 - **Order = display order.** The knob scrolls tiles in reading order and wraps around, so
   the last page is one detent back from the first.

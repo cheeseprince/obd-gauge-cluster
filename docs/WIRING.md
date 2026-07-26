@@ -35,7 +35,7 @@ both ride the same I²C bus; no extra wires.
 | Display + backlight | On-board SPI (SCLK 42 / MOSI 39 / DC 41 / CS 40 / RST 2 / BL 38) |
 | microSD | On-board, dedicated HSPI bus (SCK 5 / MISO 4 / MOSI 6 / CS 7) |
 | RTC + coin cell | On-board (PCF8563 @ 0x51 on the I²C bus above) |
-| OBD adapter | Plugs into the vehicle's OBD-II port; pairs over Bluetooth/WiFi |
+| OBD adapter | Plugs into the vehicle's OBD-II port; links over Bluetooth (BLE on this board) |
 | Power | Truck USB (switched 5 V) → board USB-C |
 
 ## Mounting the knob
@@ -44,9 +44,3 @@ The knob is cable-connected, so it can mount anywhere the Grove-Qwiic cable reac
 same face as the screen, or off to one side within reach. The 3D-printed case
 ([Printables](https://www.printables.com/model/1788789-odb-gauge-cluster-case)) positions
 it beside the display.
-
-## Classic-Bluetooth board (alternative)
-
-The `elecrow` build targets an Elecrow WROVER-B board (classic ESP32) for a
-classic-Bluetooth adapter. Its input hardware differs from the CrowPanel; see
-[`docs/HARDWARE.md`](HARDWARE.md) for why the CrowPanel Advance is the recommended board.

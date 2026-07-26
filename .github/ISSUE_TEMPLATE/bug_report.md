@@ -9,9 +9,9 @@ labels: bug
 <!-- What you saw vs. what you expected. -->
 
 ## Setup
-- Board / build env (e.g. `crowpanel_obd`, `elecrow_obd`):
+- Build env (`crowpanel_obd` or `crowpanel`):
 - Firmware version (the git hash on the boot splash / Version menu):
-- OBD adapter (make/model, BLE / WiFi / classic-BT):
+- OBD adapter (make/model — must be BLE; classic-BT and WiFi are not supported):
 - Vehicle:
 
 ## Steps to reproduce

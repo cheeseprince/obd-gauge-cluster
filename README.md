@@ -1,24 +1,30 @@
 # OBD Gauge Cluster
 
-An in-cab gauge display for diesel pickups that shows data the factory cluster hides —
-transmission temperature, EGT, DPF pressure, oil pressure, fuel rail pressure, DEF level —
-pulled over a cheap Bluetooth OBD-II adapter and rendered on a small dashboard
-screen.
+An in-cab gauge display that shows what your factory dash doesn't. It reads standard OBD-II
+on any vehicle, and where a profile exists it also reads the **manufacturer-specific**
+parameters — transmission temperature, oil pressure, EGT, DPF pressure, fuel rail pressure,
+DEF level — over a cheap Bluetooth adapter on a small dashboard screen.
+
+*Built with substantial help from an AI coding assistant (Claude) — CI-gated, and every
+vehicle profile validated on a real vehicle. [Details](#ai-assistance).*
 
 ![The unit on the dash, running the towing page](docs/images/dash.jpg)
 
 One firmware image holds **every vehicle profile** and picks the right one automatically from the
 car's **VIN** on connect (with a **Pick Vehicle** menu override). It's **validated on a 2025 GM
 Sierra 1500 3.0L Duramax** (LZ0, Global B); a BMW 535i (F10) and an Audi Q5 (2.0T) are skeleton
-profiles, and a Ford 6.7L Power Stroke is researched (see [Vehicle support](#vehicle-support)).
+profiles, and a Ford 6.7L Power Stroke is researched (see [Vehicles it works on](#vehicles-it-works-on)).
 The enhanced parameters above are not standardized and no manufacturer publishes them, so adding
 a vehicle means discovering its PID map on the vehicle itself — the tooling for that is included
 (`tools/obd_scan`).
 
-## The display
+## What it does
 
-Seven pages of four tiles, grouped by task. One rotary knob drives everything: turn to
-move, press to zoom a tile, hold for settings. Out-of-range values turn amber, then red.
+Tiles grouped by task, one page at a time. One rotary knob drives everything: turn to move,
+press to zoom a tile, hold for settings. Out-of-range values turn amber, then red.
+
+**Every screenshot below is the GMC Sierra Duramax profile — 7 pages, 27 tiles.** Other
+vehicles ship fewer and different pages; see [Vehicles it works on](#vehicles-it-works-on).
 
 | TOW | POWER |
 | :---: | :---: |
@@ -35,78 +41,55 @@ move, press to zoom a tile, hold for settings. Out-of-range values turn amber, t
 | ![TRIP](docs/images/page4_day.png) | ![DIAG](docs/images/page5_day.png) | ![MISC](docs/images/page6_day.png) |
 | Instant + average economy | MAF · EGR · CAC temp · intake temp | Speed · volts · oil temp |
 
-Press the knob to zoom one tile, with a five-minute trend graph coloured by alarm zone.
-The theme follows sunrise and sunset from the on-board clock. Units switch imperial/metric.
+Press the knob to zoom one tile, with a rolling trend graph coloured by alarm zone — a
+**5-minute** window. The theme follows
+sunrise and sunset from the on-board clock; units switch imperial/metric.
 
 | Focus view | Night theme | Metric |
 | :---: | :---: | :---: |
 | ![Focus](docs/images/focus_day.png) | ![Night](docs/images/page0_night.png) | ![Metric](docs/images/page0_metric.png) |
 
-Every reading is evaluated against per-stat thresholds (set in the vehicle profile): a tile's
-number and bar turn **amber** on a warn crossing, **red** on a critical one, and the Focus
-trend line is coloured per sample, so a warm-up or a fault shows exactly where the value
-crossed each line.
+Every reading is checked against per-stat thresholds set in the vehicle profile: amber on a
+warn crossing, red on a critical one, with the trend line coloured per sample.
 
 | Warning tile | Error tile | Trend graph, all three zones |
 | :---: | :---: | :---: |
 | ![Warning](docs/images/warning_tile.png) | ![Error](docs/images/error_tile.png) | ![Alarm zones](docs/images/alarm_zones.png) |
-| TRANS in the amber warn band | TRANS over the red critical line | Green → amber → red across the 5-minute window |
+| TRANS in the amber warn band | TRANS over the red critical line | Green → amber → red across the window |
 
-The top status bar shows link and logging state at a glance: a **Bluetooth** icon (blue when
-the OBD adapter is linked, gray when not), the clock, the current page, and the SD-logging
-indicator — green `LOG` while recording, red on a write error, grey when logging is off, and
-`No SD Card` when none is inserted.
+The status bar shows link and logging state at a glance: Bluetooth icon, clock, page, and the
+SD-logging indicator.
 
 ![Status-bar states](docs/images/statusbar_states.png)
 
-Everything logs to a microSD card at 1 Hz, and the firmware updates over WiFi.
+Everything logs to a microSD card at 1 Hz. **Full detail** — every tile, the alarm model, the
+status-bar states: [`docs/DISPLAY.md`](docs/DISPLAY.md). **The layout is editable** (one table
+in the vehicle profile): [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md).
 
-**The layout is editable** — which tiles appear, in what order, on how many pages, is one
-table in the vehicle profile. See [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md).
+## Vehicles it works on
 
-## Vehicle support
+All profiles ship in one image; the firmware **auto-selects by VIN** on connect. An unrecognized
+VIN falls back to a generic Mode-01 profile, and **Settings → Pick Vehicle** overrides and locks
+the choice.
 
-All profiles ship in one image; the firmware **auto-selects by VIN** on connect (the VIN's WMI →
-a profile). An unrecognized VIN falls back to a generic Mode-01 profile, and **Settings → Pick
-Vehicle** overrides and locks the choice.
+| Manufacturer | Model | Engine | Years | Pages | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPS · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
+| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–16 | **3** — ENGINE · DRIVE · MISC | 🟡 Skeleton — [details](docs/VEHICLES.md#bmw) |
+| Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
+| Ford | F-250/350 Super Duty | 6.7L Power Stroke | 2017–22 | — none yet | 🔬 Researched, needs a scan |
+| GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOW · POWER · REGEN · RANGE · TRIP · DIAG · MISC | ✅ **Validated on a real truck** |
+| *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
-| Manufacturer | Model | Engine | Model Year Range | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| Audi | Q5 (typ FY) | 2.0T TFSI (EA888 gen-3) | 2018–2020 | 🟡 **Skeleton profile** — ATF, oil-temp and charge-air DIDs mapped on-car (scaling unverified); standard Mode-01 exact; auto-detects by VIN. See [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) |
-| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–2016 | 🟡 **Skeleton profile** — mapped on-car: standard Mode-01 exact + boost from MAP; oil pressure mapped (scale unverified). The `6F1` enhanced path is gateway-blocked, so oil temp needs a cold-start drive and ATF is unreachable. Auto-detects by VIN. See [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) |
-| Chevrolet | Silverado 1500 | 3.0L Duramax (LZ0, Global B) | 2023–2026 (LZ0) | ✅ **Expected to work** — same LZ0/Global-B as the Sierra (validated on the GMC, not separately on a Silverado) |
-| Ford | F-250/350 Super Duty | 6.7L Power Stroke diesel | 2017–2022 | 🔬 **Researched, not yet mapped** — community data unreliable; needs a truck scan. See [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) |
-| GMC | Sierra 1500 | 3.0L Duramax (LZ0, Global B) | 2023–2026 (LZ0) | ✅ **Working — validated on a real truck**; every enhanced PID measured, not guessed |
+Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW
+or Audi gets three pages of what its engine actually reports.
 
-**Status:** ✅ working · 🟡 partial (skeleton profile) · 🔬 researched, needs an on-car scan.
+Enhanced (Mode 22 / UDS) PIDs are manufacturer-specific and undocumented, so adding a vehicle
+means discovering its PID map on the actual vehicle. Standard OBD-II parameters (RPM, speed,
+coolant, load) work anywhere; the enhanced ones only where a profile exists. **Per-vehicle
+detail and how VIN selection works:** [`docs/VEHICLES.md`](docs/VEHICLES.md).
 
-Enhanced (Mode 22 / UDS) PIDs are manufacturer-specific and undocumented. Adding a vehicle
-means discovering its PID map on the actual vehicle with `tools/obd_scan` and the method in
-[`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md). Everything else — other GM diesels,
-other BMWs, any vehicle not listed above — is not supported: generic OBD-II parameters (RPM,
-speed, coolant, load) work on any vehicle, but the enhanced parameters do not.
-
-## Help wanted — more vehicles
-
-The firmware, transport, UI, logging and OTA are vehicle-agnostic; the only per-vehicle
-part is a profile in [`src/vehicles/`](src/vehicles/) (PID table, decoders, thresholds,
-layout, tank sizes). Mapping a new vehicle needs one thing this project cannot supply
-remotely: **the vehicle**.
-
-If you have a diesel (or any vehicle with enhanced PIDs) and a laptop, you can map it:
-
-1. Run `tools/obd_scan` on the OBD port to discover which PIDs answer (about an hour parked
-   plus a drive — see the runbook).
-2. Correlate the results to identify each PID.
-3. Add a `src/vehicles/<your_vehicle>.cpp` profile and open a pull request.
-
-Start with [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) (the method and its
-pitfalls) and [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) (a worked
-example). [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) is a partial head-start on the Ford
-6.7L Power Stroke. Issues and PRs welcome — including drive logs from a vehicle you can't
-finish mapping yourself.
-
-## Hardware
+## Hardware you need
 
 | Part | Detail |
 | :--- | :--- |
@@ -115,168 +98,122 @@ finish mapping yourself.
 | Encoder cable | [SparkFun Qwiic-to-Grove cable](https://www.sparkfun.com/qwiic-cable-grove-adapter-100mm.html) (the board is Grove, the encoder is Qwiic) |
 | Clock | On-board PCF8563 RTC + coin cell |
 | Storage | microSD (FAT32) |
-| OBD adapter | Any BLE or classic-Bluetooth ELM327 — e.g. [Vgate vLinker MS](https://www.vgatemall.com/products-detail/i-79/) (dual BLE + classic-BT) |
+| OBD adapter | A **BLE** ELM327 — see [Adapters](docs/ADAPTERS.md) |
 | Power | Truck USB (switched 5 V) → board USB-C |
 
-A classic ESP32 board (Elecrow WROVER-B) is also supported for a classic-Bluetooth adapter
-via the `elecrow` build envs.
-
-**Why this hardware** — the CrowPanel Advance is an IPS panel (400 nits) that stays
-readable in a sunlit cab, where the earlier TN board did not; navigation is a rotary
-encoder because it is operable by feel while driving, after resistive touch and physical
-buttons were tried first. The reasoning, and the input methods tested, are in
-[`docs/HARDWARE.md`](docs/HARDWARE.md).
-
-### Wiring
-
-The only assembly is one I²C cable from the panel to the knob — the connectors differ (a
-**Grove** plug on the panel, a **Qwiic** plug on the knob), so the [SparkFun
-Qwiic-to-Grove cable](https://www.sparkfun.com/qwiic-cable-grove-adapter-100mm.html) bridges
-them. Everything else is on-board or plug-in. Full guide:
+**Assembly is one cable.** The panel has a **Grove** I²C plug and the knob has a **Qwiic** plug,
+so the SparkFun adapter cable bridges them. Everything else is on-board or plug-in. Full guide:
 [`docs/WIRING.md`](docs/WIRING.md).
 
 ![Wiring: one I²C cable, panel to knob](docs/images/wiring.png)
 
-### Case
-
-![3D-printed case, CAD assembly](docs/images/case.png)
-
-Three printed parts plus **8× M3 heat-set inserts** (4 mm long, 5 mm OD) and
-**4× M3×10 + 4× M3×6 screws**. STLs, print settings and photos are on Printables:
+**Case** — three printed parts plus **8× M3 heat-set inserts** (4 mm long, 5 mm OD) and
+**4× M3×10 + 4× M3×6 screws**. STLs, print settings and photos:
 
 **→ https://www.printables.com/model/1788789-odb-gauge-cluster-case**
 
-BOM and dimensions: [`hardware/`](hardware/).
+![3D-printed case, CAD assembly](docs/images/case.png)
 
-## First-time setup
+BOM and dimensions: [`hardware/`](hardware/). **Why this board and this input method**, and what
+was tried first: [`docs/HARDWARE.md`](docs/HARDWARE.md).
 
-**Prerequisites:** PlatformIO Core, Python 3.12, and git. Verified on macOS and Linux;
-Windows is untested.
+This is the only supported board. An earlier Elecrow WROVER-B was retired — see
+[`docs/HARDWARE.md`](docs/HARDWARE.md) for what it was and why the CrowPanel replaced it.
 
-The first install is over USB from a computer; everything after that is done from your
-phone and the knob.
+## Install it
 
-**1. Flash the firmware (once, over USB).** Connect the CrowPanel to a computer with a
-**data** USB-C cable and, from a clone of this repo:
+**Prerequisites:** PlatformIO Core, Python 3.12, and git. Verified on macOS and Linux; Windows
+is untested. The first install is over USB; everything after that is done from your phone and
+the knob.
 
-```
-pio run -e crowpanel_obd -t upload      # BLE dash (default)
-pio run -e elecrow_obd  -t upload       # classic-Bluetooth dash
-```
-
-If PlatformIO grabs the wrong port, find it and pass it explicitly with
-`--upload-port`:
+**1. Flash the firmware (once, over USB).** Connect the CrowPanel with a **data** USB-C cable
+and, from a clone of this repo:
 
 ```
-ls /dev/cu.usbmodem*                    # macOS — lists the CrowPanel's serial port
-pio run -e crowpanel_obd -t upload --upload-port /dev/cu.usbmodemXXXX
+pio run -e crowpanel_obd -t upload
 ```
 
-(Linux equivalent is typically `/dev/ttyACM*` or `/dev/ttyUSB*`.)
+Wrong port? Find it with `ls /dev/cu.usbmodem*` (macOS) or `ls /dev/ttyACM*` (Linux) and pass
+it with `--upload-port`.
 
-**2. Power it in the truck.** Plug it into a switched USB port. The dash boots to a
-connecting screen.
+**2. Power it in the vehicle.** Plug into a switched USB port. The dash boots to a connecting
+screen.
 
-**3. Provision over WiFi (from your phone).** Long-press the knob → **WiFi setup**. That
-same long-press is the settings menu for everything else below (units, brightness, night
-mode, date/time, adapter, logging):
+**3. Provision WiFi and location (from your phone).** Long-press the knob → **WiFi setup**. The
+dash raises a per-device network **`OBD-XXXX`** with a random password shown on screen; join it
+and a setup page opens at `http://192.168.4.1`. Add your WiFi (needed for updates) and your
+location (enables automatic day/night). Tap **Done** and the dash reboots.
 
 ![Settings menu, reached by a long knob-press](docs/images/settings.png)
 
-The dash raises a per-device WiFi network **`OBD-XXXX`** (e.g. `OBD-3F9A` — `XXXX` is 4 hex
-digits from the chip's MAC, unique per unit). The password is random per unit — generated on
-first use and shown on the dash screen while setup runs; join the network and a setup page
-opens at `http://192.168.4.1`. On that page:
+**4. Plug in the OBD adapter.** Get a **BLE / "Bluetooth 4.0"** ELM327 — the dash scans and
+auto-connects, no pairing step.
 
-- **Add your home/hotspot WiFi** — needed for over-the-air updates.
-- **Set your location** — latitude, longitude (west is negative), and UTC offset. There is
-  no default location, so automatic day/night stays off until you set this. US daylight
-  saving is applied for you.
+| Adapter | Transport | Build | Status |
+| :--- | :--- | :--- | :--- |
+| Vgate **vLinker MS** | BLE | `crowpanel_obd` | ✅ **Validated on the dash** |
+| Vgate **iCar Pro BLE 4.0** | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
+| Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
+| Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** — the dash is BLE-only |
+| **OBDLink MX+ / CX** | BLE (proprietary) | — | ❌ **Unsupported** |
 
-Tap **Done** and the dash reboots with the settings applied.
-
-**4. Connect the OBD adapter.** Plug a BLE ELM327 into the OBD-II port. The default (BLE)
-dash scans and auto-connects to **most BLE ELM327 adapters** — the Vgate vLinker MS and the
-common `0xFFF0`/`0xFFE0` GATT clones — no pairing step. It is **BLE-only**: classic-Bluetooth
-(PIN-pairing) adapters instead need the `elecrow_obd` build on a classic-ESP32 board, which
-connects to a stored adapter MAC. To switch adapters later, use **Forget adapter** in the
+Why each verdict, the GATT profiles supported, and how to report a working adapter:
+[`docs/ADAPTERS.md`](docs/ADAPTERS.md). To switch adapters later, use **Forget adapter** in the
 settings menu.
 
-> **Adapter compatibility.** Choose a **BLE / "Bluetooth 4.0"** ELM327 — iOS-compatible
-> dongles are BLE, and most use the `0xFFE0` (CC2541/HM-10) or `0xFFF0` chipset and connect
-> with no pairing step. **Validated on the dash:** Vgate **vLinker MS** (BLE). **Should
-> work** (BLE with a standard GATT profile and in the adapter name-hint list, but not
-> separately bench-tested): the Vgate **iCar Pro BLE 4.0** and generic CC2541/`0xFFE0`
-> dongles. **Known-unsupported:** the **OBDLink MX+ / CX** — its BLE is proprietary (it
-> advertises with no name and exposes no standard ELM327 GATT service, and appears to require
-> OBDLink's own app to unlock), so the dash cannot connect to it. Classic-Bluetooth
-> (PIN-pairing) adapters are not supported on the BLE build — use the `elecrow_obd` build
-> instead. *(Note: the Vgate iCar Pro also comes in a WiFi variant, documented separately —
-> this refers to the BLE 4.0 model.)*
+**5. Set the clock** (optional) via **Set date/time** — it backs up to the coin cell, so you
+only do it once.
 
-**5. Set the clock** (optional) via **Set date/time** in the menu — it backs up to the coin
-cell, so you only do it once.
+Gauges appear once the adapter links. From here, updates are over-the-air — no cable.
+**Full walkthrough, per-OS notes and troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md).
 
-That's it. Gauges appear once the adapter links. From here, updates are over-the-air (below)
-— no cable.
+## Updates
 
-## Updates (OTA)
+The dash updates itself over WiFi — **Settings → Check update**. It fetches the published
+manifest, refuses anything not signed by this project's key, verifies a SHA-256 of the image,
+and flashes into a spare slot. Failure at any step leaves the running firmware untouched. No
+cable.
 
-The dashboard self-updates over WiFi. Pushing a version tag (e.g. `v1.1.0`) builds a
-release in CI, stamps that tag as the firmware's version, and publishes it to this repo's
-`gh-pages` branch, served by GitHub Pages as `manifest.txt` + the firmware `.bin`. A
-device's **Check update** menu fetches the manifest, compares its version against its own
-running build, and flashes the new image into a spare slot only after verifying its
-SHA-256.
-
-If the `OTA_SIGNING_KEY` repo secret is set, releases also publish a `manifest.sig`
-(ECDSA P-256/SHA-256 signature over `manifest.txt`), and devices with a real key compiled
-into `src/ota_pubkey.h` refuse any manifest that doesn't verify — before even downloading
-the `.bin`. Until both the secret and `src/ota_pubkey.h` are set, this is a no-op
-("transition mode"): the SHA-256 `.bin` check is still enforced either way.
-
-Cut a release by pushing a tag (any increasing `vMAJOR.MINOR.PATCH`):
+Cutting a release (maintainers): push a version tag.
 
 ```
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-`publish_ota.sh` does the same build-and-publish locally as a fallback. CI
-(`.github/workflows/ci.yml`) also runs the full host-test suite and a device build on every
-push and pull request.
+Releases publish **one image, `crowpanel_obd.bin`** — not one per vehicle, since all profiles
+ship together and are selected at runtime by VIN. Signing, the release pipeline,
+anti-rollback and hosting updates
+for a fork: [`docs/OTA.md`](docs/OTA.md).
 
-A release is **one firmware image per board type** (`crowpanel_obd.bin`, `elecrow_obd.bin`),
-not per vehicle — a device installs the image for its board. As multi-vehicle support lands
-(runtime profile selection by VIN), a single image will cover every supported vehicle.
+## Port your vehicle
 
-To host updates for a fork: enable GitHub Pages on the `gh-pages` branch and point
-`OTA_BASE_URL` (in `platformio.ini`) at your Pages URL.
+The firmware, transport, UI, logging and OTA are vehicle-agnostic; the only per-vehicle part is
+a profile in [`src/vehicles/`](src/vehicles/) (PID table, decoders, thresholds, layout, tank
+sizes). Mapping a new vehicle needs one thing this project cannot supply remotely: **the
+vehicle**.
 
-## The discovery tool
-
-`tools/obd_scan/` maps an unknown vehicle's enhanced PIDs from a laptop:
-
-1. **census** — probe candidate CAN headers in both 11-bit and 29-bit addressing to find
-   which modules answer (a negative response proves a module is alive, which confirms the
-   addressing);
-2. **sweep** — brute-force the PID blocks at each live module;
-3. **log** — poll every hit plus known anchors (RPM, speed, load, coolant) through a drive,
-   storing raw hex;
-4. **correlate** — enumerate every plausible byte interpretation of each unknown PID and
-   rank it against the anchors, so "address 22F478 answered with 9 bytes" resolves to
-   "bytes 1–2 track RPM — an EGT sensor."
-
-It is **read-only by construction**: only OBD read services and an allow-listed set of AT
-commands can be transmitted — writes, routines, resets and clears are rejected in code —
-because it runs on vehicles that may not be yours.
+`tools/obd_scan/` maps an unknown vehicle's enhanced PIDs from a laptop. It is **read-only by
+construction** — only OBD read services and an allow-listed set of AT commands can be
+transmitted; writes, routines, resets and clears are rejected in code, because it runs on
+vehicles that may not be yours.
 
 ```
 cd tools
 python3 -m obd_scan census    --vehicle gm -o census.json
-python3 -m obd_scan sweep      --census census.json -o sweep.json
-python3 -m obd_scan log        --sweep sweep.json -o drive.csv   # during a drive
-python3 -m obd_scan correlate  drive.csv -o report.md
+python3 -m obd_scan sweep     --census census.json -o sweep.json
+python3 -m obd_scan log       --sweep sweep.json -o drive.csv   # during a drive
+python3 -m obd_scan correlate drive.csv -o report.md
 ```
+
+1. **Scan** the OBD port to discover which PIDs answer (about an hour parked, plus a drive).
+2. **Correlate** the results to identify each PID.
+3. **Add** a `src/vehicles/<your_vehicle>.cpp` profile and open a pull request.
+
+Start with [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) (the method and its pitfalls)
+and [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) (a worked example).
+[`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) is a partial head-start on the Ford 6.7L Power
+Stroke. Issues and PRs welcome — including drive logs from a vehicle you can't finish mapping
+yourself. How the scanner works internally: [`docs/obd-scan-design.md`](docs/obd-scan-design.md).
 
 ## Building from source
 
@@ -288,38 +225,25 @@ cd test && make                          # firmware logic tests + fuzz (no hardw
 cd tools/obd_scan && python3 -m pytest tests -q   # scanner tests
 ```
 
-## Repository layout
-
-```
-platformio.ini          PlatformIO project
-src/                     firmware
-  vehicles/              per-vehicle PID tables, decoders, thresholds, layout
-test/                    host unit tests (+ fuzz)
-tools/
-  obd_scan/              the discovery scanner (read-only)
-  analyze_logs.py        drive-CSV self-audit + alarm replay
-  ui_snapshot/           pixel-exact host render of the real UI
-  stl_render.py          isometric STL preview
-hardware/                3D-printable enclosure — BOM + Printables link
-docs/                    porting method, per-vehicle status, acceptance runbook, images
-publish_ota.sh          local build + publish (CI does this on a tag)
-.github/workflows/      CI (tests + build) and release (build + publish)
-```
+Repository layout and the contribution workflow are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Documentation
 
-- [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) — the method for mapping a new
-  vehicle, and the traps: transport quirks, decode traps that produce plausible wrong
-  answers, why correlation is not identity, and why community PID lists cannot be trusted.
-- [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) — a worked example of the
-  discovery method on the reference truck, used as an acceptance gate for the scanner.
-- [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) — status of the Ford 6.7L Power Stroke port
-  and what it would take to finish.
-- [`docs/obd-scan-design.md`](docs/obd-scan-design.md) — the scanner's design.
-- [`docs/HARDWARE.md`](docs/HARDWARE.md) — why this board and this input, and the input
-  methods tested first.
-- [`docs/WIRING.md`](docs/WIRING.md) — the one I²C cable, and what is on-board.
-- [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md) — rearranging the tiles and pages.
+| Document | What it covers |
+| :--- | :--- |
+| [`docs/DISPLAY.md`](docs/DISPLAY.md) | Every tile per profile, the alarm model, focus view, theming, status bar |
+| [`docs/VEHICLES.md`](docs/VEHICLES.md) | VIN auto-select, per-vehicle detail, what "not supported" means |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | Full setup walkthrough, per-OS notes, troubleshooting |
+| [`docs/ADAPTERS.md`](docs/ADAPTERS.md) | Adapter compatibility, GATT profiles, reporting a working adapter |
+| [`docs/OTA.md`](docs/OTA.md) | Update mechanics, signing, release pipeline, hosting a fork |
+| [`docs/HARDWARE.md`](docs/HARDWARE.md) | Why this board and this input, and what was tried first |
+| [`docs/WIRING.md`](docs/WIRING.md) | The one I²C cable, and what is on-board |
+| [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md) | Rearranging the tiles and pages |
+| [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) | The method for mapping a new vehicle, and the traps |
+| [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) | A worked example of the discovery method |
+| [`docs/obd-scan-design.md`](docs/obd-scan-design.md) | The scanner's design |
+| [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) | Per-vehicle port status |
 
 ## Safety and scope
 
