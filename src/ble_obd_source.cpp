@@ -27,6 +27,18 @@ volatile char g_bleStep[48] = "boot";
 static void bleStep(const char* s) { strncpy((char*)g_bleStep, s, 47); g_bleStep[47] = 0; }
 // On-screen list of BLE devices seen in the last scan (strongest first): shows
 // whether the vLinker is even advertising. name (or short MAC) + RSSI per line.
+//
+// CROSS-CORE, DELIBERATELY UNSYNCHRONISED. Written by the scan on core 0 (see the
+// snprintf below) and read by the UI on core 1, with no lock and — unlike
+// g_bleStep above — no `volatile`. That is intentional, not an oversight:
+//   * the only failure mode is a torn read, i.e. one frame of the scan overlay
+//     showing a mix of the old and new list. It self-corrects on the next frame.
+//   * it cannot run off the end: the buffer starts NUL-terminated and every
+//     writer is a bounded snprintf into the same array, so a reader always finds
+//     a terminator within `sizeof g_bleScan`.
+// A lock here would mean the render core blocking on the BLE scan for cosmetic
+// text. If this buffer ever feeds anything but a debug overlay, that trade stops
+// being acceptable — add the guard then.
 char g_bleScan[240] = "(no scan yet)";
 
 // Pairing policy: the adapter is headless with a fixed, publicly-known 123456

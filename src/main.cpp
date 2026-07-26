@@ -101,7 +101,20 @@ void setup() {
   // query schedule from the active profile, so g_activeProfile must be set first.
   loadSettings(settings);
   g_activeProfile = profileForKey(settings.vehicleKey);
-  if (!g_activeProfile) g_activeProfile = &GENERIC_PROFILE;
+  if (!g_activeProfile) {
+    // An unresolvable key (renamed/removed profile, or corrupted NVS) falls back
+    // to Generic. Clear the stale key rather than leaving it persisted: it no
+    // longer describes the running profile, it makes the Pick-Vehicle cursor seed
+    // to a vehicle that isn't active, and leaving vehicleAuto's lock semantics
+    // hanging off a dead key is worse than re-detecting on the next connect.
+    if (settings.vehicleKey[0]) {
+      Serial.printf("[PROFILE] key '%s' did not resolve — falling back to Generic\n",
+                    settings.vehicleKey);
+      settings.vehicleKey[0] = '\0';
+      saveSettings(settings);
+    }
+    g_activeProfile = &GENERIC_PROFILE;
+  }
   g_obd.begin();
 #if !HAS_RTC
   // No clock -> Auto can't resolve; pin the mode to the persisted theme so the
@@ -412,7 +425,17 @@ void loop() {
     // key, so vinAutoTarget() returns nullptr on the next check — no reboot loop.
     // Reuses `readings` (the one ObdReadings snapshot this frame already took)
     // rather than calling g_obd.latest() again.
-    if (settings.vehicleAuto && readings.vin[0]) {
+    // Never reboot out from under an open overlay. VehiclePick is the case that
+    // matters: the user is mid-decision about which profile to lock, and
+    // vehicleAuto is still true until they commit, so an arriving VIN could save
+    // + restart while their cursor is on the list. Menu/TimeSet are included for
+    // the same reason (a restart mid-edit discards the edit). Deferring is free —
+    // the VIN persists in `readings`, so this fires on a later frame once they
+    // are back on the gauges.
+    const bool overlayOpen = snap.view == View::VehiclePick ||
+                             snap.view == View::Menu ||
+                             snap.view == View::TimeSet;
+    if (settings.vehicleAuto && readings.vin[0] && !overlayOpen) {
       const char* target = vinAutoTarget(readings.vin, settings.vehicleAuto, settings.vehicleKey);
       if (target) {
         strncpy(settings.vehicleKey, target, sizeof settings.vehicleKey - 1);
