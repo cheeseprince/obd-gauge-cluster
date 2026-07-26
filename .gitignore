@@ -38,6 +38,26 @@ drive.csv
 bmw_*.csv
 audi_*.csv
 
-# AI dev-process artifacts — local only, never published
+# ─── Never committed ────────────────────────────────────────────────────────
+# ONE place for anything local: scratch files, notes, generated reports, agent
+# output, half-finished experiments. If you are unsure whether something belongs
+# in the repo, put it here — this whole directory is ignored, so no filename
+# needs its own rule and nothing can slip through by being named something new.
+.private/
+
+# Tool-created workspaces. These live at fixed paths because the tooling that
+# writes them recreates them there; they are ignored in place rather than moved
+# into .private/, which would just leave them un-ignored on the next run.
 .superpowers/
 docs/superpowers/
+
+# Backstop only. These documents live OUTSIDE this repository on purpose
+# (~/claude_code/gmc_1500/docs/) — each enumerates OPEN security findings, and
+# publishing a findings list to a public repo is itself a disclosure. Keeping
+# them out of the tree is the real control; these patterns just refuse a stray
+# copy. Every pattern requires a hyphen after the prefix, so the repo's own
+# tracked SECURITY.md is deliberately NOT matched.
+OBD-BACKLOG.*
+SECURITY-AUDIT-*
+SECURITY-REVIEW-*
+FINDINGS-*
