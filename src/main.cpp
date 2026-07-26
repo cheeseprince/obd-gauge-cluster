@@ -189,11 +189,27 @@ void loop() {
 #endif
 
   // Serial key handler:
-  //   'c' → touch calibration (tap 4 corner arrows)
   //   'n' → toggle Day/Night theme + backlight
   //   's' → toggle mock safe-bands (no alarms) vs alarm-sweep  [MOCK_OBD only]
-  //   'p' → request BT adapter pairing scan                     [real build only]
-  //   'f' → forget stored adapter (clear NVS MAC)               [real build only]
+  //   'e' 'x' 'd' 'g' → vehicle bring-up probes    [OBD_DEV_CONSOLE builds only]
+  //
+  // NOTHING HERE MAY BE DESTRUCTIVE OR LONG-RUNNING ON A SHIPPED BUILD (F-11).
+  // This console is unauthenticated: anything reachable from it is reachable by
+  // anyone who can touch the USB port. Two categories were removed from the
+  // stock image rather than gated behind a prompt, because a prompt stops an
+  // accident, not an attacker:
+  //
+  //   * 'f'/'p' (forget adapter / re-pair) are GONE. Wiping the stored bond
+  //     reopens the BLE trust-on-first-use window, which is the one thing here
+  //     with a real security consequence — a clone present during that window
+  //     can bond and then feed fabricated readings. Settings → Forget adapter
+  //     already does this from the knob, which needs physical presence at the
+  //     dash and shows an on-screen confirmation.
+  //   * the probe/scan keys are compiled out unless OBD_DEV_CONSOLE is set.
+  //     'x' alone sweeps 544 PIDs and monopolises the OBD link for minutes, so
+  //     on a moving vehicle it is a denial of the gauges. They exist for
+  //     bringing up a new vehicle, which is a bench activity — build
+  //     `crowpanel_obd_dev` for that.
   //
   // During pairing, core 0 (via poll()/doPairing()) owns the console.  Stand
   // down here so we don't race on Serial.read() while doPairing() blocks on
@@ -214,15 +230,9 @@ void loop() {
       Serial.printf("[MOCK] %s\n", g_obd.safeMode() ? "safe bands (no alarms)" : "alarm sweep");
     }
 #else
-    else if (k == 'p') {
-      Serial.println("[OBD] pairing requested");
-      g_obd.requestPair();
-    } else if (k == 'f') {
-      Serial.println("[OBD] forgetting adapter");
-      g_obd.forget();
-      g_forgetMsgUntil = millis() + 4000;
-    }
-#if defined(BLE_OBD)
+    // No 'f'/'p' here — see the F-11 note above. Forget adapter lives in the
+    // settings menu, where it needs the knob and confirms on screen.
+#if defined(BLE_OBD) && defined(OBD_DEV_CONSOLE)
     else if (k == 'e') {
       Serial.println("[OBD] EGT/DPF raw-reply dump requested");
       g_obd.requestDiag();

@@ -257,7 +257,6 @@ ConnStatus BleObdSource::connStatus() const {
   return cs;
 }
 
-void BleObdSource::requestPair() { forgetReq_ = true; nextRetryMs_ = 0; }   // forget + re-discover
 void BleObdSource::forget()      { forgetReq_ = true; }
 
 // Bonding policy (see BleSecCB): pin pairing to the cached adapter. Runs on
