@@ -27,7 +27,7 @@
 #define LV_COLOR_DEPTH 16
 
 /*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI)*/
-/* The CrowPanel (LovyanGFX) and Elecrow (TFT_eSPI) backends handle byte order
+/* The CrowPanel (LovyanGFX) backend handles byte order
  * in their own bus layer, so this stays 0. */
 #define LV_COLOR_16_SWAP 0
 

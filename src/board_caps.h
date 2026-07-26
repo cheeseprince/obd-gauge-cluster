@@ -5,7 +5,6 @@
 //
 // Boards:
 //   BOARD_CROWPANEL  CrowPanel Advance 3.5" (dash unit): encoder menu, SD, RTC.
-//   (neither)        Elecrow WROVER v2.2 (retired): touch + buttons, no menu.
 
 #define HAS_KNOB_MENU 1     // rotary encoder input + settings-menu overlay
 
@@ -18,8 +17,7 @@
 #endif
 
 // OTA updates + WiFi provisioning portal (S3 boards: WiFi radio + the 8MB
-// dual-app partition layout both envs already flash). Elecrow (retired, 4MB)
-// stays out.
+// dual-app partition layout the board flashes).
 #define HAS_OTA 1
 
 // Hardware presence (menu-row gating; independent of whether a feature is

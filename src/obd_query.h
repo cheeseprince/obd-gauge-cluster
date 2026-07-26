@@ -1,8 +1,9 @@
 #pragma once
-// Shared non-blocking PID query state machine — the single implementation
-// behind BleObdSource (NimBLE, S3 board) and RealObdSource (classic BT,
-// retired WROVER board). The two copies had drifted only in transport calls
-// and reply timeout; keeping one engine stops future divergence.
+// Non-blocking PID query state machine, templated over the transport.
+// BleObdSource (NimBLE) is the only real implementation today — RealObdSource
+// (classic BT, retired WROVER board) was removed with that board. The template
+// is kept rather than inlined: it is what let two transports share one engine
+// without drifting, and it is the seam a future transport would use.
 //
 // Flow (one step per poll() tick):
 //   Idle -> flush rx, pick next readout; if its ECU header differs from the

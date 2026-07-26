@@ -48,8 +48,8 @@ namespace buttonInput { MenuAction consumeMenuAction(); bool consumeVehicleCommi
 // Two core-0 tasks, split so a blocking OBD connect can't freeze the encoder.
 // inputTask runs at HIGHER priority than obdTask: while obdTask is parked in the
 // 6 s BLE scan (blocked on a semaphore) the scheduler runs inputTask freely, and
-// even when a classic-BT connect busy-blocks, the higher-priority inputTask still
-// preempts on its 3 ms tick. So the knob (and the "hold for settings" menu) stay
+// the higher-priority inputTask still preempts on its 3 ms tick. So the knob
+// (and the "hold for settings" menu) stay
 // responsive whether disconnected, scanning, or reconnecting. Both stay on core 0
 // to keep BT/ELM work off the LVGL render core (core 1). navState is shared with
 // core 1 under navMux; applyReadings()/latest() stay safe as before.
