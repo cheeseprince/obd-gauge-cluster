@@ -138,8 +138,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ASSETS="out/crowpanel_obd.bin out/manifest.txt"
-          [ -f out/manifest.sig ] && ASSETS="$ASSETS out/manifest.sig"
+          # manifest.sig is unconditional: this step is tag-only, and the signing
+          # step above fails the run on a tag without a valid signature. Listing it
+          # unconditionally means a missing sig fails loudly here rather than
+          # silently publishing a Release whose assets don't match the OTA channel.
+          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber --repo "$GITHUB_REPOSITORY"
           else
