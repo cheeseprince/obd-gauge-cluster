@@ -11,11 +11,4 @@
 // `pump(status)` is called continuously so the caller can keep LVGL alive and
 // show connection info on-screen. Returns when the user taps "Done" on the
 // page or after a 5-minute timeout — the caller is expected to reboot.
-//
-// HAS_OTA=0 boards (retired elecrow) get a no-op stub.
-
-#if HAS_OTA
 void otaPortalRun(void (*pump)(const char* status));
-#else
-inline void otaPortalRun(void (*)(const char*)) {}
-#endif

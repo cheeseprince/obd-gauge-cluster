@@ -21,11 +21,4 @@
 // signature (manifest.sig) verifying against ota_pubkey.h's compiled-in
 // OTA_PUBKEY_PEM, or the update is refused outright. A real key is mandatory
 // (build-time assert in ota_update.cpp) — there is no unsigned fallback.
-//
-// HAS_OTA=0 boards (retired elecrow) get a no-op stub.
-
-#if HAS_OTA
 void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo);
-#else
-inline void otaCheckUpdate(void (*)(const char*), const GeoLocation&) {}
-#endif

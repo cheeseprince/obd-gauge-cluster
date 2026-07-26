@@ -58,8 +58,8 @@ jobs:
           key: pio-${{ hashFiles('platformio.ini') }}
       - name: Install PlatformIO
         run: python -m pip install --quiet platformio
-      - name: Build BLE + classic-BT dash
-        run: pio run -e crowpanel_obd -e elecrow_obd
+      - name: Build the dash firmware
+        run: pio run -e crowpanel_obd
 
   pii-guard:
     name: PII guard (no real VINs)

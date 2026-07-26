@@ -2,8 +2,8 @@
 #include "obd_source.h"
 
 // ble_obd_source.h — Live OBD over BLE (vLinker MS in BT+BLE mode) for the
-// ESP32-S3 board, via NimBLE. The S3 has no Bluetooth Classic, so this replaces
-// the classic RealObdSource on that board. Profile captured on the truck:
+// ESP32-S3 board, via NimBLE. The S3 has no Bluetooth Classic radio, so BLE is
+// the only OBD transport this firmware has. Profile captured on the truck:
 //   service 0x18f0, notify 0x2af0 (replies), write 0x2af1 (commands), ELM327 v2.3.
 //
 // Built only when BLE_OBD is defined (the crowpanel_obd env). Every other build
@@ -27,7 +27,7 @@ class BleObdSource : public ObdSource {
   void poll(uint32_t nowMs) override;
   ObdReadings latest() const override;
 
-  // Console hooks (parity with RealObdSource so main.cpp is unchanged).
+  // Console hooks, driven by the serial key handler in main.cpp.
   void requestPair();   // 'p' — drop the cached adapter and re-discover
   void forget();        // 'f' — clear cached adapter from NVS
   bool pairing() const { return false; }   // discovery is automatic; never owns the console

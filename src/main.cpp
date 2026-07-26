@@ -5,7 +5,6 @@
 #include "ui.h"
 #include "obd_source.h"
 #include "mock_obd_source.h"
-#include "real_obd_source.h"
 #include "ble_obd_source.h"
 #include "button_input.h"
 #include "history.h"
@@ -34,10 +33,8 @@ static GaugeSet gauges;
 static NavState navState;
 #if MOCK_OBD
 static MockObdSource g_obd;   // bench: synthetic data (safe-band default)
-#elif defined(BLE_OBD)
-static BleObdSource g_obd;    // CrowPanel S3: live OBD over BLE (vLinker MS)
 #else
-static RealObdSource g_obd;   // old board: live OBD over classic Bluetooth
+static BleObdSource g_obd;    // CrowPanel S3: live OBD over BLE (vLinker MS)
 #endif
 static Settings settings;            // persisted display settings (NVS)
 static Theme    theme = Theme::Day;
@@ -51,8 +48,8 @@ namespace buttonInput { MenuAction consumeMenuAction(); bool consumeVehicleCommi
 // Two core-0 tasks, split so a blocking OBD connect can't freeze the encoder.
 // inputTask runs at HIGHER priority than obdTask: while obdTask is parked in the
 // 6 s BLE scan (blocked on a semaphore) the scheduler runs inputTask freely, and
-// even when a classic-BT connect busy-blocks, the higher-priority inputTask still
-// preempts on its 3 ms tick. So the knob (and the "hold for settings" menu) stay
+// the higher-priority inputTask still preempts on its 3 ms tick. So the knob
+// (and the "hold for settings" menu) stay
 // responsive whether disconnected, scanning, or reconnecting. Both stay on core 0
 // to keep BT/ELM work off the LVGL render core (core 1). navState is shared with
 // core 1 under navMux; applyReadings()/latest() stay safe as before.
@@ -125,7 +122,7 @@ void setup() {
   theme = settings.night ? Theme::Night : Theme::Day;
   display::setBacklight(settings.brightnessPct);
   ui::begin();
-  buttonInput::begin();  // scan I2C for PCF8574 expander; no-op if absent
+  buttonInput::begin();  // bring up the Modulino encoder on I2C; no-op if absent
 #if HAS_SD_LOG
   sdBegin();             // init microSD (HSPI) for CSV logging
 #endif
@@ -208,10 +205,7 @@ void loop() {
 #endif
   if (Serial.available()) {
     char k = Serial.read();
-    if (k == 'c') {
-      Serial.println("[CAL] starting touch calibration - tap the 4 corner arrows");
-      display::calibrateTouch();
-    } else if (k == 'n') {
+    if (k == 'n') {
       applyNightCycle("");
     }
 #if MOCK_OBD

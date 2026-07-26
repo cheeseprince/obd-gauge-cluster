@@ -1,8 +1,9 @@
 #pragma once
-// Shared non-blocking PID query state machine — the single implementation
-// behind BleObdSource (NimBLE, S3 board) and RealObdSource (classic BT,
-// retired WROVER board). The two copies had drifted only in transport calls
-// and reply timeout; keeping one engine stops future divergence.
+// Non-blocking PID query state machine, templated over the transport.
+// BleObdSource (NimBLE) is the only real implementation today — RealObdSource
+// (classic BT, retired WROVER board) was removed with that board. The template
+// is kept rather than inlined: it is what let two transports share one engine
+// without drifting, and it is the seam a future transport would use.
 //
 // Flow (one step per poll() tick):
 //   Idle -> flush rx, pick next readout; if its ECU header differs from the
@@ -134,8 +135,8 @@ inline void pidQueryStep(PidQueryState& q, ObdSchedule& sched, IO& io,
 }
 
 // ---------------------------------------------------------------------------
-// Computed readouts — the SINGLE implementation shared by all live sources
-// (BLE / WiFi / classic-BT). These rows are derived on-device from PIDs already
+// Computed readouts — one implementation, used by the live BLE source and the
+// mock alike. These rows are derived on-device from PIDs already
 // in values[] (no extra queries): trip economy, horsepower, gallons-to-fill.
 // Call once per poll() tick while the link is Up, right after pidQueryStep.
 // Runs on the core-0 OBD task only (economy is single-writer); publishes to cur
