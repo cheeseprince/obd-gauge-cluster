@@ -1,0 +1,19 @@
+# Local commit-time guards — catch secrets / real VIN data BEFORE they land in a
+# commit (the CI jobs of the same name are the non-optional backstop).
+#
+# One-time per clone:   pip install pre-commit && pre-commit install
+# Run manually:         pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks          # keys / tokens / passwords
+
+  - repo: local
+    hooks:
+      - id: pii-guard
+        name: PII guard (no real VINs)
+        entry: python3 scripts/check_no_pii.py
+        language: system
+        pass_filenames: false
+        always_run: true

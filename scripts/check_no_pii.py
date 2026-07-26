@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""CI guard — keep real VIN data out of the repository.
+
+Allowlist only: the sole 17-char VIN-shaped tokens permitted anywhere in tracked
+files are the synthetic test VINs in ALLOWED_VINS (…123456 / …000000 style, no
+relation to any real vehicle). Any other VIN-shaped token fails CI — so a real
+VIN pasted anywhere is caught, and this file stores NOTHING derived from a real
+VIN. (An earlier version also pinned SHA-256 hashes of specific real fragments,
+but SHA-256 of a 6-digit serial is brute-forced instantly, so those hashes were
+themselves a small leak — the allowlist needs no such data.)
+
+Run from anywhere in the repo:  python3 scripts/check_no_pii.py
+Exit 0 = clean, 1 = a violation (prints file + the offending token).
+"""
+import re
+import subprocess
+import sys
+import pathlib
+
+# Synthetic test VINs — the ONLY VIN-shaped 17-char tokens allowed in the tree.
+ALLOWED_VINS = {
+    "1GT0123456789ABCD",   # GM (test_vin, framework)
+    "WAU0123456789ABCD",   # Audi
+    "WAU0123456789ABCE",   # Audi (variant)
+    "WA10123456789ABCD",   # Audi (WA1 WMI-case test)
+    "WBA0123456789ABCD",   # BMW
+    "1FT0123456789ABCD",   # Ford
+    "JHM0123456789ABCD",   # Honda (unknown-WMI test)
+    "3GT0123456789ABCD",   # GM (3GT WMI-case test)
+}
+
+# A VIN token excludes I/O/Q; a hex hash never has a letter past A-F, so requiring
+# one letter in G–Z (minus I/O/Q) separates real VIN tokens from SHA digests and
+# other 17-char hex/base blobs. Case-INSENSITIVE: a real VIN committed in
+# lowercase must still be caught (the tokens are upper()'d before the allowlist
+# check below).
+# \b-anchored so only a STANDALONE 17-char token matches, not a 17-char window
+# inside a longer run (e.g. the base64 of the OTA public key in ota_pubkey.h).
+VIN_RE = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b", re.IGNORECASE)
+VIN_LETTER = re.compile(r"[G-HJ-NPR-Z]", re.IGNORECASE)
+SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".pdf", ".bin", ".sig", ".stl",
+               ".ico", ".gz", ".zip", ".woff", ".woff2", ".ttf"}
+
+
+def tracked_files(root: str):
+    out = subprocess.check_output(["git", "-C", root, "ls-files", "-z"])
+    for raw in out.split(b"\0"):
+        if not raw:
+            continue
+        p = pathlib.Path(root) / raw.decode()
+        if p.suffix.lower() in SKIP_SUFFIX:
+            continue
+        yield p
+
+
+def main() -> int:
+    root = subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], text=True).strip()
+    self_path = pathlib.Path(__file__).resolve()
+    violations = []
+    for p in tracked_files(root):
+        if p.resolve() == self_path:      # never scan the guard itself
+            continue
+        try:
+            text = p.read_text(errors="ignore")
+        except OSError:
+            continue
+        for m in VIN_RE.finditer(text):
+            tok = m.group(0)
+            if VIN_LETTER.search(tok) and tok.upper() not in ALLOWED_VINS:
+                violations.append((str(p.relative_to(root)),
+                                   f"non-allowlisted VIN token {tok!r}"))
+
+    if violations:
+        print("VIN/PII guard FAILED:")
+        for path, reason in sorted(set(violations)):
+            print(f"  {path}: {reason}")
+        print("\nOnly the synthetic test VINs in ALLOWED_VINS may appear. "
+              "Never commit real VIN data (add a new synthetic VIN to the "
+              "allowlist if you need another test value).")
+        return 1
+    print("VIN/PII guard OK — only synthetic test VINs present.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

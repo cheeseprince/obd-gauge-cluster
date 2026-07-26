@@ -1,0 +1,31 @@
+{
+  "vehicle": "2025 GMC Sierra 1500 3.0L Duramax (LZ0, Global B)",
+  "note": "Known-true answers, already shipping in the firmware's vehicle profile and validated on the truck. The scanner must rediscover these before it is trusted on a vehicle nobody has mapped. A tool that cannot find answers we already know is broken, and that must be discovered in your own driveway rather than during a borrowed truck's one session.",
+  "min_hits": 50,
+  "must_find": [
+    {
+      "request": "221940",
+      "why": "transmission fluid temperature — the project's original crux; matches the dash DIC"
+    },
+    {
+      "request": "220078",
+      "why": "EGT block — multi-frame ISO-TP, 3 sensors behind a presence mask; proves fragment assembly works"
+    },
+    {
+      "request": "22000B",
+      "why": "MAP — found only because the enhanced 2200xx range mirrors the generic 01xx block"
+    },
+    {
+      "request": "22000F",
+      "why": "intake air temperature — the other half of the mirror-block discovery"
+    },
+    {
+      "request": "220023",
+      "why": "fuel rail pressure"
+    },
+    {
+      "request": "22009B",
+      "why": "DEF level — the byte[3] fix; byte[1] is concentration and reads stuck"
+    }
+  ]
+}

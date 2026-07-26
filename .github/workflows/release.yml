@@ -1,0 +1,104 @@
+name: Release
+
+# Cut a release by pushing a tag (e.g. `git tag v1.0.0 && git push --tags`).
+# The firmware is built in CI, stamped with the release tag as its version, and
+# published to the gh-pages branch as manifest.txt + manifest.sig (only if the
+# OTA_SIGNING_KEY secret is set) + the .bin. Devices fetch it from GitHub Pages
+# via their "Check update" menu.
+#
+# A manual workflow_dispatch run is a DRY RUN: it builds and signs a dev-<hash>
+# artifact to prove the pipeline works, but the publish step is guarded to tag
+# pushes only (github.ref_type == 'tag'), so it never overwrites the live
+# release on gh-pages. Only a real tag deploys.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: python -m pip install --quiet platformio
+      - name: Stamp firmware version
+        run: |
+          GIT=$(git rev-parse --short HEAD)
+          echo "GIT=$GIT" >> "$GITHUB_ENV"
+          # Tag pushes (v*) stamp the tag itself as the version; manual/
+          # workflow_dispatch runs (no tag) fall back to a dev-<hash> form —
+          # matches the FW_VERSION fallback baked into src/fw_git.h.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="dev-$GIT"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sed -i "s/#define FW_GIT \".*\"/#define FW_GIT \"$GIT\"/" src/fw_git.h
+          sed -i "s/#define FW_VERSION \".*\"/#define FW_VERSION \"$VERSION\"/" src/fw_git.h
+          echo "version=$VERSION git=$GIT"
+      - name: Build crowpanel_obd
+        run: pio run -e crowpanel_obd
+      - name: Assemble the release
+        run: |
+          mkdir -p out
+          BIN=.pio/build/crowpanel_obd/firmware.bin
+          SHA=$(sha256sum "$BIN" | cut -d' ' -f1)
+          SIZE=$(stat -c%s "$BIN")
+          cp "$BIN" out/crowpanel_obd.bin
+          echo "crowpanel_obd $VERSION $SHA $SIZE crowpanel_obd.bin" > out/manifest.txt
+          cat out/manifest.txt
+      - name: Sign the manifest (if OTA_SIGNING_KEY is configured)
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          # Transition mode: signing is opt-in via the OTA_SIGNING_KEY secret.
+          # Absent secret -> no manifest.sig published, workflow still
+          # succeeds — devices with the tracked empty ota_pubkey.h placeholder
+          # skip signature enforcement and rely on the .bin SHA-256 alone.
+          if [ -n "${OTA_SIGNING_KEY:-}" ]; then
+            printf '%s' "$OTA_SIGNING_KEY" > /tmp/otakey.pem
+            openssl dgst -sha256 -sign /tmp/otakey.pem -out out/manifest.sig out/manifest.txt
+            rm -f /tmp/otakey.pem
+            echo "manifest.sig written ($(stat -c%s out/manifest.sig) bytes)"
+          else
+            echo "OTA_SIGNING_KEY not set — skipping manifest signing (transition mode, no manifest.sig)"
+          fi
+      - name: Publish to gh-pages
+        # Tag pushes only. A manual workflow_dispatch run builds + signs above
+        # (a dry run) but must NOT publish, or it would overwrite the live
+        # tagged release on gh-pages with a dev-<hash> build.
+        if: github.ref_type == 'tag'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          keep_files: false
+      - name: Create GitHub Release
+        # Tag pushes only. Cut a GitHub Release for this tag with the firmware +
+        # manifest + signature as downloadable assets, so the Releases page
+        # matches the OTA channel on gh-pages (devices update over the air and
+        # never need these files by hand — they're for humans browsing the repo).
+        # Idempotent: a re-run re-uploads assets instead of failing. Notes are
+        # auto-generated from PRs merged since the previous tag.
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSETS="out/crowpanel_obd.bin out/manifest.txt"
+          [ -f out/manifest.sig ] && ASSETS="$ASSETS out/manifest.sig"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" $ASSETS \
+              --title "$GITHUB_REF_NAME" --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi

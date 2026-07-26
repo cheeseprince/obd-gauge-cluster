@@ -1,0 +1,70 @@
+name: Metadata check
+
+# Fail if any tracked image or PDF carries metadata that should not be public —
+# GPS coordinates, camera make/model/serial, capture timestamps, or a human
+# author. On a pull request this gates the merge (make it a required check in
+# branch protection); on a push it is an after-the-fact net. The pre-publish
+# gate for direct pushes is the author's local pre-push hook.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    name: Scan images/PDFs for sensitive metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install exiftool
+        run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl
+
+      - name: Scan tracked images and PDFs
+        run: |
+          set -uo pipefail
+          mapfile -d '' files < <(git ls-files -z -- \
+            '*.jpg' '*.jpeg' '*.png' '*.tif' '*.tiff' '*.webp' \
+            '*.heic' '*.heif' '*.gif' '*.pdf')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No tracked images or PDFs."; exit 0
+          fi
+
+          # Ask exiftool ONLY for tags that identify a device, person, place, or
+          # time. -json omits tags that are absent, so a clean file yields just
+          # its SourceFile. -q -q suppresses the summary lines.
+          exiftool -json -q -q \
+            -GPSPosition -GPSLatitude -GPSLongitude -GPSAltitude \
+            -Make -Model -SerialNumber -InternalSerialNumber \
+            -CameraSerialNumber -LensSerialNumber \
+            -Artist -Copyright -CameraOwnerName -OwnerName \
+            -DateTimeOriginal -CreateDate \
+            -Author -Creator -Producer -XMP-dc:creator -XPAuthor \
+            "${files[@]}" > meta.json || true
+
+          # Producer/Creator are often the generating tool, not a person — exempt
+          # known generators. Everything else is a finding.
+          bad=$(jq -r '
+            def safe: test("pandoc|latex|xetex|pdftex|luatex|ghostscript|chromium|chrome|skia|libre|openoffice|matplotlib|pillow|imagemagick|cairo|wkhtml|weasyprint|typst|quartz|microsoft.?print"; "i");
+            .[]
+            | .SourceFile as $sf
+            | to_entries[]
+            | .key as $k | (.value|tostring) as $v
+            | select($k != "SourceFile")
+            | select(($v|length) > 0 and $v != "-")
+            | select((["Producer","Creator"] | index($k)) == null or (($v|safe) | not))
+            | "\($sf)\t\($k)\t\($v)"
+          ' meta.json)
+
+          if [ -n "$bad" ]; then
+            echo "$bad" | while IFS=$'\t' read -r f k v; do
+              echo "::error file=$f::sensitive metadata — $k: $v"
+              echo "  $f  —  $k: $v"
+            done
+            echo ""
+            echo "Strip it before publishing:  exiftool -all= <file>   (or re-save the image without metadata)."
+            exit 1
+          fi
+          echo "No sensitive metadata in tracked images or PDFs."

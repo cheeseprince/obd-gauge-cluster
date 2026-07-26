@@ -1,0 +1,23 @@
+[tool.ruff]
+# Only lint the Python OBD scanner tooling; firmware (C++) lives elsewhere
+# and this repo has no other Python packages yet.
+include = ["tools/obd_scan/**/*.py"]
+line-length = 120
+
+[tool.ruff.lint]
+# Low-noise ruleset: pyflakes (F), pycodestyle errors (E), isort (I).
+# Deliberately not enabling opinionated rule sets (e.g. D, ANN, PL, UP) that
+# would flag the whole codebase for style choices rather than real bugs.
+select = ["E", "F", "I"]
+ignore = [
+    # E701/E702 (multiple statements per line via ':' / ';') fire ~50 times on
+    # two deliberate, pre-existing idioms that are readable as written and not
+    # bugs: (1) stages.py's aligned "if name == ...: return ..." decode table,
+    # and (2) test setup/teardown one-liners like
+    # "s = ElmSession(...); s.connect(); s.init()" / "s.close(); fake.stop()"
+    # repeated across test_elm.py / test_stages.py. Enabling these rules here
+    # would just churn dozens of unrelated lines for a style preference with
+    # no correctness benefit -- true noise for this codebase.
+    "E701",
+    "E702",
+]

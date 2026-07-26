@@ -1,0 +1,4 @@
+obj/
+snapshot
+*.ppm
+*.png
