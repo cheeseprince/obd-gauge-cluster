@@ -54,9 +54,10 @@ static uint8_t s_buf[4096];
 
 // Verify an ECDSA-P256/SHA-256 signature (DER, from openssl dgst -sign) over
 // `manifest`/`mlen` using the compiled-in OTA_PUBKEY_PEM (ota_pubkey.h).
-// Returns true iff the signature is valid for that key. Caller is
-// responsible for deciding what an empty/placeholder key or a parse failure
-// means (see the "transition mode" gate in otaCheckUpdate).
+// Returns true iff the signature is valid for that key. A missing or invalid
+// signature is fatal to the update: there is no fail-open path, and the
+// file-scope static_assert above makes a real compiled-in key a build
+// requirement (see otaCheckUpdate).
 static bool otaVerifyManifest(const uint8_t* manifest, size_t mlen, const uint8_t* sig, size_t siglen) {
   mbedtls_pk_context pk;
   mbedtls_pk_init(&pk);

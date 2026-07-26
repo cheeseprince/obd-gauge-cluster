@@ -21,6 +21,11 @@ inline bool readVinOverIo(IO& io, char out[18], uint32_t timeoutMs = 1500) {
     std::string rx; uint32_t t0 = millis();
     while (millis() - t0 < ms) {
       while (io.available()) { char c = (char)io.read(); rx += c; if (c == '>') return rx; }
+      // Reaching here means the inner loop drained everything available, so
+      // there is nothing to read right now. Yield instead of spinning on
+      // millis(): this runs on the OBD task during connect, and a tight spin
+      // starves the other core-0 task (input/encoder) for up to `ms`.
+      delay(1);
     }
     return rx;
   };
