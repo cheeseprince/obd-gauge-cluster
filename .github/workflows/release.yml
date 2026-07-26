@@ -89,9 +89,18 @@ jobs:
             echo "::warning::would fail at this step until the secret is configured."
             exit 0
           fi
-          printf '%s' "$OTA_SIGNING_KEY" > /tmp/otakey.pem
-          openssl dgst -sha256 -sign /tmp/otakey.pem -out out/manifest.sig out/manifest.txt
-          rm -f /tmp/otakey.pem
+          # Key hygiene: this step runs under `bash -e`, so ANY failure below aborts
+          # immediately — a trailing `rm` would be skipped and the ECDSA private key,
+          # the root of trust for every OTA update, would sit readable in the runner's
+          # temp dir for the rest of the job. A malformed secret is exactly the case
+          # this step exists to catch, so that path must not leak the key. Clean up
+          # from an EXIT trap (matching publish_ota.sh:51,61) and write at 0600.
+          # RUNNER_TEMP is job-scoped and runner-cleaned; /tmp is the fallback.
+          TMPD="${RUNNER_TEMP:-/tmp}"
+          umask 077
+          trap 'rm -f "$TMPD/otakey.pem" "$TMPD/otapub.pem"' EXIT
+          printf '%s' "$OTA_SIGNING_KEY" > "$TMPD/otakey.pem"
+          openssl dgst -sha256 -sign "$TMPD/otakey.pem" -out out/manifest.sig out/manifest.txt
           echo "manifest.sig written ($(stat -c%s out/manifest.sig) bytes)"
           # Prove the signature verifies against the public key COMPILED INTO the
           # firmware, before publishing. A secret that is valid PEM but the wrong
@@ -101,13 +110,13 @@ jobs:
           # lines, then let printf %b turn the literal \n escapes into newlines.
           printf '%b' "$(sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/{
                                    s/^[[:space:]]*"//; s/"[,;]*[[:space:]]*$//; p }' \
-                         src/ota_pubkey.h | tr -d '\n')" > /tmp/otapub.pem
-          if ! openssl pkey -pubin -in /tmp/otapub.pem -noout 2>/dev/null; then
+                         src/ota_pubkey.h | tr -d '\n')" > "$TMPD/otapub.pem"
+          if ! openssl pkey -pubin -in "$TMPD/otapub.pem" -noout 2>/dev/null; then
             echo "::error::Could not reconstruct a valid public key from src/ota_pubkey.h."
             echo "::error::The header's format may have changed — check the PEM literal."
             exit 1
           fi
-          if openssl dgst -sha256 -verify /tmp/otapub.pem \
+          if openssl dgst -sha256 -verify "$TMPD/otapub.pem" \
                -signature out/manifest.sig out/manifest.txt; then
             echo "signature verifies against the compiled-in public key"
           else
