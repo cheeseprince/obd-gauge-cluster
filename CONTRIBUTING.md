@@ -65,12 +65,22 @@ line in the profile registry. See [Adding a vehicle](#adding-a-vehicle) above.
 
 ## Pull requests
 
-`main` is protected — every change goes through a PR, and three checks must pass before it
+`main` is protected — every change goes through a PR, and **seven** checks must pass before it
 can merge:
 
-- **Metadata check** — no tracked image or PDF may carry GPS/EXIF/author metadata.
-- **Host tests** — firmware logic + scanner tests.
-- **Device build** — the firmware compiles.
+| Check | What it enforces |
+| :--- | :--- |
+| **Host tests (ubuntu-latest)** | Firmware logic tests + fuzz, and the scanner tests |
+| **Host tests (macos-latest)** | The same suites again on clang — the host tests are cross-platform |
+| **Device build (PlatformIO)** | The firmware actually compiles for the dash boards |
+| **Lint (ruff)** | Python style and errors in `tools/obd_scan` |
+| **Scan images/PDFs for sensitive metadata** | No tracked image or PDF carries GPS/EXIF/author metadata |
+| **PII guard (no real VINs)** | Only synthetic test VINs appear in tracked files |
+| **Secret scan (gitleaks)** | No keys, tokens, or passwords committed |
+
+The last three are the reason a seemingly innocent commit can be rejected: a phone photo with
+GPS EXIF, a real VIN pasted into a test, or a key in a scratch file. The pre-commit hooks below
+catch the last two **before** you commit.
 
 Please also:
 
