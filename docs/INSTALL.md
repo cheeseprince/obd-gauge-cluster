@@ -111,6 +111,11 @@ the location-confirmation page's Done button ends the portal the same way.
 
 ## 5. Connect the OBD adapter
 
+**If you bought the Vgate vLinker MS, switch it to BT+BLE first.** It ships in a
+Classic/MFi-only mode and does not advertise over BLE until you change it once, using
+Vgate's updater app on a phone. A stock adapter never appears in the dash's scan — which
+looks exactly like a broken dash.
+
 Plug a BLE ELM327 into the OBD-II port. The default (`crowpanel_obd`) build scans and
 auto-connects to most BLE ELM327 adapters — no pairing step. It is **BLE-only**;
 classic-Bluetooth (PIN-pairing) and WiFi adapters are not supported, because the ESP32-S3

@@ -417,7 +417,7 @@ bool BleObdSource::bindChars() {
   }
   if (!notifyChar_ || !writeChar_) { bleStep("no OBD profile"); Serial.println("   no known BLE-ELM327 profile"); return false; }
   delay(200);
-  // ELM init (replaces ELMduino begin): reset, echo/linefeed/spaces off.
+  // ELM init, hand-rolled rather than via a library: reset, echo/linefeed/spaces off.
   // ATE0 (echo off) is CRITICAL: if it never acks, every reply is prefixed with the
   // echoed command and ALL parses fail (link shows UP but gauges stay "--"). Gate the
   // connect on it (retry once). ATL0/ATS0 are best-effort — the parser strips
