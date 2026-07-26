@@ -41,9 +41,19 @@ research behind those DIDs and what a confirmation drive would need to establish
 Ships as a skeleton profile (`src/vehicles/bmw_f10_535i.cpp`), auto-detected by VIN (WMI
 `WBA`/`WBS`/`5UX`/`4US`). Standard Mode-01 stats are exact, and boost is derived from standard
 MAP rather than an enhanced DID. Oil pressure is mapped, but its scale is an **unverified best
-guess**, so it ships with **alarms off**. The enhanced `6F1` addressing path is gateway-blocked
-on this car, so oil temp needs a dedicated cold-start drive to pin down, and ATF is currently
-unreachable. See [`BMW-STATUS.md`](BMW-STATUS.md) for the on-car scan results.
+guess**, so it ships with **alarms off**.
+
+Two parameters are missing, for two *different* reasons:
+
+- **ATF / gearbox temp is unreachable.** It lives on the EGS module, which is only addressable
+  through the enhanced `6F1` path — and that path is gateway-blocked on this car. No drive
+  will fix this; it needs different addressing.
+- **Oil temp is reachable but unpinned.** Its candidate DIDs answer on the standard `7DF`
+  functional broadcast, not through `6F1`. They read plausibly but were only ever sampled on a
+  warm-started drive, so there is no cold-to-warm ramp to identify which candidate is actually
+  oil temperature. A dedicated **cold-start** drive settles it.
+
+See [`BMW-STATUS.md`](BMW-STATUS.md) for the on-car scan results.
 
 3 pages, 11 tiles — the last page has one empty cell (`bmw_f10_535i.cpp:147`):
 
