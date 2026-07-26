@@ -6,7 +6,7 @@ picks one out of a crowded parking-lot scan.
 ## Short answer
 
 Buy a **BLE / "Bluetooth 4.0"** ELM327. The default `crowpanel_obd` build only speaks BLE —
-classic-Bluetooth (PIN-pairing) adapters need the separate `elecrow_obd` build on a different
+classic-Bluetooth (PIN-pairing) adapters are **not supported at all** — that path was on a different
 board (see the matrix below).
 
 ## The matrix
@@ -16,7 +16,7 @@ board (see the matrix below).
 | Vgate vLinker MS | BLE | `crowpanel_obd` | **Validated on the dash** | GATT captured on the truck: service `0x18f0`, notify `0x2af0`, write `0x2af1` — the first profile the firmware tries (`src/ble_obd_source.cpp:17-20`, `:384`). |
 | Vgate iCar Pro BLE 4.0 | BLE | `crowpanel_obd` | Should work — not bench-tested | Standard GATT profile, and `icar` is in the name-hint list (`src/ble_rank.cpp:21`), so it ranks ahead of unrelated BLE devices during scan. Never tried against real hardware. See the WiFi-variant footnote below. |
 | Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | Should work — not bench-tested | Firmware tries both `0xFFF0` (3-characteristic) and `0xFFE0` (notify+write share one `0xFFE1` characteristic) profiles (`src/ble_obd_source.cpp:385-386`). Coded from spec, never confirmed on hardware. |
-| Any PIN-pairing classic-BT ELM327 | Classic BT | `elecrow_obd` | Needs the `elecrow_obd` build | The `crowpanel_obd` build is BLE-only; classic Bluetooth (SPP, PIN pairing) is a different radio stack entirely. `elecrow_obd` targets the retired ESP32-WROVER board with ELMduino over classic BT instead (`platformio.ini:52-90`). |
+| Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** | The CrowPanel Advance is an ESP32-**S3**, which has no classic-Bluetooth radio — BLE only, in hardware. A classic-BT path existed on the retired ESP32-WROVER board and was removed with it. There is no build that will talk to these adapters. |
 | OBDLink MX+ / CX | BLE (proprietary) | — | **Unsupported** | Investigated and abandoned 2026-07-25. See below — this is not a missing-GATT-profile bug the project can fix from source alone. |
 
 **Do not upgrade any verdict above.** "Should work" means coded against the adapter's published

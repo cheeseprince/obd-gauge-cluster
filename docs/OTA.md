@@ -4,11 +4,7 @@ How the dash's **Check update** menu item fetches, verifies, and installs a new 
 image over WiFi, how a release is signed and cut, and what to change to host your own
 update channel on a fork.
 
-> **OTA is a CrowPanel-only capability.** `HAS_OTA` is compiled to `1` only when
-> `BOARD_CROWPANEL` is defined — every other board (the retired `elecrow`/`elecrow_obd`
-> WROVER build) compiles an empty, does-nothing stand-in instead (`src/board_caps.h:22-29`,
-> `src/ota_update.h:25`). The `elecrow_obd` build has no "Check update" behavior at all —
-> reflash it over USB, always. Everything below describes `crowpanel_obd`/`crowpanel`.
+There is one board and one OTA image; everything below describes it.
 
 ## How a device updates
 
@@ -105,17 +101,13 @@ release on `gh-pages`.
 git tree and push access; see [Signing](#signing) above for why it needs
 `OTA_ALLOW_UNSIGNED=1` to actually publish anything a device will accept.
 
-**Today only `crowpanel_obd` goes through this pipeline** — `release.yml` and
-`publish_ota.sh` both build and publish that one environment. `elecrow_obd` is built and
-smoke-tested by CI (`.github/workflows/ci.yml`, `device-build` job) but is not part of the
-release/OTA pipeline, consistent with `elecrow`/`elecrow_obd` having no OTA support at all
-(see the top of this page).
+`release.yml` and `publish_ota.sh` both build and publish `crowpanel_obd`, the only
+firmware environment that ships. (`crowpanel` is the same board with mock data, for bench
+work — it is not released.)
 
-## One image per board type
+## One image, not one per vehicle
 
-A release is one firmware image per board, not per vehicle: `crowpanel_obd.bin` (there is
-no current `elecrow_obd.bin` release artifact — see above). A device installs the image
-built for its board.
+A release is a single firmware image, `crowpanel_obd.bin`.
 
 **This is not per-vehicle.** All vehicle profiles ship in the same image and are selected at
 runtime by reading the connected vehicle's VIN — see [Vehicles](VEHICLES.md) for how that

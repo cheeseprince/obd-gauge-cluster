@@ -14,7 +14,7 @@ labels: vehicle
 - Architecture (e.g. GM Global B, if known):
 
 ## Adapter
-- OBD adapter used (make/model, BLE or classic-BT — WiFi adapters are not supported):
+- OBD adapter used (make/model — must be BLE; classic-BT and WiFi are not supported):
 - Addressing that answered (11-bit `7Ex` / 29-bit `18DAxxF1` / unknown):
 
 ## What you have

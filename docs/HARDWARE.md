@@ -4,9 +4,11 @@ Why this board, this input, and this adapter — and what was tried first.
 
 ## Display board: CrowPanel Advance 3.5"
 
-The current board is an **Elecrow CrowPanel Advance 3.5"** (ESP32-S3-WROOM-1-N16R8, IPS
-480×320). It replaced an earlier **Elecrow 3.5" WROVER-B** (still supported via the
-`elecrow` build envs as a classic-Bluetooth option).
+The board is an **Elecrow CrowPanel Advance 3.5"** (ESP32-S3-WROOM-1-N16R8, IPS 480×320),
+and it is now the only one. It replaced an earlier **Elecrow 3.5" WROVER-B**, which was
+**retired** — its build environments and classic-Bluetooth transport were removed from the
+project. The comparison below is kept because it explains *why* this board, not to suggest
+the old one is an option.
 
 | | Old — WROVER-B | Current — CrowPanel Advance |
 | :--- | :--- | :--- |
@@ -21,10 +23,11 @@ windshield's worth of daylight, and an IPS panel at 400 nits with wide viewing a
 solves it. Keeping the same 480×320 resolution meant the entire UI carried over unchanged.
 The on-board I²C-OUT header is what makes the rotary-encoder input clean — no GPIO wiring.
 
-**Note on Bluetooth:** the CrowPanel Advance is an ESP32-**S3**, which does **BLE only**.
-The dash reads OBD over BLE (a Vgate vLinker MS). The older WROVER board
-is a classic ESP32 with Bluetooth Classic SPP — kept as the `elecrow` option for
-classic-Bluetooth ELM327 adapters. Pick the board to match the adapter you have.
+**Note on Bluetooth:** the CrowPanel Advance is an ESP32-**S3**, which does **BLE only** —
+that is a hardware fact, not a build option. The dash reads OBD over BLE (a Vgate vLinker MS).
+The retired WROVER board was a classic ESP32 with Bluetooth Classic SPP, which is why a
+classic-BT transport existed at all; it went when that board did. **Buy a BLE adapter** — see
+[`ADAPTERS.md`](ADAPTERS.md).
 
 ## Input: rotary encoder (three approaches tried)
 
@@ -60,8 +63,8 @@ See [`WIRING.md`](WIRING.md) for the one cable it needs.
 ## OBD adapter
 
 The firmware speaks to **BLE** ELM327 adapters on the CrowPanel dash, and
-**classic-Bluetooth** ones on the `elecrow_obd` build. There is **no WiFi-OBD transport** in
-this repository — a WiFi ELM327 will not connect to the dash. Full compatibility matrix:
+**BLE only**. There is **no classic-Bluetooth and no WiFi-OBD transport** in this
+repository — neither kind of adapter will connect to the dash. Full compatibility matrix:
 [`ADAPTERS.md`](ADAPTERS.md).
 
 - **Vgate vLinker MS (BLE)** — the dash's adapter, and the only one validated on hardware.

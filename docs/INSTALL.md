@@ -35,12 +35,10 @@ repo, pick the build for your board:
 
 ```
 pio run -e crowpanel_obd -t upload      # BLE dash (default) — CrowPanel Advance 3.5"
-pio run -e elecrow_obd  -t upload       # classic-Bluetooth dash — retired ESP32-WROVER board
+
 ```
 
 `crowpanel_obd` is the default and what most people want: it talks BLE to the adapter.
-`elecrow_obd` targets a different, older board and exists only for classic-Bluetooth
-(PIN-pairing) ELM327 adapters that BLE can't reach — see [`ADAPTERS.md`](ADAPTERS.md) for
 which adapters need which build.
 
 Normal flashing uses esptool's automatic reset — there are no buttons to hold.
@@ -115,8 +113,8 @@ the location-confirmation page's Done button ends the portal the same way.
 
 Plug a BLE ELM327 into the OBD-II port. The default (`crowpanel_obd`) build scans and
 auto-connects to most BLE ELM327 adapters — no pairing step. It is **BLE-only**;
-classic-Bluetooth (PIN-pairing) adapters need the `elecrow_obd` build instead, which connects
-to a stored adapter MAC. See [`ADAPTERS.md`](ADAPTERS.md) for the full compatibility matrix,
+classic-Bluetooth (PIN-pairing) and WiFi adapters are not supported, because the ESP32-S3
+has no classic-BT radio. See [`ADAPTERS.md`](ADAPTERS.md) for the full compatibility matrix,
 supported GATT profiles, and known-unsupported adapters — this page won't duplicate it.
 
 To switch adapters later, use **Forget adapter** in the settings menu.
@@ -158,7 +156,7 @@ Gauges appear once the adapter links. From here, updates are over-the-air — se
   long-press of the knob.
 
 **Adapter won't link.**
-- Check the adapter is BLE (not classic-Bluetooth) if you flashed `crowpanel_obd` — see
+- Check the adapter is BLE, not classic-Bluetooth or WiFi — see
   [`ADAPTERS.md`](ADAPTERS.md) for which adapters are validated, should-work, or
   known-unsupported.
 - Try **Forget adapter** in the settings menu and let it rescan, in case a stale saved

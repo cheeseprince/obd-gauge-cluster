@@ -42,7 +42,7 @@ vehicles ship fewer and different pages; see [Vehicles it works on](#vehicles-it
 | Instant + average economy | MAF · EGR · CAC temp · intake temp | Speed · volts · oil temp |
 
 Press the knob to zoom one tile, with a rolling trend graph coloured by alarm zone — a
-**5-minute** window on the CrowPanel builds, 3.5 minutes on `elecrow_obd`. The theme follows
+**5-minute** window. The theme follows
 sunrise and sunset from the on-board clock; units switch imperial/metric.
 
 | Focus view | Night theme | Metric |
@@ -117,8 +117,8 @@ so the SparkFun adapter cable bridges them. Everything else is on-board or plug-
 BOM and dimensions: [`hardware/`](hardware/). **Why this board and this input method**, and what
 was tried first: [`docs/HARDWARE.md`](docs/HARDWARE.md).
 
-A classic ESP32 board (Elecrow WROVER-B) also builds via the `elecrow` envs for a
-classic-Bluetooth adapter, but it has no over-the-air updates — it is USB-flash only.
+This is the only supported board. An earlier Elecrow WROVER-B was retired — see
+[`docs/HARDWARE.md`](docs/HARDWARE.md) for what it was and why the CrowPanel replaced it.
 
 ## Install it
 
@@ -130,8 +130,7 @@ the knob.
 and, from a clone of this repo:
 
 ```
-pio run -e crowpanel_obd -t upload      # BLE dash (default)
-pio run -e elecrow_obd  -t upload       # classic-Bluetooth dash
+pio run -e crowpanel_obd -t upload
 ```
 
 Wrong port? Find it with `ls /dev/cu.usbmodem*` (macOS) or `ls /dev/ttyACM*` (Linux) and pass
@@ -155,7 +154,7 @@ auto-connects, no pairing step.
 | Vgate **vLinker MS** | BLE | `crowpanel_obd` | ✅ **Validated on the dash** |
 | Vgate **iCar Pro BLE 4.0** | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
 | Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
-| Any PIN-pairing classic-BT ELM327 | Classic BT | `elecrow_obd` | ⚠️ Needs the `elecrow_obd` build |
+| Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** — the dash is BLE-only |
 | **OBDLink MX+ / CX** | BLE (proprietary) | — | ❌ **Unsupported** |
 
 Why each verdict, the GATT profiles supported, and how to report a working adapter:
@@ -182,8 +181,8 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 Releases publish **one image, `crowpanel_obd.bin`** — not one per vehicle, since all profiles
-ship together and are selected at runtime by VIN. The retired `elecrow_obd` board has no OTA
-support and is USB-flash only. Signing, the release pipeline, anti-rollback and hosting updates
+ship together and are selected at runtime by VIN. Signing, the release pipeline,
+anti-rollback and hosting updates
 for a fork: [`docs/OTA.md`](docs/OTA.md).
 
 ## Port your vehicle

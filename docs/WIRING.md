@@ -44,9 +44,3 @@ The knob is cable-connected, so it can mount anywhere the Grove-Qwiic cable reac
 same face as the screen, or off to one side within reach. The 3D-printed case
 ([Printables](https://www.printables.com/model/1788789-odb-gauge-cluster-case)) positions
 it beside the display.
-
-## Classic-Bluetooth board (alternative)
-
-The `elecrow` build targets an Elecrow WROVER-B board (classic ESP32) for a
-classic-Bluetooth adapter. Its input hardware differs from the CrowPanel; see
-[`docs/HARDWARE.md`](HARDWARE.md) for why the CrowPanel Advance is the recommended board.
