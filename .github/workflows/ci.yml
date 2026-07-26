@@ -25,7 +25,7 @@ jobs:
           python-version: '3.12'
       - name: OBD scanner tests
         run: |
-          python -m pip install --quiet pytest numpy pandas
+          python -m pip install --quiet --require-hashes -r requirements/test.txt
           cd tools/obd_scan && python -m pytest tests -q
 
   lint:
@@ -38,7 +38,7 @@ jobs:
           python-version: '3.12'
       - name: Ruff (tools/obd_scan)
         run: |
-          python -m pip install --quiet ruff
+          python -m pip install --quiet --require-hashes -r requirements/lint.txt
           ruff check tools/obd_scan
 
   device-build:
@@ -57,7 +57,7 @@ jobs:
             .pio
           key: pio-${{ hashFiles('platformio.ini') }}
       - name: Install PlatformIO
-        run: python -m pip install --quiet platformio
+        run: python -m pip install --quiet --require-hashes -r requirements/build.txt
       - name: Build the dash firmware
         run: pio run -e crowpanel_obd
 

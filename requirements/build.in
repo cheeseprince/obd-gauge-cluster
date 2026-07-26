@@ -1,0 +1,4 @@
+# Firmware build dependencies (CI jobs: "Device build", and the Release job that
+# handles OTA_SIGNING_KEY). Compile with:
+#   pip-compile --generate-hashes --output-file=requirements/build.txt requirements/build.in
+platformio
