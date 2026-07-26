@@ -40,9 +40,20 @@ HOLDOFF_S       = 4      # AlarmHoldoff HOLD_MS=4000: zone must persist this lon
 STARTUP_GRACE_S = 10     # alarms suppressed for 10s after link-up (approx: file start)
 OIL_ARM_S       = 20     # OIL P low alarm arms after RPM>=OIL_ARM_RPM sustained this long
 OIL_ARM_RPM     = 400    # (mirrors gauge_model oilArmTick — RPM is the fresh engine-off signal)
+# ---------------------------------------------------------------------------
+# DRIVETRAIN CONSTANTS — GM SIERRA 1500 3.0L DURAMAX (LZ0 / 10L80) ONLY.
+#
+# These are vehicle data, not tool data. Applied to a drive log from any other
+# vehicle they yield confidently wrong gear-ratio output: a BMW F10 (ZF 8HP) or an
+# Audi Q5 (DL382 DSG) shares neither these ratios, this axle, nor this tyre size.
+# The gear check at the bottom of this file is the only consumer, and it is
+# GM-only for that reason — read its output as meaningless on any other vehicle.
+#
+# Reading these from the active VehicleProfile (the original TODO here) is blocked
+# on the firmware side: `VehicleProfile` carries no drivetrain fields today, so
+# there is nothing for this tool to parse. Adding them is a firmware change across
+# all four profiles, not a tool change — tracked in the backlog, not attempted here.
 GEAR_RATIOS = {1:4.70, 2:2.99, 3:2.15, 4:1.80, 5:1.52, 6:1.28, 7:1.00, 8:0.85, 9:0.69, 10:0.64}
-# TODO(profile): gear ratios are vehicle data — read from the active VehicleProfile
-# once profiles carry drivetrain info (Phase 2+).
 AXLE = 3.42              # rear axle ratio
 REVS_PER_MILE = 668      # LT275/65R18 (~31.1" dia); calibrate if the constant offset bugs you
 
