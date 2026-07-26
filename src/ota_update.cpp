@@ -30,6 +30,7 @@
 // linker pull it in (~64 KB flash). Arduino core 2.x's setCACertBundle() does
 // NOT fall back to it automatically — the pointer must be passed explicitly.
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_x509_crt_bundle_start");
+extern const uint8_t rootca_crt_bundle_end[]   asm("_binary_x509_crt_bundle_end");
 
 // A real compiled-in public key is MANDATORY. The old "transition mode"
 // (skip verification while OTA_PUBKEY_PEM was still the empty placeholder)
@@ -165,7 +166,8 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
   // an expired cert with a valid chain still passes (which is also why this
   // works with no RTC/location set). An on-path attacker without a
   // chain-valid *.github.io cert can neither read nor tamper with the fetch.
-  net.setCACertBundle(rootca_crt_bundle_start);
+  net.setCACertBundle(rootca_crt_bundle_start,
+                      (size_t)(rootca_crt_bundle_end - rootca_crt_bundle_start));
   HTTPClient http;
 
   // ── Manifest ──────────────────────────────────────────────────────────────

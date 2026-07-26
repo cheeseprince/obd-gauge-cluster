@@ -13,7 +13,6 @@
 static LGFX lcd;
 static const int W = 480, H = 320;
 static const int PIN_BL  = 38;
-static const int BL_CH   = 0;      // LEDC channel
 static const int BL_FREQ = 5000;   // 5 kHz
 static const int BL_RES  = 8;      // 8-bit (0..255)
 
@@ -33,9 +32,10 @@ namespace display {
 
 void begin() {
   // Backlight PWM (LEDC, channel-based API).
-  ledcSetup(BL_CH, BL_FREQ, BL_RES);
-  ledcAttachPin(PIN_BL, BL_CH);
-  ledcWrite(BL_CH, 255);               // full bright at boot
+  // core 3.x LEDC is pin-addressed: ledcAttach() replaces the old
+  // ledcSetup()+ledcAttachPin() pair, and ledcWrite() takes the pin.
+  ledcAttach(PIN_BL, BL_FREQ, BL_RES);
+  ledcWrite(PIN_BL, 255);              // full bright at boot
 
   lcd.init();
   lcd.setRotation(0);                  // upright landscape 480x320 (confirmed on HW)
@@ -63,7 +63,7 @@ void begin() {
 
 void setBacklight(uint8_t pct) {
   if (pct > 100) pct = 100;
-  ledcWrite(BL_CH, (pct * 255) / 100);
+  ledcWrite(PIN_BL, (pct * 255) / 100);
 }
 
 void tick() { lv_timer_handler(); }
