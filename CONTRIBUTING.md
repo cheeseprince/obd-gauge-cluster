@@ -42,6 +42,17 @@ clang, Python 3.12). The PlatformIO device build is host-OS-independent.
 
 Match the style of the surrounding code. Keep changes focused.
 
+### Local files: use `.private/`
+
+Anything you don't want committed — scratch notes, generated reports, drive logs,
+experiments — goes in **`.private/`** at the repo root. The whole directory is
+git-ignored, so nothing in it needs its own rule and no new filename can slip
+through. It is not created by the repo; make it when you need it.
+
+Real vehicle data has a stronger rule of its own: `tools/obd_scan` census/sweep/drive
+files contain your VIN, and those patterns are ignored by name as well — see
+[Secrets & PII](#secrets--pii--install-the-pre-commit-hooks) below.
+
 ## Repository layout
 
 ```
