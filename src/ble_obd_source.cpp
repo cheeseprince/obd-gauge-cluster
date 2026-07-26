@@ -282,7 +282,17 @@ bool BleObdSource::connectAndSetup() {
   attempts_++;
   if (!client_) client_ = NimBLEDevice::createClient();
   client_->setClientCallbacks(&g_secCb, false);
-  client_->setConnectTimeout(4);   // seconds — bound each connect so a dead adapter fails fast (default 30s)
+  // Bound each connect so a dead adapter fails fast (library default is 30s).
+  // UNITS CHANGED BETWEEN LIBRARY MAJORS: NimBLE 1.4.x took SECONDS, 2.x takes
+  // MILLISECONDS ("The number of milliseconds before timeout" — NimBLEClient.h).
+  // The parameter stayed uint32_t, so passing 4 still compiles on 2.x and silently
+  // becomes a 4 ms budget — no adapter can complete a connection in that, and the
+  // dash sits in connecting -> failed forever. Shipped that way in v0.1.0.
+#if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
+  client_->setConnectTimeout(4000);   // 2.x: milliseconds
+#else
+  client_->setConnectTimeout(4);      // 1.4.x: seconds
+#endif
 
   // Fast path: reconnect to the cached adapter.
   if (addr_.length()) {
@@ -298,6 +308,11 @@ bool BleObdSource::connectAndSetup() {
   setPhase(ConnPhase::Scanning);
   Serial.println("[BLE] scanning 6s …");
   NimBLEScan* scan = NimBLEDevice::getScan();
+  // setInterval/setWindow also changed units across the major: 1.4.x took BLE
+  // 0.625 ms ticks (100 -> 62.5 ms), 2.x takes milliseconds outright. Both
+  // readings leave window ~= interval, i.e. scan almost continuously, so this is
+  // benign either way — but the numbers no longer mean what a 1.4-era reader
+  // would assume, hence the note rather than a silent value change.
   scan->setActiveScan(true); scan->setInterval(100); scan->setWindow(99);
   scan->clearResults();
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
