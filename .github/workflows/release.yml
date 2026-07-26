@@ -2,9 +2,13 @@ name: Release
 
 # Cut a release by pushing a tag (e.g. `git tag v1.0.0 && git push --tags`).
 # The firmware is built in CI, stamped with the release tag as its version, and
-# published to the gh-pages branch as manifest.txt + manifest.sig (only if the
-# OTA_SIGNING_KEY secret is set) + the .bin. Devices fetch it from GitHub Pages
-# via their "Check update" menu.
+# published to the gh-pages branch as manifest.txt + manifest.sig + the .bin.
+# Devices fetch it from GitHub Pages via their "Check update" menu.
+#
+# Signing is MANDATORY on a tag push: the OTA_SIGNING_KEY secret must be set and
+# must match the public key in src/ota_pubkey.h, or the run fails before it can
+# publish. Devices enforce the signature, so an unsigned or mis-signed release is
+# not a weaker release — it is one no device will install.
 #
 # A manual workflow_dispatch run is a DRY RUN: it builds and signs a dev-<hash>
 # artifact to prove the pipeline works, but the publish step is guarded to tag
@@ -57,21 +61,70 @@ jobs:
           cp "$BIN" out/crowpanel_obd.bin
           echo "crowpanel_obd $VERSION $SHA $SIZE crowpanel_obd.bin" > out/manifest.txt
           cat out/manifest.txt
-      - name: Sign the manifest (if OTA_SIGNING_KEY is configured)
+      - name: Sign the manifest
         env:
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
         run: |
-          # Transition mode: signing is opt-in via the OTA_SIGNING_KEY secret.
-          # Absent secret -> no manifest.sig published, workflow still
-          # succeeds — devices with the tracked empty ota_pubkey.h placeholder
-          # skip signature enforcement and rely on the .bin SHA-256 alone.
-          if [ -n "${OTA_SIGNING_KEY:-}" ]; then
-            printf '%s' "$OTA_SIGNING_KEY" > /tmp/otakey.pem
-            openssl dgst -sha256 -sign /tmp/otakey.pem -out out/manifest.sig out/manifest.txt
-            rm -f /tmp/otakey.pem
-            echo "manifest.sig written ($(stat -c%s out/manifest.sig) bytes)"
+          # Signing is MANDATORY for a tagged release. Every stock build enforces
+          # the manifest signature before downloading the .bin (a file-scope
+          # static_assert in src/ota_update.cpp makes a real compiled-in pubkey a
+          # build requirement), so an unsigned manifest is not a weaker release —
+          # it is an UNINSTALLABLE one. Publishing it would leave the OTA channel
+          # serving a manifest every device refuses, with a green check on the run.
+          # Fail loudly instead, matching publish_ota.sh's gate.
+          if [ -z "${OTA_SIGNING_KEY:-}" ]; then
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              echo "::error::OTA_SIGNING_KEY is not set, so this tagged release would"
+              echo "::error::publish an UNSIGNED manifest.txt. Every device enforces"
+              echo "::error::manifest.sig and would refuse it, leaving the OTA channel"
+              echo "::error::broken for all installed units."
+              echo "::error::Fix: add the OTA_SIGNING_KEY secret (Settings -> Secrets and"
+              echo "::error::variables -> Actions), then re-run this workflow."
+              exit 1
+            fi
+            # workflow_dispatch is a dry run and never reaches the publish step,
+            # so an absent key here is survivable — but say so plainly.
+            echo "::warning::OTA_SIGNING_KEY not set — no manifest.sig produced."
+            echo "::warning::This dry run cannot validate the signing path. A tag push"
+            echo "::warning::would fail at this step until the secret is configured."
+            exit 0
+          fi
+          # Key hygiene: this step runs under `bash -e`, so ANY failure below aborts
+          # immediately — a trailing `rm` would be skipped and the ECDSA private key,
+          # the root of trust for every OTA update, would sit readable in the runner's
+          # temp dir for the rest of the job. A malformed secret is exactly the case
+          # this step exists to catch, so that path must not leak the key. Clean up
+          # from an EXIT trap (matching publish_ota.sh:51,61) and write at 0600.
+          # RUNNER_TEMP is job-scoped and runner-cleaned; /tmp is the fallback.
+          TMPD="${RUNNER_TEMP:-/tmp}"
+          umask 077
+          trap 'rm -f "$TMPD/otakey.pem" "$TMPD/otapub.pem"' EXIT
+          printf '%s' "$OTA_SIGNING_KEY" > "$TMPD/otakey.pem"
+          openssl dgst -sha256 -sign "$TMPD/otakey.pem" -out out/manifest.sig out/manifest.txt
+          echo "manifest.sig written ($(stat -c%s out/manifest.sig) bytes)"
+          # Prove the signature verifies against the public key COMPILED INTO the
+          # firmware, before publishing. A secret that is valid PEM but the wrong
+          # keypair would otherwise sail through and be caught only by a device
+          # refusing the update in the field. Reconstruct the PEM from the C string
+          # literal in src/ota_pubkey.h: strip the indentation and quotes, join the
+          # lines, then let printf %b turn the literal \n escapes into newlines.
+          printf '%b' "$(sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/{
+                                   s/^[[:space:]]*"//; s/"[,;]*[[:space:]]*$//; p }' \
+                         src/ota_pubkey.h | tr -d '\n')" > "$TMPD/otapub.pem"
+          if ! openssl pkey -pubin -in "$TMPD/otapub.pem" -noout 2>/dev/null; then
+            echo "::error::Could not reconstruct a valid public key from src/ota_pubkey.h."
+            echo "::error::The header's format may have changed — check the PEM literal."
+            exit 1
+          fi
+          if openssl dgst -sha256 -verify "$TMPD/otapub.pem" \
+               -signature out/manifest.sig out/manifest.txt; then
+            echo "signature verifies against the compiled-in public key"
           else
-            echo "OTA_SIGNING_KEY not set — skipping manifest signing (transition mode, no manifest.sig)"
+            echo "::error::manifest.sig does NOT verify against src/ota_pubkey.h."
+            echo "::error::The OTA_SIGNING_KEY secret is not the private half of the"
+            echo "::error::public key compiled into the firmware — every device would"
+            echo "::error::refuse this release. Check that the secret matches."
+            exit 1
           fi
       - name: Publish to gh-pages
         # Tag pushes only. A manual workflow_dispatch run builds + signs above
@@ -94,8 +147,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ASSETS="out/crowpanel_obd.bin out/manifest.txt"
-          [ -f out/manifest.sig ] && ASSETS="$ASSETS out/manifest.sig"
+          # manifest.sig is unconditional: this step is tag-only, and the signing
+          # step above fails the run on a tag without a valid signature. Listing it
+          # unconditionally means a missing sig fails loudly here rather than
+          # silently publishing a Release whose assets don't match the OTA channel.
+          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber --repo "$GITHUB_REPOSITORY"
           else
