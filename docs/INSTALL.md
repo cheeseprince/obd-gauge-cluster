@@ -151,7 +151,7 @@ Gauges appear once the adapter links. From here, updates are over-the-air — se
 
 **Portal won't open / doesn't auto-launch.**
 - Confirm your phone actually joined the `OBD-XXXX` network (not just saved it) and that the
-  password on screen matches what you typed — it's regenerated per device, not a fixed value.
+  password on screen matches what you typed — it's generated once per device and then persisted, not a fixed fleet-wide value.
 - If the captive-portal popup doesn't appear, open a browser and go to `http://192.168.4.1`
   directly.
 - Remember the portal times out after 5 minutes; if it closed, reopen it with another

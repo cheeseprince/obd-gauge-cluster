@@ -35,7 +35,7 @@ both ride the same I²C bus; no extra wires.
 | Display + backlight | On-board SPI (SCLK 42 / MOSI 39 / DC 41 / CS 40 / RST 2 / BL 38) |
 | microSD | On-board, dedicated HSPI bus (SCK 5 / MISO 4 / MOSI 6 / CS 7) |
 | RTC + coin cell | On-board (PCF8563 @ 0x51 on the I²C bus above) |
-| OBD adapter | Plugs into the vehicle's OBD-II port; pairs over Bluetooth/WiFi |
+| OBD adapter | Plugs into the vehicle's OBD-II port; links over Bluetooth (BLE on this board) |
 | Power | Truck USB (switched 5 V) → board USB-C |
 
 ## Mounting the knob

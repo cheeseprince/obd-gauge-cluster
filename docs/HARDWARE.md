@@ -22,7 +22,7 @@ solves it. Keeping the same 480×320 resolution meant the entire UI carried over
 The on-board I²C-OUT header is what makes the rotary-encoder input clean — no GPIO wiring.
 
 **Note on Bluetooth:** the CrowPanel Advance is an ESP32-**S3**, which does **BLE only**.
-The dash reads OBD over BLE (a Vgate vLinker MS, or a WiFi adapter). The older WROVER board
+The dash reads OBD over BLE (a Vgate vLinker MS). The older WROVER board
 is a classic ESP32 with Bluetooth Classic SPP — kept as the `elecrow` option for
 classic-Bluetooth ELM327 adapters. Pick the board to match the adapter you have.
 
@@ -59,16 +59,19 @@ See [`WIRING.md`](WIRING.md) for the one cable it needs.
 
 ## OBD adapter
 
-Any classic-Bluetooth or WiFi ELM327-class adapter works. Two are validated:
+The firmware speaks to **BLE** ELM327 adapters on the CrowPanel dash, and
+**classic-Bluetooth** ones on the `elecrow_obd` build. There is **no WiFi-OBD transport** in
+this repository — a WiFi ELM327 will not connect to the dash. Full compatibility matrix:
+[`ADAPTERS.md`](ADAPTERS.md).
 
-- **Vgate vLinker MS (BLE)** — the dash's adapter. Reads this truck's enhanced GM PIDs with
-  11-bit headers. Ships in a Classic/MFi-only mode; switch it to BT+BLE once with Vgate's
-  updater app so the ESP32-S3 can pair.
-- **Vgate iCar Pro WiFi** — joins its own access point; the firmware speaks ELM327 over TCP.
-  On this truck it only answered 29-bit addressing (the firmware auto-adapts).
+- **Vgate vLinker MS (BLE)** — the dash's adapter, and the only one validated on hardware.
+  Reads this truck's enhanced GM PIDs with 11-bit headers. Ships in a Classic/MFi-only mode;
+  switch it to BT+BLE once with Vgate's updater app so the ESP32-S3 can pair.
 
-Addressing turned out to be **adapter-dependent** on the same vehicle — worth knowing if a
-working adapter reads nothing until the protocol is right.
+Addressing turned out to be **adapter-dependent** on the same vehicle: a WiFi ELM327 used with
+the laptop scanner answered only 29-bit addressing on this truck, while the vLinker over BLE
+answered 11-bit. Worth knowing if a working adapter reads nothing until the protocol is right —
+see [`PORTING-LESSONS.md`](PORTING-LESSONS.md).
 
 ## Fasteners and case
 

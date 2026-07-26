@@ -95,6 +95,8 @@ establish before that profile can be written.
 
 ## Generic
 
+2 pages, 8 tiles (`generic_obd.cpp:81`).
+
 The fallback profile for any VIN whose WMI isn't in the table above, or for any vehicle scanned
 with **Settings → Pick Vehicle** left on auto. Standard Mode-01 only — no manufacturer-specific
 parameters, no vehicle-tuned alarm thresholds.
