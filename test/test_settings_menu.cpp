@@ -66,7 +66,8 @@ int main() {
   check(menuItemVisible(MenuItem::NightMode) && menuItemVisible(MenuItem::Close),
         "other rows stay visible");
 
-  // No-OTA board (retired elecrow shape): both OTA rows hidden + skipped.
+  // A board without OTA/RTC/SD caps: both OTA rows hidden + skipped. No such board
+  // ships today, but menuSetCaps() takes the flags, so the path stays covered.
   // PickVehicle has no capability gate, so it stays visible regardless.
   menuSetCaps(true, true, false);
   check(!menuItemVisible(MenuItem::WifiSetup) && !menuItemVisible(MenuItem::CheckUpdate),

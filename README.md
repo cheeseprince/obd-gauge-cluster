@@ -5,9 +5,6 @@ on any vehicle, and where a profile exists it also reads the **manufacturer-spec
 parameters — transmission temperature, oil pressure, EGT, DPF pressure, fuel rail pressure,
 DEF level — over a cheap Bluetooth adapter on a small dashboard screen.
 
-*Built with substantial help from an AI coding assistant (Claude) — CI-gated, and every
-vehicle profile validated on a real vehicle. [Details](#ai-assistance).*
-
 ![The unit on the dash, running the towing page](docs/images/dash.jpg)
 
 One firmware image holds **every vehicle profile** and picks the right one automatically from the
@@ -17,6 +14,14 @@ profiles, and a Ford 6.7L Power Stroke is researched (see [Vehicles it works on]
 The enhanced parameters above are not standardized and no manufacturer publishes them, so adding
 a vehicle means discovering its PID map on the vehicle itself — the tooling for that is included
 (`tools/obd_scan`).
+
+## AI assistance
+
+This project was built with substantial help from an AI coding assistant (Anthropic's Claude)
+— firmware, the scanner tooling, tests, and documentation. Every change is reviewed and gated
+by CI (host + fuzz tests, device builds, secret/PII scans), and each vehicle profile is
+validated against a real vehicle before it is trusted. Nothing here is auto-generated and left
+unchecked.
 
 ## What it does
 
@@ -96,8 +101,7 @@ detail and how VIN selection works:** [`docs/VEHICLES.md`](docs/VEHICLES.md).
 | Display / MCU | [Elecrow CrowPanel Advance 3.5"](https://www.elecrow.com/crowpanel-advance-3-5-hmi-esp32-ai-display-480x320-artificial-intelligent-ips-touch-screen.html) (ESP32-S3-WROOM-1-N16R8), 480×320 IPS |
 | Input | [Arduino Modulino Knob](https://store-usa.arduino.cc/products/modulino-knob) rotary encoder (I²C) |
 | Encoder cable | [SparkFun Qwiic-to-Grove cable](https://www.sparkfun.com/qwiic-cable-grove-adapter-100mm.html) (the board is Grove, the encoder is Qwiic) |
-| Clock | On-board PCF8563 RTC + coin cell |
-| Storage | microSD (FAT32) |
+| Storage | A microSD card (FAT32) for logging — the slot is on-board |
 | OBD adapter | A **BLE** ELM327 — see [Adapters](docs/ADAPTERS.md) |
 | Power | Truck USB (switched 5 V) → board USB-C |
 
@@ -151,11 +155,16 @@ auto-connects, no pairing step.
 
 | Adapter | Transport | Build | Status |
 | :--- | :--- | :--- | :--- |
-| Vgate **vLinker MS** | BLE | `crowpanel_obd` | ✅ **Validated on the dash** |
+| Vgate **vLinker MS** | BLE | `crowpanel_obd` | ✅ **Validated** — ⚠️ ships in Classic/MFi mode; see below |
 | Vgate **iCar Pro BLE 4.0** | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
 | Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
 | Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** — the dash is BLE-only |
 | **OBDLink MX+ / CX** | BLE (proprietary) | — | ❌ **Unsupported** |
+
+> ⚠️ **The vLinker MS does not work out of the box.** It ships in a Classic/MFi-only
+> mode and will not advertise over BLE until you switch it to **BT+BLE** once, using
+> Vgate's own updater app on a phone. Do this before you go looking for faults in the
+> dash — a stock adapter simply never appears in the scan.
 
 Why each verdict, the GATT profiles supported, and how to report a working adapter:
 [`docs/ADAPTERS.md`](docs/ADAPTERS.md). To switch adapters later, use **Forget adapter** in the
@@ -255,14 +264,6 @@ Enhanced PID values are facts measured from a vehicle through its legislated OBD
 manufacturer documentation was copied to produce them. Some commercial tools compute derived
 parameters (air density, corrected horsepower) under patent — those are not implemented
 here.
-
-## AI assistance
-
-This project was built with substantial help from an AI coding assistant (Anthropic's Claude)
-— firmware, the scanner tooling, tests, and documentation. Every change is reviewed and gated
-by CI (host + fuzz tests, device builds, secret/PII scans), and each vehicle profile is
-validated against a real vehicle before it is trusted. Nothing here is auto-generated and left
-unchecked.
 
 ## License
 

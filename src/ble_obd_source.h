@@ -129,7 +129,8 @@ class BleObdSource : public ObdSource {
   // uses wider deadlines — returns the RAW (unescaped) PID reply for parsing.
   std::string probeFrame(const char* sh, const char* cmd);
 
-  // BLE transport shims used by pollQuery (stand in for BluetoothSerial).
+  // BLE transport shims used by pollQuery — the seam the templated query engine
+  // writes/reads through, so it stays transport-agnostic.
   void bleWrite(const char* s);
   int  bleAvailable();
   int  bleRead();            // -1 if empty
