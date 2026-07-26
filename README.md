@@ -168,63 +168,53 @@ only do it once.
 Gauges appear once the adapter links. From here, updates are over-the-air — no cable.
 **Full walkthrough, per-OS notes and troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md).
 
-## Updates (OTA)
+## Updates
 
-The dashboard self-updates over WiFi. Pushing a version tag (e.g. `v1.1.0`) builds a
-release in CI, stamps that tag as the firmware's version, and publishes it to this repo's
-`gh-pages` branch, served by GitHub Pages as `manifest.txt` + the firmware `.bin`. A
-device's **Check update** menu fetches the manifest, compares its version against its own
-running build, and flashes the new image into a spare slot only after verifying its
-SHA-256.
+The dash updates itself over WiFi — **Settings → Check update**. It fetches the published
+manifest, refuses anything not signed by this project's key, verifies a SHA-256 of the image,
+and flashes into a spare slot. Failure at any step leaves the running firmware untouched. No
+cable.
 
-If the `OTA_SIGNING_KEY` repo secret is set, releases also publish a `manifest.sig`
-(ECDSA P-256/SHA-256 signature over `manifest.txt`), and devices with a real key compiled
-into `src/ota_pubkey.h` refuse any manifest that doesn't verify — before even downloading
-the `.bin`. Until both the secret and `src/ota_pubkey.h` are set, this is a no-op
-("transition mode"): the SHA-256 `.bin` check is still enforced either way.
-
-Cut a release by pushing a tag (any increasing `vMAJOR.MINOR.PATCH`):
+Cutting a release (maintainers): push a version tag.
 
 ```
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-`publish_ota.sh` does the same build-and-publish locally as a fallback. CI
-(`.github/workflows/ci.yml`) also runs the full host-test suite and a device build on every
-push and pull request.
+Releases publish **one image, `crowpanel_obd.bin`** — not one per vehicle, since all profiles
+ship together and are selected at runtime by VIN. The retired `elecrow_obd` board has no OTA
+support and is USB-flash only. Signing, the release pipeline, anti-rollback and hosting updates
+for a fork: [`docs/OTA.md`](docs/OTA.md).
 
-A release is **one firmware image per board type** (`crowpanel_obd.bin`, `elecrow_obd.bin`),
-not per vehicle — a device installs the image for its board. As multi-vehicle support lands
-(runtime profile selection by VIN), a single image will cover every supported vehicle.
+## Port your vehicle
 
-To host updates for a fork: enable GitHub Pages on the `gh-pages` branch and point
-`OTA_BASE_URL` (in `platformio.ini`) at your Pages URL.
+The firmware, transport, UI, logging and OTA are vehicle-agnostic; the only per-vehicle part is
+a profile in [`src/vehicles/`](src/vehicles/) (PID table, decoders, thresholds, layout, tank
+sizes). Mapping a new vehicle needs one thing this project cannot supply remotely: **the
+vehicle**.
 
-## The discovery tool
-
-`tools/obd_scan/` maps an unknown vehicle's enhanced PIDs from a laptop:
-
-1. **census** — probe candidate CAN headers in both 11-bit and 29-bit addressing to find
-   which modules answer (a negative response proves a module is alive, which confirms the
-   addressing);
-2. **sweep** — brute-force the PID blocks at each live module;
-3. **log** — poll every hit plus known anchors (RPM, speed, load, coolant) through a drive,
-   storing raw hex;
-4. **correlate** — enumerate every plausible byte interpretation of each unknown PID and
-   rank it against the anchors, so "address 22F478 answered with 9 bytes" resolves to
-   "bytes 1–2 track RPM — an EGT sensor."
-
-It is **read-only by construction**: only OBD read services and an allow-listed set of AT
-commands can be transmitted — writes, routines, resets and clears are rejected in code —
-because it runs on vehicles that may not be yours.
+`tools/obd_scan/` maps an unknown vehicle's enhanced PIDs from a laptop. It is **read-only by
+construction** — only OBD read services and an allow-listed set of AT commands can be
+transmitted; writes, routines, resets and clears are rejected in code, because it runs on
+vehicles that may not be yours.
 
 ```
 cd tools
 python3 -m obd_scan census    --vehicle gm -o census.json
-python3 -m obd_scan sweep      --census census.json -o sweep.json
-python3 -m obd_scan log        --sweep sweep.json -o drive.csv   # during a drive
-python3 -m obd_scan correlate  drive.csv -o report.md
+python3 -m obd_scan sweep     --census census.json -o sweep.json
+python3 -m obd_scan log       --sweep sweep.json -o drive.csv   # during a drive
+python3 -m obd_scan correlate drive.csv -o report.md
 ```
+
+1. **Scan** the OBD port to discover which PIDs answer (about an hour parked, plus a drive).
+2. **Correlate** the results to identify each PID.
+3. **Add** a `src/vehicles/<your_vehicle>.cpp` profile and open a pull request.
+
+Start with [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) (the method and its pitfalls)
+and [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) (a worked example).
+[`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) is a partial head-start on the Ford 6.7L Power
+Stroke. Issues and PRs welcome — including drive logs from a vehicle you can't finish mapping
+yourself. How the scanner works internally: [`docs/obd-scan-design.md`](docs/obd-scan-design.md).
 
 ## Building from source
 
@@ -236,38 +226,25 @@ cd test && make                          # firmware logic tests + fuzz (no hardw
 cd tools/obd_scan && python3 -m pytest tests -q   # scanner tests
 ```
 
-## Repository layout
-
-```
-platformio.ini          PlatformIO project
-src/                     firmware
-  vehicles/              per-vehicle PID tables, decoders, thresholds, layout
-test/                    host unit tests (+ fuzz)
-tools/
-  obd_scan/              the discovery scanner (read-only)
-  analyze_logs.py        drive-CSV self-audit + alarm replay
-  ui_snapshot/           pixel-exact host render of the real UI
-  stl_render.py          isometric STL preview
-hardware/                3D-printable enclosure — BOM + Printables link
-docs/                    porting method, per-vehicle status, acceptance runbook, images
-publish_ota.sh          local build + publish (CI does this on a tag)
-.github/workflows/      CI (tests + build) and release (build + publish)
-```
+Repository layout and the contribution workflow are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Documentation
 
-- [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) — the method for mapping a new
-  vehicle, and the traps: transport quirks, decode traps that produce plausible wrong
-  answers, why correlation is not identity, and why community PID lists cannot be trusted.
-- [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) — a worked example of the
-  discovery method on the reference truck, used as an acceptance gate for the scanner.
-- [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) — status of the Ford 6.7L Power Stroke port
-  and what it would take to finish.
-- [`docs/obd-scan-design.md`](docs/obd-scan-design.md) — the scanner's design.
-- [`docs/HARDWARE.md`](docs/HARDWARE.md) — why this board and this input, and the input
-  methods tested first.
-- [`docs/WIRING.md`](docs/WIRING.md) — the one I²C cable, and what is on-board.
-- [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md) — rearranging the tiles and pages.
+| Document | What it covers |
+| :--- | :--- |
+| [`docs/DISPLAY.md`](docs/DISPLAY.md) | Every tile per profile, the alarm model, focus view, theming, status bar |
+| [`docs/VEHICLES.md`](docs/VEHICLES.md) | VIN auto-select, per-vehicle detail, what "not supported" means |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | Full setup walkthrough, per-OS notes, troubleshooting |
+| [`docs/ADAPTERS.md`](docs/ADAPTERS.md) | Adapter compatibility, GATT profiles, reporting a working adapter |
+| [`docs/OTA.md`](docs/OTA.md) | Update mechanics, signing, release pipeline, hosting a fork |
+| [`docs/HARDWARE.md`](docs/HARDWARE.md) | Why this board and this input, and what was tried first |
+| [`docs/WIRING.md`](docs/WIRING.md) | The one I²C cable, and what is on-board |
+| [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md) | Rearranging the tiles and pages |
+| [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) | The method for mapping a new vehicle, and the traps |
+| [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) | A worked example of the discovery method |
+| [`docs/obd-scan-design.md`](docs/obd-scan-design.md) | The scanner's design |
+| [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) | Per-vehicle port status |
 
 ## Safety and scope
 
