@@ -1,0 +1,1 @@
+crowpanel_obd v0.0.1 7bdc98a86921940aa4714846e2291c770cbf1f81726d26c20e4ef36df86b59ff 1753392 crowpanel_obd.bin
