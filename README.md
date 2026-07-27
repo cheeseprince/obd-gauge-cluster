@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/cheeseprince/obd-gauge-cluster/actions/workflows/ci.yml/badge.svg)](https://github.com/cheeseprince/obd-gauge-cluster/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cheeseprince/obd-gauge-cluster/badge)](https://scorecard.dev/viewer/?uri=github.com/cheeseprince/obd-gauge-cluster)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13834/badge)](https://www.bestpractices.dev/projects/13834)
 [![OTA](https://img.shields.io/badge/dynamic/regex?url=https%3A//cheeseprince.github.io/obd-gauge-cluster/manifest.txt&search=crowpanel_obd%5Cs%2B(v%5B0-9.%5D%2B)&replace=%241&label=OTA&color=blue)](https://cheeseprince.github.io/obd-gauge-cluster/manifest.txt)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=fff)](#ai-assistance)
