@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <cstring>
 #include <esp_ota_ops.h>   // esp_ota_mark_app_valid_cancel_rollback()
+#include <esp_task_wdt.h>  // esp_task_wdt_reconfigure() — see the TWDT note in setup()
 #include "display.h"
 #include "ui.h"
 #include "obd_source.h"
@@ -129,11 +130,32 @@ void setup() {
 
 #if !MOCK_OBD
   // A real connect() can block core 0 for several seconds; that starves the
-  // IDLE0 task so it can't feed the task watchdog → panic/reboot loop. Remove
-  // IDLE0 from the WDT for the real build. (Input no longer freezes during a
-  // blocking connect — it now runs on its own higher-priority core-0 task; see
-  // inputTaskCore0/obdTaskCore0 below. Mock never blocks, so it keeps its WDT.)
-  disableCore0WDT();
+  // IDLE0 task so it can't feed the task watchdog → panic/reboot loop. So core 0's
+  // idle task must stop being watched.
+  //
+  // DO NOT use disableCore0WDT() here. It calls esp_task_wdt_delete(IDLE0), which
+  // on IDF 5.x unsubscribes the task but leaves the TWDT's idle HOOK installed.
+  // The hook then calls esp_task_wdt_reset() for a task that is no longer
+  // subscribed, on every idle tick, and IDF logs an error each time:
+  //   E (nnnn) task_wdt: esp_task_wdt_reset(705): task not found
+  // At idle-tick rates that saturates the 115200 UART and burns enough CPU in the
+  // logging path to push OBD replies past their 400 ms window — the link comes up
+  // and every gauge stays blank. That is exactly how v0.1.1 failed in the field.
+  // On IDF 4.4 (Arduino core 2.x) the same call was quiet, which is why this only
+  // appeared after the core 3.1.3 migration.
+  //
+  // The supported IDF 5 way is to reconfigure the TWDT with an empty
+  // idle_core_mask, which removes the hook as well as the subscription.
+  {
+    esp_task_wdt_config_t twdt = {
+      .timeout_ms     = 60000,   // generous: our own 240 s heartbeat watchdog in
+                                 // loop() is the real hang backstop (see below)
+      .idle_core_mask = 0,       // watch NEITHER idle task -> no hook, no spam
+      .trigger_panic  = false,
+    };
+    esp_err_t rc = esp_task_wdt_reconfigure(&twdt);
+    if (rc != ESP_OK) Serial.printf("[WDT] reconfigure failed: %d\n", (int)rc);
+  }
 #endif
 
   // Input + OBD as separate core-0 tasks; input at higher priority (2 vs 1) so a
