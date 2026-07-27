@@ -1,0 +1,75 @@
+name: ClusterFuzzLite PR
+
+# Coverage-guided fuzzing of the OBD parse/decode path on pull requests.
+#
+# WHY THIS AND NOT JUST test/fuzz_obd.cpp. The host suite's fuzzer is a
+# fixed-seed sweep — fast, deterministic, and its coverage is whatever that seed
+# happens to reach. It cannot find a path it was not already going to walk. This
+# one is coverage-guided: libFuzzer observes which branches an input reaches and
+# mutates toward new ones, so it explores rather than repeats. The sweep is the
+# regression gate; this is the explorer.
+#
+# WHY THIS SURFACE. parseObdResponse() and the decoders are the only firmware
+# code that consumes bytes from outside the trust boundary — whatever the BLE
+# adapter sends. A hostile or simply broken adapter is this device's one
+# untrusted input, so it is the part that earns continuous fuzzing.
+#
+# SCOPE, STATED HONESTLY. There is no `storage-repo` configured, so THE CORPUS
+# DOES NOT PERSIST BETWEEN RUNS. Each PR starts from the seed corpus baked by
+# .clusterfuzzlite/build.sh and fuzzes for a few minutes in `code-change` mode,
+# i.e. only the targets your diff actually affects. That makes this a
+# time-boxed check on changed code, NOT an ever-growing corpus. Adding a storage
+# repo later would give accumulation; it is deliberately not done now, because it
+# means standing up and maintaining a second repository for a hobby project.
+#
+# NOT a required status check, deliberately: fuzzing is time-boxed and
+# best-effort, so a slow runner must not block an unrelated merge. Findings go to
+# the Security tab via SARIF.
+
+on:
+  pull_request:
+    # Only when something it can actually fuzz changed — docs and CI-config PRs
+    # skip it entirely.
+    paths:
+      - 'src/**'
+      - 'test/fuzz_obd_libfuzzer.cpp'
+      - '.clusterfuzzlite/**'
+      - '.github/workflows/cflite_pr.yml'
+
+permissions: read-all
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    permissions:
+      # Upload SARIF findings to the Security tab.
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # address catches out-of-bounds reads in the decoders; undefined catches
+        # the signed-overflow / bad-shift class these hand-rolled decoders are
+        # prone to. The host harness runs both together for the same reason.
+        sanitizer: [address, undefined]
+
+    steps:
+      - name: Build fuzzers
+        uses: google/clusterfuzzlite/actions/build_fuzzers@52ecc61cb587ee99c26825a112a21abf19c7448c  # main @ 2026-02-12
+        with:
+          language: c++
+          sanitizer: ${{ matrix.sanitizer }}
+          # Needed to resolve the PR's base commit so `code-change` mode can work
+          # out which fuzz targets the diff affects.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run fuzzers
+        uses: google/clusterfuzzlite/actions/run_fuzzers@52ecc61cb587ee99c26825a112a21abf19c7448c  # main @ 2026-02-12
+        with:
+          language: c++
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: 'code-change'
+          sanitizer: ${{ matrix.sanitizer }}
+          output-sarif: true
