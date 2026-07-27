@@ -105,6 +105,26 @@ git tree and push access; see [Signing](#signing) above for why it needs
 firmware environment that ships. (`crowpanel` is the same board with mock data, for bench
 work — it is not released.)
 
+### Before you tag: link to an adapter on real hardware
+
+**CI cannot test the OBD link.** There is no radio and no adapter on a GitHub runner, so
+every check can pass on firmware that never connects to a vehicle. That is not a
+hypothetical: **v0.1.0 shipped exactly that way** and had to be pulled.
+
+If the change touches any of these, flash a board over USB and confirm the dash reaches
+live gauge values *before* pushing a tag:
+
+- the **Arduino core or IDF version** (`platform` in `platformio.ini`)
+- the **NimBLE version**, or anything in `src/ble_obd_source.*`
+- **WiFi or TLS** (`src/ota_update.cpp`, `src/ota_portal.cpp`)
+
+The failure that motivated this rule is worth knowing, because no amount of code review
+would have caught it: NimBLE 2.x changed `setConnectTimeout()` from **seconds to
+milliseconds** while keeping the parameter `uint32_t`. `setConnectTimeout(4)` compiled
+without a warning and became a 4 **millisecond** connection budget. A library major version
+can silently redefine what a value *means* — the type checker has nothing to say about it,
+and neither does a test suite that cannot reach the radio.
+
 ## One image, not one per vehicle
 
 A release is a single firmware image, `crowpanel_obd.bin`.
