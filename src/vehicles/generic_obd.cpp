@@ -34,12 +34,30 @@ static const ReadoutDef GENERIC_READOUTS[] = {
   {"TRANS",   "\xC2\xB0""F",  0,  T(NA,NA,NA,NA),  300,  nullptr, 0,  1, gNone,  Quantity::Temp},   // Trans — not standard PID
   {"OIL",     "\xC2\xB0""F",  0,  T(NA,NA,NA,NA),  300,  nullptr, 0,  1, gNone,  Quantity::Temp},   // Oil — not standard PID
   {"BOOST",   "psi",          1,  T(NA,NA,NA,NA),  30,   nullptr, 0,  0, gNone,  Quantity::Press},  // Boost — not standard PID
-  // Coolant (0105). Threshold kept on the "any car" profile deliberately: 0105
-  // is a standard, well-defined SAE PID (not an unverified manufacturer DID), and
-  // 235/250 F is a conservative universal overheat line (most gas/diesel engines
-  // run 195-220 F; sustained >235 F is trouble on essentially any engine). Warn-
-  // only, no low thresholds. This is the sole intentional alarm on Generic.
-  {"COOLANT", "\xC2\xB0""F",  0,  T(235,250,NA,NA),300,  "0105",  0,  1, gTempF, Quantity::Temp},
+  // Coolant (0105) — the sole intentional alarm on Generic. Warn-only, no low
+  // thresholds. Worth having here because 0105 is a standard, well-defined SAE PID
+  // (not an unverified manufacturer DID), and losing coolant is the one failure
+  // where an early warning on an unknown engine is clearly worth a false positive.
+  //
+  // 242/255 F, RAISED from 235/250 on 2026-07-26. The old values came with the
+  // claim that "sustained >235 F is trouble on essentially any engine". That is
+  // wrong, and the counter-example is a vehicle this project already supports:
+  // BMW's N55 DME deliberately TARGETS 226 F (108 C) in Economy mode — normal
+  // operation, not a fault. A 235 F warn leaves nine degrees of headroom above a
+  // factory setpoint, so any hot-running engine that lands on Generic (an
+  // unrecognised WMI, or a VIN read that failed) would raise an amber warning
+  // while running exactly as designed.
+  //
+  // Nuisance alarms are worse than no alarm: they teach the driver the display
+  // cries wolf, and then the real one gets ignored too. 242 F clears the hottest
+  // factory target this project has documented with real margin, and 255 F is
+  // still far below anything that reads as healthy on any engine.
+  //
+  // Confidence: this is anchored on ONE well-documented hot-running engine (N55,
+  // see docs/BMW-STATUS.md). If a vehicle turns up that idles hotter than 242 F by
+  // design, raise it again rather than assuming the number is universal — the
+  // mistake being corrected here was exactly that assumption.
+  {"COOLANT", "\xC2\xB0""F",  0,  T(242,255,NA,NA),300,  "0105",  0,  1, gTempF, Quantity::Temp},
   {"VOLTS",   "V",            1,  T(NA,NA,11.0f,10.2f),18,"0142", 0,  1, gVolts, Quantity::None},   // Volts (0142)
   {"INTAKE",  "\xC2\xB0""F",  0,  T(NA,NA,NA,NA),  300,  "010F",  0,  1, gTempF, Quantity::Temp},   // Intake air temp (010F)
   {"RPM",     "",             0,  T(NA,NA,NA,NA),  7000, "010C",  0,  0, gRpm,   Quantity::None},   // Rpm (010C)
