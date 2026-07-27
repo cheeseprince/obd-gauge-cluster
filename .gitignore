@@ -6,7 +6,10 @@ test/test_*
 !test/test_*.cpp
 !test/test_*.h
 !test/test_*.sh
-test/fuzz_obd
+# Built fuzz binaries (fuzz_obd, fuzz_obd_harness). Glob + negation so a new
+# harness binary is covered automatically, matching the test/test_* rule above.
+test/fuzz_obd*
+!test/fuzz_obd*.cpp
 
 # Python bytecode
 __pycache__/

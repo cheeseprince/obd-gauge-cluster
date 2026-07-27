@@ -108,8 +108,16 @@ BIN_FUZZ  = fuzz_obd
 SRC_FUZZ  = fuzz_obd.cpp ../src/obd_parse.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 SANFLAGS  = -fsanitize=address,undefined -fno-sanitize-recover=all -g -O1
 
+# The ClusterFuzzLite libFuzzer harness, built here with a plain main() driver so
+# it compiles and runs WITHOUT clang/libFuzzer. This is a build-integrity gate,
+# not fuzzing: it stops a refactor from silently breaking the harness, which
+# would otherwise only surface inside the OSS-Fuzz Docker image as an
+# infrastructure error instead of an obvious break in the PR that caused it.
+BIN_LFUZZ = fuzz_obd_harness
+SRC_LFUZZ = fuzz_obd_libfuzzer.cpp fuzz_obd_driver.cpp ../src/obd_parse.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
+
 .PHONY: test clean fuzz test-ota-sign
-test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ)
+test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ)
 	./$(BIN_PID)
 	./$(BIN_PARSE)
 	./$(BIN_GAUGE)
@@ -144,6 +152,7 @@ test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(B
 	./$(BIN_BRANK)
 	./$(BIN_VIN)
 	./$(BIN_FUZZ)
+	./$(BIN_LFUZZ)
 	bash test_ota_sign.sh
 
 # Standalone: build + run just the sanitized fuzzer.
@@ -157,6 +166,9 @@ test-ota-sign:
 
 $(BIN_FUZZ): $(SRC_FUZZ) ../src/readouts.h ../src/obd_parse.h ../src/app_types.h
 	$(CXX) $(CXXFLAGS) $(SANFLAGS) $(SRC_FUZZ) -o $(BIN_FUZZ)
+
+$(BIN_LFUZZ): $(SRC_LFUZZ) ../src/readouts.h ../src/obd_parse.h ../src/app_types.h
+	$(CXX) $(CXXFLAGS) $(SANFLAGS) $(SRC_LFUZZ) -o $(BIN_LFUZZ)
 
 $(BIN_RTC): $(SRC_RTC) ../src/rtc.h
 	$(CXX) $(CXXFLAGS) $(SRC_RTC) -o $(BIN_RTC)
@@ -258,4 +270,4 @@ $(BIN_CONN): $(SRC_CONN) ../src/obd_source.h ../src/app_types.h
 	$(CXX) $(CXXFLAGS) $(SRC_CONN) -o $(BIN_CONN)
 
 clean:
-	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ)
+	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ)
