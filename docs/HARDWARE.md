@@ -24,7 +24,7 @@ solves it. Keeping the same 480×320 resolution meant the entire UI carried over
 The on-board I²C-OUT header is what makes the rotary-encoder input clean — no GPIO wiring.
 
 **Note on Bluetooth:** the CrowPanel Advance is an ESP32-**S3**, which does **BLE only** —
-that is a hardware fact, not a build option. The dash reads OBD over BLE (a Vgate vLinker MS).
+that is a hardware fact, not a build option. The dash reads OBD over BLE (a Vgate vLinker MS or an iCar Pro BLE 4.0 — both validated).
 The retired WROVER board was a classic ESP32 with Bluetooth Classic SPP, which is why a
 classic-BT transport existed at all; it went when that board did. **Buy a BLE adapter** — see
 [`ADAPTERS.md`](ADAPTERS.md).
