@@ -105,16 +105,20 @@ MANUAL steps (UI only — not settable via this script):
   2. Settings → Pages → Deploy from branch: gh-pages / (root)
   3. Settings → General → UNCHECK "Include this code in the GitHub Archive Program"
   4. Settings → Actions → General → Allow all actions (usually already on)
-  5. Settings → Advanced Security → enable "Non-provider patterns" and
-     "Validity checks" under Secret Protection.
-     NOTE: these two CANNOT be set from the API. PATCH /repos/{owner}/{repo}
-     with security_and_analysis.secret_scanning_non_provider_patterns /
-     .secret_scanning_validity_checks returns HTTP 200 and silently leaves them
-     disabled — verified 2026-07-27, no error is raised. Set them in the UI and
-     confirm with:
-       gh api repos/OWNER/REPO --jq .security_and_analysis
-     Why they matter here: stock secret scanning only matches KNOWN PROVIDER
-     formats. A raw PEM private key is not a provider pattern, so push
-     protection would not stop an accidental commit of the OTA signing key —
-     the one secret whose loss would be unrecoverable for this project.
+  5. NOTHING TO DO — secret_scanning_non_provider_patterns and
+     secret_scanning_validity_checks read "disabled" and stay that way.
+     Investigated 2026-07-27; do not chase them again:
+       * VALIDITY CHECKS are plan-gated. GitHub docs: "only available to users
+         with GitHub Team or GitHub Enterprise who enable the feature as part
+         of GitHub Secret Protection." Not available on this account.
+       * NON-PROVIDER PATTERNS: generic patterns such as rsa_private_key are
+         ALREADY detected on free public repos via alerts. The toggle governs
+         the paid expanded set.
+     There is no UI for either (confirmed by Alan), and PATCHing them returns
+     HTTP 200 while silently leaving them disabled — that silence is the plan
+     limit, not a bad payload.
+     The protection that actually matters is already in place: gitleaks runs as
+     a REQUIRED status check and detects PEM private keys (verified against a
+     throwaway EC key, 2026-07-27). An accidental commit of the OTA signing key
+     fails CI and cannot be merged.
 MANUAL
