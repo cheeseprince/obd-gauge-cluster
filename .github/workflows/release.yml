@@ -139,6 +139,37 @@ jobs:
             echo "::error::refuse this release. Check that the secret matches."
             exit 1
           fi
+      - name: Generate SBOM
+        # Tag pushes only — the SBOM is a release artifact, and a dry run has no
+        # release to describe.
+        #
+        # NOT GitHub's automatic dependency-graph SBOM. That one sees
+        # requirements/*.txt and .github/workflows/, so it lists pytest, numpy,
+        # pandas and a set of Actions — none of which are in the firmware.
+        # Shipping it beside the .bin would assert that a vehicle gauge cluster
+        # contains pandas, which is worse than no SBOM because it would be
+        # believed. tools/gen_sbom.py reads what PlatformIO actually resolved
+        # and linked, and keeps build tools in a separate scope from what is
+        # compiled into the image.
+        if: github.ref_type == 'tag'
+        run: |
+          python3 tools/gen_sbom.py \
+            --env crowpanel_obd \
+            --bin out/crowpanel_obd.bin \
+            --version "$VERSION" \
+            --output out/crowpanel_obd.bin.cdx.json
+
+      - name: Attest SBOM
+        # Binds the SBOM to this exact .bin through Sigstore, the same way the
+        # provenance step binds the build. An unsigned SBOM is a claim; an
+        # attested one is a claim someone can check:
+        #   gh attestation verify crowpanel_obd.bin --repo <repo>
+        if: github.ref_type == 'tag'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e  # v4.1.0
+        with:
+          subject-path: out/crowpanel_obd.bin
+          sbom-path: out/crowpanel_obd.bin.cdx.json
+
       - name: Attest build provenance
         # Tag pushes only — a workflow_dispatch dry run must not mint an
         # attestation for a build nobody can install.
@@ -205,7 +236,7 @@ jobs:
           # manifest.sig: the attest step above is tag-gated and fails the run on
           # error, so on a tag it is always present. A missing bundle should fail
           # here rather than quietly ship a release without provenance.
-          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig out/crowpanel_obd.bin.intoto.jsonl"
+          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig out/crowpanel_obd.bin.intoto.jsonl out/crowpanel_obd.bin.cdx.json"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber --repo "$GITHUB_REPOSITORY"
           else
