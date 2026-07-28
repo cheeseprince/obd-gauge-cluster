@@ -77,6 +77,26 @@ gh api -X PATCH "repos/$REPO/code-scanning/default-setup" \
   -f 'languages[]=actions' -f 'languages[]=c-cpp' -f 'languages[]=python' \
   --silent || echo "  (CodeQL default setup unchanged or already matching)"
 
+echo "== tag protection: release tags are immutable =="
+# Branch protection covers main; nothing covered TAGS until now. Without this,
+# anyone with push access can delete v0.1.2 and re-point it at another commit.
+# That is not an OTA compromise — devices still enforce manifest.sig, so a
+# swapped tag cannot ship firmware they will install — but it breaks the audit
+# trail, and the SLSA provenance attests "built from tag X" while X is mutable.
+# Immutable tags are what make that attestation mean anything.
+#
+# Idempotent: creating a ruleset that already exists returns 422, which is fine
+# on a re-run of this script.
+gh api -X POST "repos/$REPO/rulesets" --input - <<'JSON' --silent 2>/dev/null || echo "  (tag ruleset already exists — skipping)"
+{
+  "name": "Protect release tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
+  "rules": [ { "type": "deletion" }, { "type": "non_fast_forward" } ]
+}
+JSON
+
 echo "== done. Secret scanning + push protection default ON for public repos. =="
 cat <<'MANUAL'
 
@@ -85,4 +105,20 @@ MANUAL steps (UI only — not settable via this script):
   2. Settings → Pages → Deploy from branch: gh-pages / (root)
   3. Settings → General → UNCHECK "Include this code in the GitHub Archive Program"
   4. Settings → Actions → General → Allow all actions (usually already on)
+  5. NOTHING TO DO — secret_scanning_non_provider_patterns and
+     secret_scanning_validity_checks read "disabled" and stay that way.
+     Investigated 2026-07-27; do not chase them again:
+       * VALIDITY CHECKS are plan-gated. GitHub docs: "only available to users
+         with GitHub Team or GitHub Enterprise who enable the feature as part
+         of GitHub Secret Protection." Not available on this account.
+       * NON-PROVIDER PATTERNS: generic patterns such as rsa_private_key are
+         ALREADY detected on free public repos via alerts. The toggle governs
+         the paid expanded set.
+     There is no UI for either (confirmed by Alan), and PATCHing them returns
+     HTTP 200 while silently leaving them disabled — that silence is the plan
+     limit, not a bad payload.
+     The protection that actually matters is already in place: gitleaks runs as
+     a REQUIRED status check and detects PEM private keys (verified against a
+     throwaway EC key, 2026-07-27). An accidental commit of the OTA signing key
+     fails CI and cannot be merged.
 MANUAL
