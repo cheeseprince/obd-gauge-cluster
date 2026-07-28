@@ -67,7 +67,11 @@ The firmware speaks to **BLE** ELM327 adapters on the CrowPanel dash, and
 repository — neither kind of adapter will connect to the dash. Full compatibility matrix:
 [`ADAPTERS.md`](ADAPTERS.md).
 
-- **Vgate vLinker MS (BLE)** — the dash's adapter, and the only one validated on hardware.
+- **Vgate iCar Pro BLE 4.0** — validated on the dash and **works out of the box**. The
+  easier choice: nothing to configure before it links.
+- **Vgate vLinker MS (BLE)** — the dash's original adapter, also validated. Ships in a
+  Classic/MFi-only mode and needs a one-time switch to BT+BLE with Vgate's updater app
+  before the ESP32-S3 can see it at all.
   Reads this truck's enhanced GM PIDs with 11-bit headers. Ships in a Classic/MFi-only mode;
   switch it to BT+BLE once with Vgate's updater app so the ESP32-S3 can pair.
 
