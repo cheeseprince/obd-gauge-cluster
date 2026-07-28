@@ -125,6 +125,29 @@ without a warning and became a 4 **millisecond** connection budget. A library ma
 can silently redefine what a value *means* — the type checker has nothing to say about it,
 and neither does a test suite that cannot reach the radio.
 
+## If you shipped a bad release
+
+It happens — a build can pass every check and still fail on a vehicle, because CI has no
+radio (see [Before you tag](#before-you-tag-link-to-an-adapter-on-real-hardware)). The
+procedure, in order:
+
+1. **Fix forward, do not try to roll back.** Devices refuse older versions (semver
+   comparison), so an earlier release cannot be re-served. Tag a new patch release with the
+   fix; it reaches devices over the air like any other.
+2. **Mark the bad GitHub Release a pre-release** and replace its notes with a warning that
+   names the symptom and the cause. It loses the "Latest" badge as soon as a good release
+   exists.
+3. **Delete the firmware `.bin` asset from that release** so it cannot be flashed by
+   mistake. Leave `manifest.txt` / `manifest.sig` — they are harmless and useful evidence.
+4. **Keep the tag.** The commit is real history, the fix references it, and anyone who
+   already fetched keeps their copy regardless. Deleting a tag buys nothing and breaks
+   references.
+5. **The OTA channel needs no cleanup.** `release.yml` deploys with `keep_files: false`, so
+   the next publish overwrites the manifest and binary wholesale.
+
+The channel serves exactly one version at a time, so step 1 is what actually protects
+users — steps 2 to 4 only stop someone installing the bad build by hand.
+
 ## One image, not one per vehicle
 
 A release is a single firmware image, `crowpanel_obd.bin`.

@@ -24,7 +24,7 @@ solves it. Keeping the same 480×320 resolution meant the entire UI carried over
 The on-board I²C-OUT header is what makes the rotary-encoder input clean — no GPIO wiring.
 
 **Note on Bluetooth:** the CrowPanel Advance is an ESP32-**S3**, which does **BLE only** —
-that is a hardware fact, not a build option. The dash reads OBD over BLE (a Vgate vLinker MS or an iCar Pro BLE 4.0 — both validated).
+that is a hardware fact, not a build option. The dash reads OBD over BLE (a Vgate vLinker MS).
 The retired WROVER board was a classic ESP32 with Bluetooth Classic SPP, which is why a
 classic-BT transport existed at all; it went when that board did. **Buy a BLE adapter** — see
 [`ADAPTERS.md`](ADAPTERS.md).
@@ -67,11 +67,7 @@ The firmware speaks to **BLE** ELM327 adapters on the CrowPanel dash, and
 repository — neither kind of adapter will connect to the dash. Full compatibility matrix:
 [`ADAPTERS.md`](ADAPTERS.md).
 
-- **Vgate iCar Pro BLE 4.0** — validated on the dash and **works out of the box**. The
-  easier choice: nothing to configure before it links.
-- **Vgate vLinker MS (BLE)** — the dash's original adapter, also validated. Ships in a
-  Classic/MFi-only mode and needs a one-time switch to BT+BLE with Vgate's updater app
-  before the ESP32-S3 can see it at all.
+- **Vgate vLinker MS (BLE)** — the dash's adapter, and the only one validated on hardware.
   Reads this truck's enhanced GM PIDs with 11-bit headers. Ships in a Classic/MFi-only mode;
   switch it to BT+BLE once with Vgate's updater app so the ESP32-S3 can pair.
 

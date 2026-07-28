@@ -40,6 +40,27 @@ cd tools/obd_scan && python3 -m pytest tests -q
 The host tests and scanner are verified in CI on **Linux and macOS** (g++ and
 clang, Python 3.12). The PlatformIO device build is host-OS-independent.
 
+### The build platform is pinned to a URL, deliberately
+
+`platformio.ini` does not use the `espressif32` platform from PlatformIO's registry. It
+pins a **pioarduino** release by URL:
+
+```
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/53.03.13/platform-espressif32.zip
+```
+
+pioarduino is the community continuation of the Espressif platform; this release gives
+**Arduino core 3.1.3 on ESP-IDF 5.3**. The registry's `espressif32` is a different, older
+platform (core 2.x), which no longer receives IDF security fixes.
+
+**Do not "simplify" this to `platform = espressif32`.** The bare name resolves to whatever
+is installed — which on a developer machine with pioarduino installed globally is the right
+thing, and on a clean CI runner is PlatformIO's core-2.x platform. The build then fails on
+core-3-only symbols with no hint as to why. That has already happened once.
+
+The first build after cloning downloads the platform and toolchain, so expect it to take a
+few minutes.
+
 Match the style of the surrounding code. Keep changes focused.
 
 ### Local files: use `.private/`
@@ -92,6 +113,15 @@ can merge:
 The last three are the reason a seemingly innocent commit can be rejected: a phone photo with
 GPS EXIF, a real VIN pasted into a test, or a key in a scratch file. The pre-commit hooks below
 catch the last two **before** you commit.
+
+You will also see two checks that are **not** required and cannot block a merge:
+
+| Check | What it is |
+| :--- | :--- |
+| **Fuzz (address)** / **Fuzz (undefined)** | Coverage-guided fuzzing of the OBD parse and decode path via ClusterFuzzLite, on any PR touching `src/`. Time-boxed to a few minutes per sanitizer; findings go to the Security tab. Advisory by design — a slow runner must not block an unrelated merge |
+
+The host suite's own `fuzz` target is different and *is* required: a fixed-seed sweep that
+runs in `make`. One is a regression gate, the other explores. Both are kept.
 
 Please also:
 

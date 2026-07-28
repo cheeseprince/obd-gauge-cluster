@@ -163,7 +163,7 @@ auto-connects, no pairing step.
 | Adapter | Transport | Build | Status |
 | :--- | :--- | :--- | :--- |
 | Vgate **vLinker MS** | BLE | `crowpanel_obd` | ✅ **Validated** — ⚠️ ships in Classic/MFi mode; see below |
-| Vgate **iCar Pro BLE 4.0** | BLE | `crowpanel_obd` | ✅ **Validated** — and works out of the box |
+| Vgate **iCar Pro BLE 4.0** | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
 | Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
 | Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** — the dash is BLE-only |
 | **OBDLink MX+ / CX** | BLE (proprietary) | — | ❌ **Unsupported** |
@@ -172,10 +172,6 @@ auto-connects, no pairing step.
 > mode and will not advertise over BLE until you switch it to **BT+BLE** once, using
 > Vgate's own updater app on a phone. Do this before you go looking for faults in the
 > dash — a stock adapter simply never appears in the scan.
->
-> **The iCar Pro BLE 4.0 needs no such step** — validated on the dash, plugged in and
-> linked with nothing to configure. If you are buying an adapter now, that makes it the
-> easier of the two.
 
 Why each verdict, the GATT profiles supported, and how to report a working adapter:
 [`docs/ADAPTERS.md`](docs/ADAPTERS.md). To switch adapters later, use **Forget adapter** in the
