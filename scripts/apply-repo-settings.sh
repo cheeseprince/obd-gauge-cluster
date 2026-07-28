@@ -77,6 +77,26 @@ gh api -X PATCH "repos/$REPO/code-scanning/default-setup" \
   -f 'languages[]=actions' -f 'languages[]=c-cpp' -f 'languages[]=python' \
   --silent || echo "  (CodeQL default setup unchanged or already matching)"
 
+echo "== tag protection: release tags are immutable =="
+# Branch protection covers main; nothing covered TAGS until now. Without this,
+# anyone with push access can delete v0.1.2 and re-point it at another commit.
+# That is not an OTA compromise — devices still enforce manifest.sig, so a
+# swapped tag cannot ship firmware they will install — but it breaks the audit
+# trail, and the SLSA provenance attests "built from tag X" while X is mutable.
+# Immutable tags are what make that attestation mean anything.
+#
+# Idempotent: creating a ruleset that already exists returns 422, which is fine
+# on a re-run of this script.
+gh api -X POST "repos/$REPO/rulesets" --input - <<'JSON' --silent 2>/dev/null || echo "  (tag ruleset already exists — skipping)"
+{
+  "name": "Protect release tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
+  "rules": [ { "type": "deletion" }, { "type": "non_fast_forward" } ]
+}
+JSON
+
 echo "== done. Secret scanning + push protection default ON for public repos. =="
 cat <<'MANUAL'
 
@@ -85,4 +105,16 @@ MANUAL steps (UI only — not settable via this script):
   2. Settings → Pages → Deploy from branch: gh-pages / (root)
   3. Settings → General → UNCHECK "Include this code in the GitHub Archive Program"
   4. Settings → Actions → General → Allow all actions (usually already on)
+  5. Settings → Advanced Security → enable "Non-provider patterns" and
+     "Validity checks" under Secret Protection.
+     NOTE: these two CANNOT be set from the API. PATCH /repos/{owner}/{repo}
+     with security_and_analysis.secret_scanning_non_provider_patterns /
+     .secret_scanning_validity_checks returns HTTP 200 and silently leaves them
+     disabled — verified 2026-07-27, no error is raised. Set them in the UI and
+     confirm with:
+       gh api repos/OWNER/REPO --jq .security_and_analysis
+     Why they matter here: stock secret scanning only matches KNOWN PROVIDER
+     formats. A raw PEM private key is not a provider pattern, so push
+     protection would not stop an accidental commit of the OTA signing key —
+     the one secret whose loss would be unrecoverable for this project.
 MANUAL
