@@ -24,11 +24,10 @@ size_t formatBootBanner(const BootInfo& bi, char* out, size_t n) {
                    (unsigned)bi.freeHeap);
   if (w < 0) return 0;
 
-  // snprintf's return value is the length it WOULD have written if `out` were
-  // big enough — when the banner is truncated that number can exceed n, which
-  // would let a caller walk past the end of `out` if it trusted the return
-  // value as a byte count into that buffer. Clamp to n-1 (snprintf always
-  // reserves the last byte for the NUL), so the return value is always a safe
-  // bound on what's actually in `out`.
-  return (size_t)w < n ? (size_t)w : n - 1;
+  // snprintf semantics: the value returned is the length that WOULD have been
+  // written had `out` been large enough, so `ret >= n` is an unambiguous
+  // truncation signal. A clamped value could not distinguish truncation from an
+  // exact fit. `out` is always NUL-terminated by snprintf regardless, so the
+  // return value is a length to TEST, never an index to walk `out` with.
+  return (size_t)w;
 }

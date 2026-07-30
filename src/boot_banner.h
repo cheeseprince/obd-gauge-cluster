@@ -23,9 +23,12 @@ struct BootInfo {
 };
 
 // Formats two '\n'-separated lines into `out`. Returns the number of bytes
-// actually written into `out` (excluding the NUL), clamped so it never
-// exceeds n — unlike raw snprintf(), which reports the untruncated length
-// even when the buffer was too small. A caller can still detect truncation
-// by comparing the return value to strlen(out) or to n-1. `out` is always
-// NUL-terminated when n > 0.
+// that would have been written (snprintf semantics): the untruncated length,
+// which can exceed n when `out` was too small. `ret >= n` is therefore the
+// unambiguous signal that the banner was truncated — a clamped return value
+// could not tell truncation apart from an exact fit, and that distinction is
+// exactly what matters if the banner ever outgrows the caller's buffer.
+// `out` is always NUL-terminated by snprintf when n > 0 regardless of
+// truncation, so treat the return value as a length to TEST against n, never
+// as an index to walk `out` with.
 size_t formatBootBanner(const BootInfo& bi, char* out, size_t n);

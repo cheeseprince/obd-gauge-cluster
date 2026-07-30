@@ -51,11 +51,13 @@ int main() {
   check(has(buf, "ver=local"), "bench build version");
   check(has(buf, "git=local"), "bench build hash");
 
-  // Truncation must stay in-bounds and NUL-terminated, never overrun.
+  // Truncation must stay in-bounds and NUL-terminated, and must be DETECTABLE.
+  // snprintf semantics mean the reported length exceeds the buffer when the
+  // banner did not fit — that is the signal, not a bug.
   char tiny[16];
   size_t n = formatBootBanner(bi, tiny, sizeof tiny);
   check(tiny[sizeof tiny - 1] == '\0', "tiny buffer NUL-terminated");
-  check(n <= sizeof tiny,              "reported length within buffer");
+  check(n > sizeof tiny,               "truncation is detectable");
 
   // Non-power-of-two sizes must round down, not print a bogus fraction.
   BootInfo odd = bi;
