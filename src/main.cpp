@@ -2,6 +2,7 @@
 #include <cstring>
 #include <esp_ota_ops.h>   // esp_ota_mark_app_valid_cancel_rollback()
 #include <esp_task_wdt.h>  // esp_task_wdt_reconfigure() — see the TWDT note in setup()
+#include <esp_system.h>    // esp_reset_reason()
 #include "display.h"
 #include "ui.h"
 #include "obd_source.h"
@@ -17,6 +18,7 @@
 #include "ota_portal.h"
 #include "ota_update.h"
 #include "fw_git.h"
+#include "boot_banner.h"
 #include "vehicle_active.h"
 #include "vehicle_registry.h"
 #include "vin.h"
@@ -166,6 +168,27 @@ void setup() {
   // already-deep BLE-connect path and overflowed a 4096-byte stack, crashing
   // obd_core0 in a boot loop (v1.3.0). Bytes on esp32-arduino.
   xTaskCreatePinnedToCore(obdTaskCore0,   "obd_core0",   8192, nullptr, 1, nullptr, 0);
+
+  // Identity banner — the only thing setup() prints on the success path.
+  // Emitted last so `heap` reflects the real post-allocation figure, which is
+  // what makes it useful as a static-bloat tripwire.
+  //
+  // On this board Serial is the native USB CDC (ARDUINO_USB_CDC_ON_BOOT=1), so
+  // this lands on /dev/ttyACM*, NOT on the CH340 UART bridge.
+  {
+    BootInfo bi;
+    bi.env         = OTA_ENV;
+    bi.version     = FW_VERSION;
+    bi.git         = FW_GIT;
+    bi.profileKey  = settings.vehicleKey;   // "" when Generic is the fallback
+    bi.psramBytes  = ESP.getPsramSize();
+    bi.flashBytes  = ESP.getFlashChipSize();
+    bi.resetReason = (int)esp_reset_reason();
+    bi.freeHeap    = ESP.getFreeHeap();
+    char line[192];
+    formatBootBanner(bi, line, sizeof line);
+    Serial.println(line);
+  }
 }
 
 // Cycle the night tri-state (Auto -> Day -> Night; no Auto without an RTC) —
