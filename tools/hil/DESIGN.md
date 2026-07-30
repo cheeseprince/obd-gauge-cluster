@@ -198,7 +198,7 @@ so it needs evidence to justify, not speculation.
 - **Heap-trend leak detection.** The firmware emits no periodic heap line — heap appears only in
   the OTA path (`ota_update.cpp:115,175,178`). Detecting a slow runtime leak would need more
   firmware surface than the banner. What Phase 1 gets cheaply instead: the banner's boot heap is
-  recorded in `verdict.json` and printed for a human to read. There is no baseline comparison and
+  recorded in `verdict.json` for a human to read. There is no baseline comparison and
   no `--update-baseline` flag — a single boot reading could only ever catch static-allocation
   bloat, never a runtime leak, so an automated pass/warn verdict on it would be asserting more
   than the evidence supports. Automated heap-regression detection against a committed baseline is
