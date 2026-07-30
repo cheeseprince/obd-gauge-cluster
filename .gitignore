@@ -64,3 +64,6 @@ OBD-BACKLOG.*
 SECURITY-AUDIT-*
 SECURITY-REVIEW-*
 FINDINGS-*
+
+# HIL rig run artifacts (captured serial logs, per-run)
+tools/hil/runs/
