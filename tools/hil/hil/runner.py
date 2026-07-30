@@ -30,7 +30,19 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class RigError(RuntimeError):
-    """Environment/hardware problem. Maps to exit code 2, never a test failure."""
+    """Environment/hardware problem. Maps to exit code 2, never a test failure.
+
+    `partial_output` carries whatever a failing subprocess had already written
+    when it was killed. A `pio` run that blows the 600 s budget returns no exit
+    status and no complete log, so that partial text is the only evidence of what
+    wedged — and it is exactly the run where someone needs it. Attaching it to
+    the exception lets the caller persist it to `pio.log` on the way out instead
+    of it existing only as a stderr tail that scrolls away.
+    """
+
+    def __init__(self, *args, partial_output: str = ""):
+        super().__init__(*args)
+        self.partial_output = partial_output
 
 
 def discover_ports(native_override=None, uart_override=None) -> PortSet:
@@ -151,9 +163,13 @@ def flash(env: str, native_port: str) -> tuple[bool, str]:
         # pinned platform down, which is why the budget is 600 s; blowing
         # through it means something is actually wedged, not just slow.
         partial = (e.stdout or "") + (e.stderr or "")
+        # The tail goes in the message so it is visible immediately; the WHOLE
+        # partial output rides on the exception so the caller can write it to
+        # pio.log. On the timeout path there is no other copy of it anywhere.
         raise RigError(
             f"`pio run -e {env} -t upload` exceeded 600 s and was killed; "
-            f"last output:\n{partial[-2000:]}"
+            f"last output:\n{partial[-2000:]}",
+            partial_output=partial,
         ) from e
     return proc.returncode == 0, proc.stdout + proc.stderr
 

@@ -1,6 +1,7 @@
 # Hardware-in-the-loop test rig — Phase 1 design
 
-**Status:** design approved 2026-07-29. Not yet implemented.
+**Status:** implemented 2026-07-29 — `tools/hil/` ships the rig, it has been run end to end
+against the real board, and CI runs its pure tests on every push.
 **Scope:** Phase 1 only — USB-only, no BLE peer. Phases 2 and 3 are out of scope here.
 
 ## Why this exists
@@ -18,8 +19,8 @@ is a different *class* of test.
 
 ## What Phase 1 can and cannot catch
 
-`OBD-BACKLOG.md` §12 originally recorded that Phase 1 "would not have caught either field
-failure." **That is half wrong, and the correction is the main reason Phase 1 is worth building
+`docs/OBD-BACKLOG.md` §12 (private) originally recorded that Phase 1 "would not have caught
+either field failure." **That is half wrong, and the correction is the main reason Phase 1 is worth building
 now rather than waiting for Phase 2.**
 
 - **v0.1.1 is catchable in Phase 1.** The symptom was `E (nnnn) task_wdt:
@@ -96,7 +97,8 @@ free heap. This ships in the release firmware — it is equally useful in the fi
 build is this and why did it restart" is the first question. **It must never include the VIN:**
 that would be a real PII leak in a field log, and `check_no_pii.py` would reject it.
 
-This lands as its own PR, ahead of the harness, so the harness has something to assert against.
+This landed as its own PR (#26), ahead of the harness, so the harness had something to assert
+against.
 
 ## Layout
 
@@ -106,16 +108,17 @@ tools/hil/
   hil/ports.py       VID:PID discovery -> resolved port paths.
   hil/runner.py      device layer: pio flash, esptool reset, dual capture, key injection
   hil/__main__.py    CLI: sequences a run, prints the verdict table, writes artifacts
-  tests/             pytest over parse.py and ports.py, using recorded golden logs
+  tests/             pytest over parse.py and ports.py using recorded golden logs, plus the
+                     CLI's unwind/exit-code guarantees driven with fakes (no board, no pyserial)
   DESIGN.md          this document
   README.md          what it is, what it cannot do, how to run it
 ```
 
 The split mirrors how the firmware is already organised: pure logic that is tested exhaustively,
 over a thin hardware layer that is not. `parse.py` and `ports.py` have no I/O and run in CI
-without a board. `runner.py` touches hardware and only runs on the VM.
+without a board. `runner.py` touches hardware and only runs on a machine with the board attached.
 
-Python, with `pyserial` (3.5 present on the VM). Invoked as `python3 -m hil --env crowpanel`.
+Python, with `pyserial` (3.5 or newer). Invoked as `python3 -m hil --env crowpanel`.
 
 ## Run sequence
 
@@ -146,8 +149,8 @@ capture still holds the boot reason and any panic output, so boot evidence is ne
 | 5 | `[BOOT]` present and its `env` matches the env just flashed | native | flashing the wrong environment | `default_envs = crowpanel_obd` makes this an easy mistake |
 | 6 | `[encoder] found\|MISSING` matches `--expect-knob` | native | I²C or knob wiring regression | `encoder_input.cpp:47`; v1.3.1 invisible-menu class |
 | 7 | `'n'` produces `[THEME]` within 2 s | native | LVGL repaint hang | — |
-| 8 | `'s'` produces `[MOCK] alarm sweep`, then no panic | native | full-screen alarm-overlay render crash | mock environment only |
-| 9 | `crowpanel_obd`: `[BLE] scanning` recurs | native | BLE state machine wedged rather than searching | `ble_obd_source.cpp:309`; the Phase 2 boundary |
+| 8 | `'s'` produces **any** `[MOCK]` line, then no panic | native | full-screen alarm-overlay render crash | mock environment only; the toggle's direction depends on prior state, so either `[MOCK] alarm sweep` or `[MOCK] safe bands` counts |
+| 9 | `crowpanel_obd`: `[BLE] scanning` appears **at least once** | native | a state machine that never starts searching at all. It does **not** catch one that scanned once and then wedged — a single occurrence anywhere in the boot capture passes | `ble_obd_source.cpp:309`; the Phase 2 boundary |
 | 10 | soak: the `'n'` probe answers every 30 s for 300 s | native | silent late hang | v1.3.0 boot loop; the 240 s heartbeat path, `main.cpp:205-210` |
 
 Check 10 is an **active** probe rather than passive silence, because silence cannot distinguish
@@ -206,7 +209,7 @@ so it needs evidence to justify, not speculation.
 - **Version assertion.** A local `pio run` stamps `FW_VERSION "local"` (`src/fw_git.h:15-16`);
   only `release.yml` sed-stamps a real tag. The harness therefore asserts the *environment* and
   merely reports the *version*. A non-`local` version on a bench build is flagged, not failed.
-- **Anything requiring a BLE peer.** That is Phase 2 in `OBD-BACKLOG.md` §12.
+- **Anything requiring a BLE peer.** That is Phase 2 in `docs/OBD-BACKLOG.md` §12 (private).
 
 ## Error handling
 
@@ -233,13 +236,32 @@ Specific degradations:
   assertions**. Asserting against a stale binary produces confident nonsense.
 - **Native reopen times out** → degrade rather than abort. Continue with the UART-only checks and
   mark the native-only checks `SKIPPED`, never `PASSED`.
+- **The UART tap dies mid-run** (cable out, hub reset, port stolen) → the three UART-derived checks
+  are downgraded `PASS` → `SKIP`, so the run cannot exit 0. This is not cosmetic: `UartTap.text`
+  retains everything captured before the tap died, and every UART check's pass condition is
+  satisfied by that retained text — a cable pulled 50 s into a 300 s soak would otherwise report
+  "all checks green" having observed a sixth of its window. An *observed* `FAIL` is kept as a FAIL;
+  a panic that was actually seen is real evidence regardless of what happened to the cable next.
+- **`--soak 0`** → the soak check reports `SKIP`, never `PASS`. The loop runs zero probes, and a
+  check that never ran must not be green. Not clamped to a minimum: the operator asked for no soak
+  and is told they got none (exit 3).
+- **Any unhandled exception, anywhere** → exit 2 with a traceback, never exit 1. Python's default
+  exit code for an uncaught exception is 1, the code reserved for "the firmware is broken", so both
+  the `pyserial` import and `main()` itself are wrapped. A missing `pyserial` — a documented
+  prerequisite — names its own fix and exits 2.
 - Every read is bounded. A `finally` block always closes both ports and always writes artifacts,
-  including on `SIGINT`.
+  including on `SIGINT`. The UART is drained on every soak step, not only at the window ends, so a
+  300 s soak's output never has to survive in the OS tty buffer.
+- A rig error in the second environment still renders the first environment's verdict table before
+  returning 2. Exit-2 precedence is right; hiding a genuine `FAIL` the run already found is not.
 
 ## Artifacts
 
 Every run writes `tools/hil/runs/<iso-timestamp>-<env>/` containing `uart.log`, `native.log`,
-`pio.log` and `verdict.json`. Gitignored.
+`pio.log` and `verdict.json`. Gitignored. *Every* run means the rig-error and `SIGINT` paths too,
+with whatever partial evidence exists — a rig error is exactly when someone wants the record. A
+`pio` run killed at its 600 s timeout puts its partial output in `pio.log`, which on that path is
+the only evidence of what wedged.
 
 This is structural, not incidental. The v0.1.x arc produced the rule *on a field-only failure,
 get the serial log before shipping a fix* — three wrong theories cost three trips to the vehicle.
@@ -259,11 +281,20 @@ passes.
 | real download-mode capture (recorded 2026-07-29) | FAIL check 2 |
 | the 26-byte contended-garbage capture (recorded 2026-07-29) | inconclusive / SKIPPED, **not** PASS, and no exception |
 | `[BOOT] env=crowpanel` when `crowpanel_obd` was flashed | **FAIL check 5** |
+| banner line 1 only (line 2 lost to the reopen race) | SKIPPED, **not** PASS — a missing number is as unusable as a garbled one, and `heap=0` in `verdict.json` would be a fabricated measurement |
 
-`ports.py` is tested against faked `list_ports` data. CI gains one job in `ci.yml` running
-`pytest tools/hil/tests -q`; no board is required.
+The exit-code mapping is a pure function (`parse.exit_code`) with its own tests, for the same
+reason: miscounting a SKIP as a PASS would silently convert every exit 3 into an exit 0, which is
+the worst thing this rig could do.
 
-Golden logs carry a scrubbed MAC address, and any VIN uses the repository's fake-VIN convention
+`ports.py` is tested against faked `list_ports` data. `ci.yml`'s existing test job gains one step,
+`cd tools/hil && python -m pytest tests -q`; no board is required. The CLI's own
+unwind guarantees are covered in `tests/test_cli.py`, which stubs `sys.modules["serial"]` with
+`unittest.mock` so that step still needs neither a board nor `pyserial`.
+
+Golden logs are swept for the board's MAC address and for VIN-shaped strings before being
+committed; the current fixtures needed no edits, so `tests/logs/*.log` are verbatim captures. Any
+VIN that ever does appear in a fixture must use the repository's fake-VIN convention
 (`3GT0123456789ABCD`). `check_no_pii.py` already gates this in CI.
 
 ## Follow-ups, not in Phase 1
@@ -271,5 +302,5 @@ Golden logs carry a scrubbed MAC address, and any VIN uses the repository's fake
 - Periodic heap line, enabling real leak detection during soak.
 - `-D HIL_INPUT=1` encoder-event injection, if on-device UI bugs prove to be escaping.
 - Phase 2: the fake BLE adapter (Ircama ELM327-emulator behind a BlueZ GATT shim). This is where
-  v0.1.0-class failures become detectable. See `OBD-BACKLOG.md` §12.
+  v0.1.0-class failures become detectable. See `docs/OBD-BACKLOG.md` §12 (private).
 - Wiring the rig into the PR template's manual on-hardware gate, once it has earned that trust.

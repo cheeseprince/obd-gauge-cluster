@@ -34,7 +34,12 @@ cd tools/hil
 python3 -m hil                          # both environments, 300 s soak each
 python3 -m hil --env crowpanel --soak 60
 python3 -m hil --expect-knob yes        # assert a Modulino knob is attached
+python3 -m hil --boot-window 25         # longer post-flash capture (default 15 s)
+python3 -m hil --allow-skips            # accept SKIPped checks (exit 0, not 3)
 ```
+
+`--soak 0` skips the soak; the soak check then reports **SKIP**, not PASS, so the
+run exits 3. A check that never ran is never green here.
 
 Ports are found by VID:PID (`303a:1001` native, `1a86:7522` UART bridge).
 Override with `HIL_PORT_NATIVE` / `HIL_PORT_UART`.

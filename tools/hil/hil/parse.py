@@ -44,12 +44,16 @@ class Banner:
 _KV = re.compile(r"(\w+)=([^\s]+)")
 
 
-def _num(raw: str | None, default: int, unit: str = "") -> int | None:
-    """Parse a numeric banner field. None means PRESENT BUT GARBLED.
+def _num(raw: str | None, default: int | None, unit: str = "") -> int | None:
+    """Parse a numeric banner field. None means UNUSABLE — missing or garbled.
 
-    A missing field falls back to `default`; a corrupted one returns None so the
-    caller can treat the whole banner as unusable. Garbled evidence is not
-    evidence.
+    A corrupted field returns None so the caller can treat the whole banner as
+    unusable. A missing field falls back to `default`, and every caller in
+    `parse_banner` passes `default=None` on purpose: a field that never arrived
+    is exactly as unusable as one that arrived garbled, and substituting a
+    plausible-looking number (heap=0, psram=0MB) would record a fabricated
+    measurement in `verdict.json` as if it had been observed. Absent evidence
+    is not evidence.
     """
     if raw is None:
         return default
@@ -69,7 +73,12 @@ def parse_banner(native_log: str) -> Banner | None:
     distinguish "no evidence" (SKIP) from "wrong" (FAIL). A banner whose numeric
     fields are garbled (a reader contending with esptool truncates mid-line) is
     treated the same way: unusable, so callers SKIP rather than trust a
-    plausible-looking but wrong number.
+    plausible-looking but wrong number. So is a banner whose numeric fields are
+    *missing*: the banner is two lines from one Serial.println and
+    `capture_native` reopens the port ~1 s after reset, so a capture can land
+    line 1 and lose line 2 entirely. That yields env/ver/git but no
+    psram/flash/reset/heap, and a Banner reporting heap=0 would be a fabricated
+    measurement, not a captured one.
     """
     fields: dict[str, str] = {}
     for line in native_log.splitlines():
@@ -78,15 +87,22 @@ def parse_banner(native_log: str) -> Banner | None:
     if not fields:
         return None
 
-    psram = _num(fields.get("psram"), 0, "MB")
-    flash = _num(fields.get("flash"), 0, "MB")
-    reset = _num(fields.get("reset"), -1)
-    heap = _num(fields.get("heap"), 0)
+    # `default=None` on all four: missing is as unusable as garbled. `reset` is
+    # required alongside the other three deliberately, and requiring it costs
+    # nothing — all four are printed by the SAME Serial.println (banner line 2),
+    # so a capture missing `reset` is already missing psram/flash/heap and would
+    # be rejected anyway. Requiring it buys one rule instead of two, and keeps
+    # `Banner.reset` from ever holding a sentinel that a future reset-reason
+    # check would read back as real data.
+    psram = _num(fields.get("psram"), None, "MB")
+    flash = _num(fields.get("flash"), None, "MB")
+    reset = _num(fields.get("reset"), None)
+    heap = _num(fields.get("heap"), None)
 
-    # Any garbled numeric field makes the whole banner unusable. Returning None
-    # routes the caller to SKIP ("no usable banner") rather than handing back a
-    # Banner with a silently wrong number in it — a plausible-looking lie is
-    # worse than an admitted absence.
+    # Any missing or garbled numeric field makes the whole banner unusable.
+    # Returning None routes the caller to SKIP ("no usable banner") rather than
+    # handing back a Banner with a silently wrong number in it — a
+    # plausible-looking lie is worse than an admitted absence.
     if None in (psram, flash, reset, heap):
         return None
 
@@ -153,7 +169,14 @@ def check_boot_mode(uart_log: str) -> Verdict:
     resetting the board INTO download mode to write the new image. That line
     is always present and is not a failure; the boot state that actually
     matters is whatever the board most recently reset into (the post-flash
-    boot, or a later in-run reset/panic if one happened during the soak).
+    boot, or a later in-run reset if one happened during the soak).
+
+    Note what this does NOT detect. The ROM `boot:0x…` field reports the SPI
+    strapping boot mode, not the reset cause, so a board that reset from a
+    watchdog or a panic still comes back up as SPI_FAST_FLASH_BOOT. A later
+    reset therefore changes nothing here; panic and watchdog detection live in
+    `check_no_panic` and `check_no_wdt_spam`, which read the reset's own
+    output.
     """
     matches = list(_ROM_BOOT.finditer(uart_log))
     if not matches:
@@ -240,6 +263,16 @@ def check_encoder(native_log: str, expect: str) -> Verdict:
     return Verdict("encoder", Status.FAIL, f"expected {expect}, got {state}")
 
 
+# The two ack checks below FAIL rather than SKIP on empty input, which looks
+# inconsistent with `_has_native_evidence` above — it is deliberate, so please
+# do not "fix" it. The negative-marker checks gate on evidence because "I saw no
+# panic" is meaningless if nobody was listening. These two are the opposite
+# shape: `__main__` only calls them after a key was actually written to a live
+# port, so an empty reply window is not absence of observation, it is a positive
+# observation that the firmware did not answer — exactly the LVGL-repaint-hang
+# class they exist to catch. (The "was the port live at all" question is already
+# answered upstream: `_run_env` skips both checks and emits an explicit
+# "console probes" SKIP when the boot capture came back empty.)
 def check_theme_ack(native_log: str) -> Verdict:
     if "[THEME]" in native_log:
         return Verdict("theme ack ('n')", Status.PASS)
@@ -261,3 +294,69 @@ def check_ble_scanning(native_log: str) -> Verdict:
         return Verdict("BLE scanning", Status.PASS)
     return Verdict("BLE scanning", Status.FAIL,
                    "state machine never reported a scan")
+
+
+# --- cross-cutting verdict logic -------------------------------------------
+
+# The checks that read nothing but the UART capture. If the tap dies mid-run,
+# their evidence stops at that moment while their PASS conditions stay satisfied
+# by the text captured earlier, so they must be downgraded by name.
+UART_DERIVED_CHECKS = ("boot mode", "no panic", "no task_wdt spam")
+
+
+def downgrade_uart_verdicts(verdicts: list[Verdict], reason: str) -> list[Verdict]:
+    """Rewrite PASSing UART-derived verdicts to SKIP when the tap died mid-run.
+
+    Why this is necessary: every UART check's PASS condition is satisfied by
+    *retained* text. `UartTap.text` keeps everything captured before the tap
+    died, so a cable pulled at t+50 s of a 300 s soak still leaves the
+    post-flash ROM boot line in the buffer. `check_boot_mode` then PASSes on it,
+    and it also satisfies `_has_uart_evidence`, so `check_no_panic` and
+    `check_no_wdt_spam` PASS for having seen no markers in the 50 s they
+    observed — reporting a green run that watched 17% of its window.
+
+    A FAIL is left alone on purpose. A panic that was actually observed is real
+    evidence no matter what happened to the cable afterwards, and demoting it to
+    SKIP would discard the single most valuable thing the run found. An existing
+    SKIP is left alone too: it already says "no evidence".
+    """
+    out: list[Verdict] = []
+    for v in verdicts:
+        if v.check in UART_DERIVED_CHECKS and v.status is Status.PASS:
+            detail = f"UART tap died mid-run ({reason}); PASS not trustworthy"
+            out.append(Verdict(v.check, Status.SKIP, detail))
+        else:
+            out.append(v)
+    return out
+
+
+def exit_code(verdicts: list[Verdict], allow_skips: bool = False) -> int:
+    """Map a verdict table to a process exit code. Pure, so it is testable.
+
+        1  any FAIL                       -> firmware problem
+        3  any SKIP and not allow_skips   -> passed, but tested less than claimed
+        0  otherwise
+
+    FAIL outranks SKIP: a run that both failed and skipped is a firmware
+    problem, and 1 is the louder, more actionable answer.
+
+    Rig errors (code 2) are deliberately NOT decidable here — they are the
+    caller's concern, raised as exceptions before any verdict table exists, and
+    they take precedence over everything this function can return.
+
+    An EMPTY verdict list returns 3, and does so even under `allow_skips`. No
+    verdicts at all is the most complete form of "no evidence captured", so it
+    must never be 0; and `--allow-skips` is a statement that *particular known
+    checks* may be absent on this bench, not a licence to accept a run that
+    asserted nothing whatsoever. This case is not reachable from `__main__`
+    today (every path appends at least one verdict) — it is pinned so that a
+    future refactor which can produce an empty table fails loudly instead of
+    exiting 0.
+    """
+    if not verdicts:
+        return 3
+    if any(v.status is Status.FAIL for v in verdicts):
+        return 1
+    if not allow_skips and any(v.status is Status.SKIP for v in verdicts):
+        return 3
+    return 0

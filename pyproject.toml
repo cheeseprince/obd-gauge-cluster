@@ -1,8 +1,8 @@
 [tool.ruff]
 # Only lint the Python tooling; firmware (C++) lives elsewhere.
 #
-# tools/hil was added to this list 2026-07-29 (Task 8 of the HIL Phase 1
-# plan): before this fix, `include` silently scoped OUT tools/hil even when
+# tools/hil was added to this list 2026-07-29, when the HIL rig landed:
+# before that, `include` silently scoped OUT tools/hil even when
 # it was named explicitly on the CLI (`ruff check tools/obd_scan tools/hil`,
 # ci.yml's lint job) — confirmed by adding a deliberately-unused import to
 # hil/parse.py and observing ruff report zero files/zero violations both

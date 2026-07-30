@@ -7,10 +7,12 @@ Never hardcode /dev/ttyACM0. Two reasons, both real:
     business being committed to a public repository.
 
 This module takes an injected device list rather than calling pyserial, so it
-imports cleanly in CI where no board and no pyserial exist. Task 5's
-runner.py is where the real serial.tools.list_ports.comports() call lives,
-and the environment-variable overrides (HIL_PORT_NATIVE / HIL_PORT_UART) are
-also runner.py's job to read — this module only accepts them as parameters.
+imports cleanly in CI where no board and no pyserial exist — that purity is what
+lets the rig's tests run without a lockfile entry for pyserial, so keep it.
+`runner.py` is the only place the real serial.tools.list_ports.comports() call
+lives, and reading the environment-variable overrides (HIL_PORT_NATIVE /
+HIL_PORT_UART) is likewise runner.py's job — this module only accepts them as
+parameters.
 """
 from __future__ import annotations
 

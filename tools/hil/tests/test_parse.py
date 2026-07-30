@@ -13,6 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import pytest
 from hil.parse import (
     Status,
+    Verdict,
     check_app_wdt_clean,
     check_banner_env,
     check_ble_scanning,
@@ -22,6 +23,8 @@ from hil.parse import (
     check_no_panic,
     check_no_wdt_spam,
     check_theme_ack,
+    downgrade_uart_verdicts,
+    exit_code,
     parse_banner,
 )
 
@@ -44,8 +47,9 @@ rst:0x15 (USB_UART_CHIP_RESET),boot:0x2 (DOWNLOAD(USB/UART0))
 waiting for download
 """
 
-# Real capture, 2026-07-29 (`tools/hil/tests/logs/uart_boot.log`, scrubbed of
-# nothing — this board has no PII on the UART side). runner.py opens the UART
+# Real capture, 2026-07-29 (`tools/hil/tests/logs/uart_boot.log`, which is
+# verbatim: the scrub sweep for the board's MAC and the VIN pattern found
+# nothing to remove on the UART side). runner.py opens the UART
 # tap BEFORE flashing, so every genuine capture starts with esptool's own
 # reset INTO download mode to write the image, followed by the real post-flash
 # boot. Both ROM boot lines land in one capture; check_boot_mode must judge
@@ -81,6 +85,14 @@ HEALTHY_NATIVE = """\
 [BOOT] psram=8MB flash=16MB reset=1 heap=241344
 [encoder] found
 [BLE] scanning 6s …
+"""
+
+# The banner is two lines from one Serial.println, and capture_native reopens
+# the port ~1 s after reset — so a capture can land line 1 and lose line 2
+# entirely. Everything textual is present; every NUMBER is absent.
+TRUNCATED_BANNER_NATIVE = """\
+[BOOT] env=crowpanel_obd ver=local git=local profile=gm_sierra_lz0
+[encoder] found
 """
 
 # --- v0.1.1, replayed ------------------------------------------------------
@@ -128,6 +140,31 @@ def test_parse_banner_returns_none_on_a_garbled_number():
 def test_parse_banner_returns_none_on_a_garbled_size():
     text = HEALTHY_NATIVE.replace("psram=8MB", "psram=?MB")
     assert parse_banner(text) is None
+
+
+def test_parse_banner_returns_none_when_line_two_was_never_captured():
+    # A MISSING number must be as unusable as a garbled one. Before this,
+    # _num() substituted 0 for anything absent, so a capture holding only
+    # banner line 1 produced a VALID Banner claiming psram=0MB flash=0MB
+    # heap=0 — and verdict.json recorded heap 0 as a real measurement.
+    assert parse_banner(TRUNCATED_BANNER_NATIVE) is None
+
+
+@pytest.mark.parametrize("field", ["psram=8MB", "flash=16MB", "reset=1", "heap=241344"])
+def test_parse_banner_requires_every_numeric_field(field):
+    # All four are printed by the same Serial.println, so in practice they go
+    # missing together — but each is individually required, so no single one can
+    # be quietly defaulted back to a fabricated value later.
+    text = HEALTHY_NATIVE.replace(field + " ", "").replace(" " + field, "")
+    assert field not in text
+    assert parse_banner(text) is None
+
+
+def test_check_banner_env_skips_on_a_truncated_banner():
+    # The verdict-level consequence: an admitted absence (SKIP -> exit 3), not
+    # a green check backed by fabricated zeros.
+    v = check_banner_env(TRUNCATED_BANNER_NATIVE, "crowpanel_obd")
+    assert v.status is Status.SKIP
 
 
 def test_boot_mode_passes_on_flash_boot():
@@ -313,8 +350,10 @@ def test_ble_scanning_fails_when_the_state_machine_never_scans():
 #
 # Everything above is a fixture typed by hand. These two files are not: they
 # are `runs/20260729T214724-crowpanel/{native,uart}.log` from the rig's first
-# real run against hardware (2026-07-29), copied verbatim except for the
-# scrub sweep (see the commit message / task-8 report for the exact steps).
+# real run against hardware (2026-07-29), copied verbatim — the pre-commit
+# scrub swept for the board's MAC address and for the repository's fake-VIN
+# pattern and found neither, so nothing was edited out and these bytes are
+# exactly what the board emitted.
 # The uart.log fixture's raw ROM-download bytes are what motivated the
 # check_boot_mode fix above (TWO_BOOT_UART is a hand-shortened stand-in for
 # this same real shape) — this test locks the parser against the actual
@@ -337,3 +376,109 @@ def test_real_captured_boot_log_parses_and_passes():
     assert check_boot_mode(uart).status is Status.PASS
     assert check_no_panic(uart).status is Status.PASS
     assert check_no_wdt_spam(uart).status is Status.PASS
+
+
+# --- the exit-code contract ------------------------------------------------
+#
+# This mapping is the rig's whole promise: "the rig is broken" must never read
+# as "the firmware is good", and neither must "we did not look". It was pure
+# logic inline in __main__ with no tests at all, where miscounting a SKIP as a
+# PASS would silently convert every exit 3 into an exit 0.
+
+def _v(status, name="c"):
+    return Verdict(name, status)
+
+
+def test_exit_code_all_pass_is_zero():
+    assert exit_code([_v(Status.PASS), _v(Status.PASS)]) == 0
+
+
+def test_exit_code_any_fail_is_one():
+    assert exit_code([_v(Status.PASS), _v(Status.FAIL)]) == 1
+
+
+def test_exit_code_fail_outranks_skip():
+    # A run that both failed and skipped is a firmware problem: 1, the louder
+    # and more actionable answer, not 3.
+    assert exit_code([_v(Status.SKIP), _v(Status.FAIL)]) == 1
+
+
+def test_exit_code_fail_outranks_skip_even_with_allow_skips():
+    # --allow-skips forgives absence, never a failure.
+    assert exit_code([_v(Status.SKIP), _v(Status.FAIL)], allow_skips=True) == 1
+
+
+def test_exit_code_skip_alone_is_three():
+    assert exit_code([_v(Status.PASS), _v(Status.SKIP)]) == 3
+
+
+def test_exit_code_allow_skips_turns_three_into_zero():
+    assert exit_code([_v(Status.PASS), _v(Status.SKIP)], allow_skips=True) == 0
+
+
+def test_exit_code_of_an_empty_table_is_three_even_with_allow_skips():
+    # Documented decision: no verdicts at all is the most complete form of "no
+    # evidence captured", so it can never be 0. --allow-skips says specific
+    # known checks may be absent on this bench; it is not permission to accept a
+    # run that asserted nothing whatsoever. Unreachable from __main__ today —
+    # pinned so a refactor that can emit an empty table fails loudly.
+    assert exit_code([]) == 3
+    assert exit_code([], allow_skips=True) == 3
+
+
+# --- a dead UART tap must not leave green checks behind --------------------
+
+def _uart_verdicts():
+    """What the three UART checks return from a capture that STOPPED EARLY.
+
+    This is the dangerous shape: text captured before the tap died still holds
+    the post-flash ROM boot line, so check_boot_mode passes on it and it also
+    satisfies the evidence gate for the two negative-marker checks. All three
+    come back PASS having observed a fraction of the run.
+    """
+    return [
+        Verdict("flash", Status.PASS, "crowpanel"),
+        check_boot_mode(TWO_BOOT_UART),
+        check_no_panic(TWO_BOOT_UART),
+        check_no_wdt_spam(TWO_BOOT_UART),
+    ]
+
+
+def test_a_healthy_capture_really_does_pass_all_three_uart_checks():
+    # The premise of the downgrade: without it, these are three green checks.
+    assert [v.status for v in _uart_verdicts()[1:]] == [Status.PASS] * 3
+    assert exit_code(_uart_verdicts()) == 0
+
+
+def test_dead_tap_downgrades_uart_passes_to_skip():
+    out = downgrade_uart_verdicts(_uart_verdicts(), "UART tap died: [Errno 5] I/O error")
+    by_name = {v.check: v for v in out}
+    for name in ("boot mode", "no panic", "no task_wdt spam"):
+        assert by_name[name].status is Status.SKIP
+        assert "UART tap died" in by_name[name].detail
+    # ...and the run stops claiming to be green.
+    assert exit_code(out) == 3
+
+
+def test_dead_tap_leaves_non_uart_verdicts_alone():
+    out = downgrade_uart_verdicts(_uart_verdicts(), "cable out")
+    assert out[0] == Verdict("flash", Status.PASS, "crowpanel")
+
+
+def test_dead_tap_preserves_an_observed_fail():
+    # A panic that was actually SEEN is real evidence no matter what happened to
+    # the cable afterwards. Demoting it to SKIP would discard the single most
+    # valuable thing the run found.
+    fail = check_no_panic(PANIC_UART)
+    assert fail.status is Status.FAIL
+    out = downgrade_uart_verdicts([fail], "cable out")
+    assert out == [fail]
+    assert exit_code(out) == 1
+
+
+def test_dead_tap_leaves_an_existing_skip_untouched():
+    # An empty capture already says "no evidence"; rewriting it would only lose
+    # the more specific reason.
+    skip = check_no_panic("")
+    assert skip.status is Status.SKIP
+    assert downgrade_uart_verdicts([skip], "cable out") == [skip]
