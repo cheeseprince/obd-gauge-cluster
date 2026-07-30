@@ -92,6 +92,16 @@ def test_parse_banner_tolerates_an_unknown_future_field():
     assert b is not None and b.heap == 241344
 
 
+def test_parse_banner_returns_none_on_a_garbled_number():
+    text = HEALTHY_NATIVE.replace("heap=241344", "heap=24\x001344")
+    assert parse_banner(text) is None
+
+
+def test_parse_banner_returns_none_on_a_garbled_size():
+    text = HEALTHY_NATIVE.replace("psram=8MB", "psram=?MB")
+    assert parse_banner(text) is None
+
+
 def test_boot_mode_passes_on_flash_boot():
     assert check_boot_mode(HEALTHY_UART).status is Status.PASS
 
@@ -117,6 +127,11 @@ def test_no_panic_fails_on_guru_meditation():
     assert "Guru Meditation" in v.detail
 
 
+def test_no_panic_skips_on_an_empty_capture():
+    # A dead UART port is not a clean bill of health.
+    assert check_no_panic("").status is Status.SKIP
+
+
 def test_wdt_spam_passes_on_clean_log():
     assert check_no_wdt_spam(HEALTHY_UART).status is Status.PASS
 
@@ -136,18 +151,50 @@ def test_wdt_spam_fails_on_even_a_single_line():
     assert v.status is Status.FAIL
 
 
+def test_wdt_spam_skips_on_an_empty_capture():
+    assert check_no_wdt_spam("").status is Status.SKIP
+
+
+def test_uart_checks_skip_on_the_contended_garbage_capture():
+    # Real 26-byte capture from a reader contending with esptool: it contains the
+    # ROM's first line but no boot: line, so it is not UART evidence.
+    for v in (check_no_panic(CONTENDED_NATIVE), check_no_wdt_spam(CONTENDED_NATIVE)):
+        assert v.status is Status.SKIP
+
+
 def test_app_wdt_clean_flags_reconfigure_failure():
-    v = check_app_wdt_clean("[WDT] reconfigure failed: -1\n")
+    # main.cpp:159 logs this before the banner at line 172-191, but setup()
+    # continues past it and the banner still prints — so a real capture of this
+    # marker always carries [BOOT] evidence too. The fixture reflects that.
+    v = check_app_wdt_clean(
+        "[BOOT] env=crowpanel_obd ver=local git=local profile=generic\n"
+        "[WDT] reconfigure failed: -1\n"
+    )
     assert v.status is Status.FAIL
 
 
 def test_app_wdt_clean_flags_the_240s_stall_restart():
-    v = check_app_wdt_clean("[WDT] OBD task stalled >240s — restarting\n")
+    # main.cpp:230 fires from loop(), which only runs after setup() already
+    # printed the banner — so this marker is likewise always preceded by [BOOT]
+    # in a genuine capture.
+    v = check_app_wdt_clean(
+        "[BOOT] env=crowpanel_obd ver=local git=local profile=generic\n"
+        "[WDT] OBD task stalled >240s — restarting\n"
+    )
     assert v.status is Status.FAIL
 
 
 def test_app_wdt_clean_passes_on_healthy_native_log():
     assert check_app_wdt_clean(HEALTHY_NATIVE).status is Status.PASS
+
+
+def test_app_wdt_clean_skips_on_an_empty_capture():
+    assert check_app_wdt_clean("").status is Status.SKIP
+
+
+def test_app_wdt_clean_skips_when_the_banner_never_arrived():
+    # Console output with no [BOOT] means the app never finished setup().
+    assert check_app_wdt_clean("[BLE] scanning\n").status is Status.SKIP
 
 
 def test_banner_env_passes_when_it_matches():
@@ -163,6 +210,12 @@ def test_banner_env_fails_on_a_wrong_env_flash():
 
 def test_banner_env_skips_when_the_banner_never_arrived():
     assert check_banner_env(CONTENDED_NATIVE, "crowpanel").status is Status.SKIP
+
+
+def test_check_banner_env_skips_rather_than_raising_on_a_garbled_banner():
+    # The whole point: a corrupted capture yields a verdict, never a traceback.
+    text = HEALTHY_NATIVE.replace("reset=1", "reset=x")
+    assert check_banner_env(text, "crowpanel_obd").status is Status.SKIP
 
 
 @pytest.mark.parametrize(

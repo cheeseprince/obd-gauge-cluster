@@ -44,12 +44,32 @@ class Banner:
 _KV = re.compile(r"(\w+)=([^\s]+)")
 
 
+def _num(raw: str | None, default: int, unit: str = "") -> int | None:
+    """Parse a numeric banner field. None means PRESENT BUT GARBLED.
+
+    A missing field falls back to `default`; a corrupted one returns None so the
+    caller can treat the whole banner as unusable. Garbled evidence is not
+    evidence.
+    """
+    if raw is None:
+        return default
+    if unit:
+        raw = raw.removesuffix(unit)
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 def parse_banner(native_log: str) -> Banner | None:
     """Merge every `[BOOT]` line's key=value pairs into one Banner.
 
     Returns None when no banner was captured, which is a genuinely different
     outcome from a banner that disagrees with expectations — callers must
-    distinguish "no evidence" (SKIP) from "wrong" (FAIL).
+    distinguish "no evidence" (SKIP) from "wrong" (FAIL). A banner whose numeric
+    fields are garbled (a reader contending with esptool truncates mid-line) is
+    treated the same way: unusable, so callers SKIP rather than trust a
+    plausible-looking but wrong number.
     """
     fields: dict[str, str] = {}
     for line in native_log.splitlines():
@@ -58,25 +78,61 @@ def parse_banner(native_log: str) -> Banner | None:
     if not fields:
         return None
 
-    def mb(key: str) -> int:
-        # Values arrive as "8MB"; strip the unit rather than assuming a width.
-        return int(fields.get(key, "0").removesuffix("MB") or 0)
+    psram = _num(fields.get("psram"), 0, "MB")
+    flash = _num(fields.get("flash"), 0, "MB")
+    reset = _num(fields.get("reset"), -1)
+    heap = _num(fields.get("heap"), 0)
+
+    # Any garbled numeric field makes the whole banner unusable. Returning None
+    # routes the caller to SKIP ("no usable banner") rather than handing back a
+    # Banner with a silently wrong number in it — a plausible-looking lie is
+    # worse than an admitted absence.
+    if None in (psram, flash, reset, heap):
+        return None
 
     return Banner(
         env=fields.get("env", ""),
         version=fields.get("ver", ""),
         git=fields.get("git", ""),
         profile=fields.get("profile", ""),
-        psram_mb=mb("psram"),
-        flash_mb=mb("flash"),
-        reset=int(fields.get("reset", "-1")),
-        heap=int(fields.get("heap", "0")),
+        psram_mb=psram,
+        flash_mb=flash,
+        reset=reset,
+        heap=heap,
     )
 
 
 # --- UART bridge checks ----------------------------------------------------
 
 _ROM_BOOT = re.compile(r"boot:0x[0-9a-f]+ \(([^)]+)\)")
+
+
+# --- evidence gates ---------------------------------------------------------
+#
+# A check that scans for negative markers ("no panic", "no spam") is only
+# meaningful if we were actually listening. On an empty capture — dead port,
+# lost re-enumeration race, cable out — "I found no panic" is not good news, it
+# is no news, and reporting it as PASS is how a rig silently stops testing while
+# looking green. Every negative-marker check gates on one of these.
+
+
+def _has_uart_evidence(uart_log: str) -> bool:
+    """True when the UART capture proves the port was live and the board booted.
+
+    The ROM bootloader line is emitted on every boot before any application code
+    runs, so its absence means we captured nothing at all.
+    """
+    return _ROM_BOOT.search(uart_log) is not None
+
+
+def _has_native_evidence(native_log: str) -> bool:
+    """True when the native capture proves the application actually ran.
+
+    setup() prints the [BOOT] banner unconditionally at its end, so no banner
+    means no usable application log — the CDC port never came back, or the
+    firmware died before reaching the end of setup().
+    """
+    return "[BOOT]" in native_log
 
 
 def check_boot_mode(uart_log: str) -> Verdict:
@@ -98,6 +154,8 @@ _PANIC_MARKERS = ("Guru Meditation", "Backtrace:", "StoreProhibited", "LoadProhi
 
 
 def check_no_panic(uart_log: str) -> Verdict:
+    if not _has_uart_evidence(uart_log):
+        return Verdict("no panic", Status.SKIP, "no UART evidence captured")
     hits = [m for m in _PANIC_MARKERS if m in uart_log]
     if hits:
         return Verdict("no panic", Status.FAIL, f"found {', '.join(hits)}")
@@ -111,6 +169,8 @@ _WDT_SPAM = re.compile(r"task_wdt:.*(?:task not found|esp_task_wdt_reset)")
 
 
 def check_no_wdt_spam(uart_log: str) -> Verdict:
+    if not _has_uart_evidence(uart_log):
+        return Verdict("no task_wdt spam", Status.SKIP, "no UART evidence captured")
     n = len(_WDT_SPAM.findall(uart_log))
     if n:
         return Verdict("no task_wdt spam", Status.FAIL,
@@ -126,6 +186,8 @@ def check_app_wdt_clean(native_log: str) -> Verdict:
     main.cpp:157 logs a failed TWDT reconfigure; main.cpp:207 logs the 240 s
     OBD-stall restart. Neither should appear in a healthy bench run.
     """
+    if not _has_native_evidence(native_log):
+        return Verdict("app watchdog clean", Status.SKIP, "no native evidence captured")
     for marker in ("[WDT] reconfigure failed", "[WDT] OBD task stalled"):
         if marker in native_log:
             return Verdict("app watchdog clean", Status.FAIL, marker)
