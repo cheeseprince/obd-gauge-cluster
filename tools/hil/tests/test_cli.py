@@ -236,6 +236,57 @@ def test_a_dead_tap_downgrades_the_uart_checks_end_to_end(monkeypatch):
     assert exit_code(verdicts) != 0, "a dead tap must not exit 0"
 
 
+def test_the_probe_windows_are_five_seconds(monkeypatch):
+    # Pinned so nobody tightens them back to 2.0 s and reintroduces the
+    # 1-in-3 'mock alarm ack' flake measured on hardware 2026-07-29. 'n'
+    # repaints the whole 480x320 panel over SPI and the 's' key is not read
+    # until loop() finishes that work, so the budget must cover both.
+    seen = []
+
+    def send(port, key, secs):
+        seen.append((key, secs))
+        return HEALTHY_REPLY
+
+    _install(monkeypatch, send=send)
+    cli._run_env("crowpanel", PORTS, _args("--soak", "0"), art={"env": "crowpanel"})
+    assert seen == [("n", 5.0), ("s", 5.0)]
+
+
+def test_an_ack_arriving_only_during_the_soak_still_passes(monkeypatch):
+    """The 2026-07-29 flake, end to end.
+
+    Both probe windows come back EMPTY and the ack lands in the first soak
+    reply instead — which is exactly what happened on hardware, `[MOCK] alarm
+    sweep` present in the capture but a beat past its window. Checks 7 and 8
+    assert that the console answered and the render did not kill the firmware,
+    not that it answered inside a timer, so this must PASS.
+    """
+    send = _scripted_send(["", "", "[THEME] mode=ON\n[MOCK] alarm sweep\n"])
+    _install(monkeypatch, send=send)
+    verdicts = cli._run_env("crowpanel", PORTS, _args("--soak", "60"),
+                            art={"env": "crowpanel"})
+    by_name = {v.check: v for v in verdicts}
+    assert by_name["theme ack ('n')"].status is Status.PASS
+    assert by_name["mock alarm ack ('s')"].status is Status.PASS
+    # ...and latency is still asserted, just by the check that owns it.
+    assert by_name["soak liveness"].status is Status.PASS
+
+
+def test_a_console_that_never_answers_at_all_still_fails(monkeypatch):
+    # The negative that keeps the widened scope honest: no ack anywhere in the
+    # capture is positive evidence of a wedged console (a key WAS written), so
+    # both acks FAIL — not SKIP — and the soak's latency check fails too.
+    _install(monkeypatch, send=lambda port, key, secs: "")
+    verdicts = cli._run_env("crowpanel", PORTS, _args("--soak", "60"),
+                            art={"env": "crowpanel"})
+    by_name = {v.check: v for v in verdicts}
+    assert by_name["theme ack ('n')"].status is Status.FAIL
+    assert by_name["mock alarm ack ('s')"].status is Status.FAIL
+    assert by_name["soak liveness"].status is Status.FAIL
+    from hil.parse import exit_code
+    assert exit_code(verdicts) == 1
+
+
 def test_a_healthy_run_passes_every_check(monkeypatch):
     # The baseline this all sits on: with healthy fakes the rig is green, so the
     # SKIPs above are real signal rather than a rig that can no longer pass.

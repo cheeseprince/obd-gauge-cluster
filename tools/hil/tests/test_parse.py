@@ -335,6 +335,37 @@ def test_mock_alarm_ack_matches_either_mock_state():
     assert check_mock_alarm_ack("").status is Status.FAIL
 
 
+# The real 2026-07-29 flake: `[MOCK] alarm sweep` WAS emitted, ~2 s late, and so
+# landed in the soak portion of the capture rather than the 's' probe window.
+# Both acks are evaluated over the whole capture now, so a late-but-present ack
+# counts. `'n'`/`'s'` are sent once per run, so any such line is that one ack.
+LATE_ACK_BOOT = "[BOOT] env=crowpanel ver=local git=local profile=generic\n"
+LATE_ACK_SOAK = "[THEME] night (resolved, mode=ON)\n[MOCK] alarm sweep\n"
+
+
+def test_acks_pass_when_the_reply_arrives_only_in_the_soak_portion():
+    combined = LATE_ACK_BOOT + LATE_ACK_SOAK
+    assert check_theme_ack(combined).status is Status.PASS
+    assert check_mock_alarm_ack(combined).status is Status.PASS
+
+
+def test_acks_still_fail_when_the_ack_is_nowhere_in_the_capture():
+    # The negative case must still bite, or widening the scope would have turned
+    # these into checks that can no longer fail. A boot banner with no ack means
+    # a key was written and nothing ever came back — positive evidence of a
+    # wedged console, not absence of observation, hence FAIL and not SKIP.
+    assert check_theme_ack(LATE_ACK_BOOT).status is Status.FAIL
+    assert check_mock_alarm_ack(LATE_ACK_BOOT).status is Status.FAIL
+    assert check_theme_ack("").status is Status.FAIL
+    assert check_mock_alarm_ack("").status is Status.FAIL
+
+
+def test_a_theme_ack_is_not_accepted_as_a_mock_ack():
+    # Widened scope must not blur the two stimuli into one another.
+    assert check_mock_alarm_ack(LATE_ACK_BOOT + "[THEME] night\n").status is Status.FAIL
+    assert check_theme_ack(LATE_ACK_BOOT + "[MOCK] alarm sweep\n").status is Status.FAIL
+
+
 def test_ble_scanning_matches_the_utf8_ellipsis_line():
     # ble_obd_source.cpp:309 uses U+2026, NOT three ASCII dots. Matching "..."
     # would silently never fire, so the check must key off the prefix.

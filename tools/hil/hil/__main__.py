@@ -136,10 +136,18 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
 
             # Console probes. Skip them outright if the boot capture is empty —
             # the port never came back, so writing to it would only raise.
+            #
+            # 5.0 s, not 2.0 s, and do not tighten it again. Measured
+            # 2026-07-29: at 2.0 s the 's' ack missed its window on 1 run in 3.
+            # 'n' triggers a day/night theme change — a full-screen repaint of a
+            # 480x320 ILI9488 over SPI plus a backlight change — and the 's' key
+            # is not even READ until loop() finishes that repaint. So the 's'
+            # budget has to cover the tail of the 'n' work as well as its own
+            # render. 2 s was simply tighter than what precedes it.
             if native:
-                native += send_key_and_capture(ports.native, "n", 2.0)
+                native += send_key_and_capture(ports.native, "n", 5.0)
                 if env == "crowpanel":
-                    native += send_key_and_capture(ports.native, "s", 2.0)
+                    native += send_key_and_capture(ports.native, "s", 5.0)
 
             # Soak with an ACTIVE liveness probe. Silence cannot distinguish
             # "healthy and idle" from "wedged", so poke it and require an answer.
@@ -199,10 +207,29 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
         parse.check_encoder(native, a.expect_knob),
     ]
     if native:
-        verdicts.append(parse.check_theme_ack(native))
+        # The two ack checks read `all_native` (boot + probes + soak), not just
+        # the probe windows. They assert "the console answered and the render did
+        # not kill the firmware" — NOT "it answered within N seconds". Binding a
+        # render-liveness assertion to a tight timer is what made check 8 flaky
+        # (measured 1 FAIL in 3 runs on 2026-07-29, with `[MOCK] alarm sweep`
+        # present in the capture but landing just past the window).
+        #
+        # No rigour is lost, for two independent reasons:
+        #   * each key is sent EXACTLY ONCE per run, so any [MOCK] line anywhere
+        #     in the capture is that one ack — it cannot be confused with
+        #     another stimulus.
+        #   * response *latency* is still asserted, by the soak: every 30 s 'n'
+        #     probe must answer inside its own step or "soak liveness" FAILs.
+        #     That property is pinned there, not here.
+        # An empty capture still FAILs both, which is deliberate — see the
+        # comment above check_theme_ack in parse.py.
+        verdicts.append(parse.check_theme_ack(all_native))
         if env == "crowpanel":
-            verdicts.append(parse.check_mock_alarm_ack(native))
+            verdicts.append(parse.check_mock_alarm_ack(all_native))
         if env == "crowpanel_obd":
+            # Deliberately NOT all_native: check 9 is documented as "appears at
+            # least once in the boot capture", and the state machine is expected
+            # to start scanning at boot, not eventually.
             verdicts.append(parse.check_ble_scanning(native))
     else:
         verdicts.append(Verdict("console probes", Status.SKIP,

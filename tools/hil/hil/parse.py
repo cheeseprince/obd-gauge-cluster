@@ -268,21 +268,34 @@ def check_encoder(native_log: str, expect: str) -> Verdict:
 # do not "fix" it. The negative-marker checks gate on evidence because "I saw no
 # panic" is meaningless if nobody was listening. These two are the opposite
 # shape: `__main__` only calls them after a key was actually written to a live
-# port, so an empty reply window is not absence of observation, it is a positive
-# observation that the firmware did not answer — exactly the LVGL-repaint-hang
-# class they exist to catch. (The "was the port live at all" question is already
-# answered upstream: `_run_env` skips both checks and emits an explicit
-# "console probes" SKIP when the boot capture came back empty.)
+# port, so a capture with no ack in it is not absence of observation, it is a
+# positive observation that the firmware did not answer — exactly the
+# LVGL-repaint-hang class they exist to catch. (The "was the port live at all"
+# question is already answered upstream: `_run_env` skips both checks and emits
+# an explicit "console probes" SKIP when the boot capture came back empty.)
+#
+# Both take the WHOLE native capture (boot + probes + soak), not one probe
+# window. They assert that the console answered and the render did not kill the
+# firmware — not that it answered inside a timer. See the call site in
+# `__main__._run_env` for why that costs no rigour: each key is sent exactly
+# once per run, and response latency is asserted by the soak's own liveness
+# check.
 def check_theme_ack(native_log: str) -> Verdict:
+    """Did the `'n'` key ever get acknowledged? Scope: the whole capture."""
     if "[THEME]" in native_log:
         return Verdict("theme ack ('n')", Status.PASS)
-    return Verdict("theme ack ('n')", Status.FAIL, "no [THEME] line within the window")
+    return Verdict("theme ack ('n')", Status.FAIL, "no [THEME] line anywhere in the capture")
 
 
 def check_mock_alarm_ack(native_log: str) -> Verdict:
+    """Did the `'s'` key ever get acknowledged? Scope: the whole capture.
+
+    Matches any `[MOCK]` line: the key toggles, so which of `alarm sweep` /
+    `safe bands` comes back depends on the state the firmware booted with.
+    """
     if "[MOCK]" in native_log:
         return Verdict("mock alarm ack ('s')", Status.PASS)
-    return Verdict("mock alarm ack ('s')", Status.FAIL, "no [MOCK] line within the window")
+    return Verdict("mock alarm ack ('s')", Status.FAIL, "no [MOCK] line anywhere in the capture")
 
 
 def check_ble_scanning(native_log: str) -> Verdict:

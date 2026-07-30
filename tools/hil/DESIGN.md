@@ -129,7 +129,7 @@ Per environment — `crowpanel` (mock data) then `crowpanel_obd` (real, BLE):
 2. release the native port -> pio run -e <env> -t upload --upload-port <native>
 3. reopen the native port in a retry loop, tolerating ENODEV for ~2 s while it re-enumerates
 4. capture both ports for the boot window (default 15 s)
-5. inject keys, capturing each response window
+5. inject keys, capturing each response window (5 s each)
 6. soak (default 300 s) with an active liveness probe
 7. write artifacts, print the verdict table
 ```
@@ -148,13 +148,25 @@ capture still holds the boot reason and any panic output, so boot evidence is ne
 | 4b | no `[WDT] reconfigure failed`, no `[WDT] OBD task stalled` | native | the watchdog reconfigure silently failing; the 240 s stall restart firing | `main.cpp:157,207` |
 | 5 | `[BOOT]` present and its `env` matches the env just flashed | native | flashing the wrong environment | `default_envs = crowpanel_obd` makes this an easy mistake |
 | 6 | `[encoder] found\|MISSING` matches `--expect-knob` | native | I²C or knob wiring regression | `encoder_input.cpp:47`; v1.3.1 invisible-menu class |
-| 7 | `'n'` produces `[THEME]` within 2 s | native | LVGL repaint hang | — |
-| 8 | `'s'` produces **any** `[MOCK]` line, then no panic | native | full-screen alarm-overlay render crash | mock environment only; the toggle's direction depends on prior state, so either `[MOCK] alarm sweep` or `[MOCK] safe bands` counts |
+| 7 | `'n'` is acknowledged by a `[THEME]` line **somewhere in the run's capture** | native | a console that stopped answering; LVGL repaint hang | latency is asserted by check 10, not here |
+| 8 | `'s'` is acknowledged by **any** `[MOCK]` line, likewise anywhere in the capture, then no panic | native | full-screen alarm-overlay render crash | mock environment only; the toggle's direction depends on prior state, so either `[MOCK] alarm sweep` or `[MOCK] safe bands` counts |
 | 9 | `crowpanel_obd`: `[BLE] scanning` appears **at least once** | native | a state machine that never starts searching at all. It does **not** catch one that scanned once and then wedged — a single occurrence anywhere in the boot capture passes | `ble_obd_source.cpp:309`; the Phase 2 boundary |
 | 10 | soak: the `'n'` probe answers every 30 s for 300 s | native | silent late hang | v1.3.0 boot loop; the 240 s heartbeat path, `main.cpp:205-210` |
 
 Check 10 is an **active** probe rather than passive silence, because silence cannot distinguish
 "healthy and idle" from "wedged". It requires no firmware change.
+
+**Checks 7 and 8 assert acknowledgement, not latency** — deliberately, and this was learned the
+hard way. They were originally scoped to a 2 s reply window, and check 8 then FAILed on 1 run in
+3 (measured 2026-07-29) with `[MOCK] alarm sweep` *present in the capture* but a beat past the
+window: `'n'` triggers a full-screen repaint of the 480x320 ILI9488 over SPI plus a backlight
+change, and the `'s'` key is not even read until `loop()` finishes that work. A gate that fails
+one run in three teaches people to re-run until green, at which point it protects nothing. The
+windows are now 5 s and both checks are evaluated over the whole capture (boot + probes + soak).
+No rigour is lost: each key is sent exactly once per run, so any matching line is that one ack;
+and response *latency* is still asserted by check 10, which requires every 30 s probe to answer
+inside its own step. An empty capture still FAILs both — a key was written and nothing came
+back, which is positive evidence of a wedged console rather than absent evidence.
 
 ### CLI surface
 
