@@ -94,6 +94,9 @@ SRC_MENU  = test_settings_menu.cpp ../src/settings_menu.cpp
 BIN_CONN  = test_conn_status
 SRC_CONN  = test_conn_status.cpp ../src/conn_status.cpp
 
+BIN_BOOT  = test_boot_banner
+SRC_BOOT  = test_boot_banner.cpp ../src/boot_banner.cpp
+
 BIN_RTC   = test_rtc
 SRC_RTC   = test_rtc.cpp ../src/rtc.cpp
 
@@ -117,7 +120,7 @@ BIN_LFUZZ = fuzz_obd_harness
 SRC_LFUZZ = fuzz_obd_libfuzzer.cpp fuzz_obd_driver.cpp ../src/obd_parse.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 .PHONY: test clean fuzz test-ota-sign
-test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ)
+test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT)
 	./$(BIN_PID)
 	./$(BIN_PARSE)
 	./$(BIN_GAUGE)
@@ -153,6 +156,7 @@ test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(B
 	./$(BIN_VIN)
 	./$(BIN_FUZZ)
 	./$(BIN_LFUZZ)
+	./$(BIN_BOOT)
 	bash test_ota_sign.sh
 
 # Standalone: build + run just the sanitized fuzzer.
@@ -269,5 +273,8 @@ $(BIN_MENU): $(SRC_MENU) ../src/settings_menu.h
 $(BIN_CONN): $(SRC_CONN) ../src/obd_source.h ../src/app_types.h
 	$(CXX) $(CXXFLAGS) $(SRC_CONN) -o $(BIN_CONN)
 
+$(BIN_BOOT): $(SRC_BOOT) ../src/boot_banner.h
+	$(CXX) $(CXXFLAGS) $(SRC_BOOT) -o $(BIN_BOOT)
+
 clean:
-	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ)
+	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT)
