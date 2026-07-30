@@ -277,11 +277,22 @@ def check_encoder(native_log: str, expect: str) -> Verdict:
 # Both take the WHOLE native capture (boot + probes + soak), not one probe
 # window. They assert that the console answered and the render did not kill the
 # firmware — not that it answered inside a timer. See the call site in
-# `__main__._run_env` for why that costs no rigour: each key is sent exactly
-# once per run, and response latency is asserted by the soak's own liveness
-# check.
+# `__main__._run_env` for the detail, but in short: check_mock_alarm_ack ('s')
+# costs no rigour from the wider scope because 's' is sent exactly once per
+# run, so any [MOCK] line is provably that one ack. check_theme_ack ('n') is
+# different — the soak re-sends 'n' every step — so check 7 is a floor that
+# the soak's own liveness check (check 10) subsumes, not an independently
+# timed assertion. It is kept because it still catches a console that never
+# answers at all, including `--soak 0` runs where check 10 does not run.
 def check_theme_ack(native_log: str) -> Verdict:
-    """Did the `'n'` key ever get acknowledged? Scope: the whole capture."""
+    """Did the `'n'` key ever get acknowledged? Scope: the whole capture.
+
+    Note: [THEME] has a second emitter in the firmware — main.cpp's per-tick
+    theme resolver (~line 432), not just the 'n' key handler (~line 201) — so
+    a PASS here is not strictly proof the key handler ran, only that the
+    firmware printed [THEME] somewhere after being asked. Pre-existing, not a
+    bug; recorded so a PASS is not read as more key-derived than it is.
+    """
     if "[THEME]" in native_log:
         return Verdict("theme ack ('n')", Status.PASS)
     return Verdict("theme ack ('n')", Status.FAIL, "no [THEME] line anywhere in the capture")

@@ -252,6 +252,48 @@ def test_the_probe_windows_are_five_seconds(monkeypatch):
     assert seen == [("n", 5.0), ("s", 5.0)]
 
 
+def test_soak_final_step_reply_window_is_never_below_the_ack_floor(monkeypatch):
+    """`--soak 31` leaves a final step of `31 mod 30 == 1.0` s. Before this
+    fix that 1.0 s `step` was handed straight to `send_key_and_capture` as
+    the reply BUDGET too -- well under the 2.0 s window already proven
+    unreliable on hardware (see `test_the_probe_windows_are_five_seconds`).
+    The reply window must be floored at `ACK_WINDOW_S` regardless of how far
+    `elapsed` actually advances on that step."""
+    seen = []
+
+    def send(port, key, secs):
+        seen.append((key, secs))
+        return HEALTHY_REPLY
+
+    _install(monkeypatch, send=send)
+    cli._run_env("crowpanel", PORTS, _args("--soak", "31"), art={"env": "crowpanel"})
+    # First two calls are the boot-window 'n' and 's' probes; the rest are the
+    # soak's steps (30 s, then the 1 s tail -- floored to ACK_WINDOW_S).
+    soak_calls = seen[2:]
+    assert soak_calls == [("n", 30.0), ("n", cli.ACK_WINDOW_S)]
+    assert all(secs >= cli.ACK_WINDOW_S for _, secs in soak_calls), \
+        "no soak reply window may fall below the ACK_WINDOW_S floor"
+
+
+def test_soak_step_count_and_termination_unchanged_for_an_exact_multiple(monkeypatch):
+    """The floor must only ever WIDEN a reply window, never change how many
+    steps run or when the loop stops. `--soak 60` is an exact multiple of the
+    30 s step (the same shape the hardware-validated 60 s and 300 s runs
+    use), so this pins that the fix is a no-op there: still exactly two 30 s
+    steps, each already at or above the floor."""
+    seen = []
+
+    def send(port, key, secs):
+        seen.append((key, secs))
+        return HEALTHY_REPLY
+
+    _install(monkeypatch, send=send)
+    cli._run_env("crowpanel", PORTS, _args("--soak", "60"), art={"env": "crowpanel"})
+    soak_calls = seen[2:]
+    assert soak_calls == [("n", 30.0), ("n", 30.0)], \
+        "60s / 30s-step must still be exactly two unfloored 30 s steps"
+
+
 def test_an_ack_arriving_only_during_the_soak_still_passes(monkeypatch):
     """The 2026-07-29 flake, end to end.
 

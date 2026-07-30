@@ -163,10 +163,18 @@ window: `'n'` triggers a full-screen repaint of the 480x320 ILI9488 over SPI plu
 change, and the `'s'` key is not even read until `loop()` finishes that work. A gate that fails
 one run in three teaches people to re-run until green, at which point it protects nothing. The
 windows are now 5 s and both checks are evaluated over the whole capture (boot + probes + soak).
-No rigour is lost: each key is sent exactly once per run, so any matching line is that one ack;
-and response *latency* is still asserted by check 10, which requires every 30 s probe to answer
-inside its own step. An empty capture still FAILs both — a key was written and nothing came
-back, which is positive evidence of a wedged console rather than absent evidence.
+
+No rigour is lost, but the reason differs per check. Check 8 (`'s'`) is sent exactly once per
+run — the probe only, nothing else calls it — so any `[MOCK]` line anywhere in the capture is
+provably that one ack. Check 7 (`'n'`) is sent once as the probe *and again on every soak step*
+(default 300 s soak -> 11 sends total), so a check-7 FAIL always coincides with a soak-liveness
+FAIL: the soak marks itself failed the first time a step's `'n'` reply lacks `[THEME]`. Check 7
+is therefore a floor that check 10 (soak liveness) subsumes, not an independently-timed
+assertion — it earns its place by still catching a console that never answers at all, including
+`--soak 0` runs where check 10 does not run at all. Response *latency* proper is asserted by
+check 10, which requires every 30 s probe to answer inside its own step. An empty capture still
+FAILs both checks 7 and 8 — a key was written and nothing came back, which is positive evidence
+of a wedged console rather than absent evidence.
 
 ### CLI surface
 

@@ -56,6 +56,23 @@ except ImportError as _import_err:  # pragma: no cover - depends on host state
 
 RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
 
+# The floor for every reply window this rig waits on: the boot-window probes
+# ('n' then 's') AND every soak step's 'n' probe. They must share one constant
+# and never drift apart again — that drift is exactly what caused a real bug.
+# Measured 2026-07-29: a 2.0 s window missed the 's' probe's ack 1 run in 3 on
+# hardware, so the probes were widened to 5.0 s (see the call sites below for
+# why). The soak step's window used to be `step` alone (`min(30.0, remaining)`),
+# which equals this floor only when `--soak` happens to be an exact multiple of
+# 30 -- any other value leaves a final step of `soak mod 30` seconds, so
+# `--soak 31` gave a 1.0 s reply budget and `--soak 30.2` gave 0.2 s, well
+# under the 2.0 s window already proven unreliable. An ack that missed that
+# undersized window set soak_fail -> "soak liveness" FAIL -> exit 1, the code
+# reserved for a genuine firmware problem, from nothing worse than an awkward
+# CLI argument. ACK_WINDOW_S is the one floor both the probes and the soak's
+# reply budget are pinned to below, so a future change to one cannot silently
+# leave the other undefended.
+ACK_WINDOW_S = 5.0
+
 
 def _args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python3 -m hil", description="HIL Phase 1 rig")
@@ -137,27 +154,43 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
             # Console probes. Skip them outright if the boot capture is empty —
             # the port never came back, so writing to it would only raise.
             #
-            # 5.0 s, not 2.0 s, and do not tighten it again. Measured
-            # 2026-07-29: at 2.0 s the 's' ack missed its window on 1 run in 3.
-            # 'n' triggers a day/night theme change — a full-screen repaint of a
-            # 480x320 ILI9488 over SPI plus a backlight change — and the 's' key
-            # is not even READ until loop() finishes that repaint. So the 's'
-            # budget has to cover the tail of the 'n' work as well as its own
-            # render. 2 s was simply tighter than what precedes it.
+            # ACK_WINDOW_S (5.0 s), not 2.0 s, and do not tighten it again.
+            # Measured 2026-07-29: at 2.0 s the 's' ack missed its window on 1
+            # run in 3. 'n' triggers a day/night theme change — a full-screen
+            # repaint of a 480x320 ILI9488 over SPI plus a backlight change —
+            # and the 's' key is not even READ until loop() finishes that
+            # repaint. So the 's' budget has to cover the tail of the 'n' work
+            # as well as its own render. 2 s was simply tighter than what
+            # precedes it.
             if native:
-                native += send_key_and_capture(ports.native, "n", 5.0)
+                native += send_key_and_capture(ports.native, "n", ACK_WINDOW_S)
                 if env == "crowpanel":
-                    native += send_key_and_capture(ports.native, "s", 5.0)
+                    native += send_key_and_capture(ports.native, "s", ACK_WINDOW_S)
 
             # Soak with an ACTIVE liveness probe. Silence cannot distinguish
             # "healthy and idle" from "wedged", so poke it and require an answer.
+            #
+            # `step` (how far `elapsed` advances) and the reply window handed to
+            # send_key_and_capture are DELIBERATELY different quantities. `step`
+            # stays `min(30.0, remaining)` so the soak still ends on schedule and
+            # the step count for a multiple of 30 is unchanged. The reply window
+            # is floored at ACK_WINDOW_S so the final, possibly-sub-second step
+            # of a non-multiple `--soak` (e.g. 31 -> a 1.0 s step) is never asked
+            # to arrive faster than the same 5.0 s budget the boot-window probes
+            # get — see the ACK_WINDOW_S comment above `RUNS_DIR` for the bug
+            # this closes. This can make the soak's last step run up to
+            # ACK_WINDOW_S rather than `step`, i.e. overrun the requested
+            # duration by a few seconds on the tail step only; that is judged
+            # acceptable because it is bounded, only affects the final step, and
+            # trades a small, harmless overrun for not exiting 1 on a rig
+            # timing artifact.
             elapsed = 0.0
             while elapsed < a.soak:
                 step = min(30.0, a.soak - elapsed)
                 elapsed += step
                 if not native:
                     break
-                reply = send_key_and_capture(ports.native, "n", step)
+                reply = send_key_and_capture(ports.native, "n", max(step, ACK_WINDOW_S))
                 soak_native += reply
                 # Drain the UART on every soak step, not just at the ends. The
                 # OS tty buffer is finite and the soak is 300 s by default;
@@ -214,13 +247,22 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
         # (measured 1 FAIL in 3 runs on 2026-07-29, with `[MOCK] alarm sweep`
         # present in the capture but landing just past the window).
         #
-        # No rigour is lost, for two independent reasons:
-        #   * each key is sent EXACTLY ONCE per run, so any [MOCK] line anywhere
-        #     in the capture is that one ack — it cannot be confused with
-        #     another stimulus.
-        #   * response *latency* is still asserted, by the soak: every 30 s 'n'
-        #     probe must answer inside its own step or "soak liveness" FAILs.
-        #     That property is pinned there, not here.
+        # No rigour is lost, but the two checks get there differently:
+        #   * check 8 ('s'): 's' is sent EXACTLY ONCE per run — the probe above,
+        #     nowhere else — so any [MOCK] line anywhere in the capture is
+        #     provably that one ack. Widening its scope costs nothing.
+        #   * check 7 ('n'): 'n' is NOT sent once. It is sent once as the probe
+        #     above (~line 148) AND again on every soak step below (~line 160),
+        #     so a default 300 s soak sends it 11 times. Because the soak sets
+        #     soak_fail on the first soak reply that lacks [THEME], a check-7
+        #     FAIL always implies a "soak liveness" FAIL too — check 7 is a
+        #     FLOOR that check 10 subsumes, not an independently-timed
+        #     assertion. It earns its keep by also catching a console that
+        #     never answers at all, including when `--soak 0` disables the
+        #     soak below and check 10 does not run.
+        # response *latency* is still asserted, by the soak: every 30 s 'n'
+        # probe must answer inside its own step or "soak liveness" FAILs. That
+        # property is pinned there, not here.
         # An empty capture still FAILs both, which is deliberate — see the
         # comment above check_theme_ack in parse.py.
         verdicts.append(parse.check_theme_ack(all_native))
