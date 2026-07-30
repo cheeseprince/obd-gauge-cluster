@@ -1,7 +1,14 @@
 [tool.ruff]
-# Only lint the Python OBD scanner tooling; firmware (C++) lives elsewhere
-# and this repo has no other Python packages yet.
-include = ["tools/obd_scan/**/*.py"]
+# Only lint the Python tooling; firmware (C++) lives elsewhere.
+#
+# tools/hil was added to this list 2026-07-29 (Task 8 of the HIL Phase 1
+# plan): before this fix, `include` silently scoped OUT tools/hil even when
+# it was named explicitly on the CLI (`ruff check tools/obd_scan tools/hil`,
+# ci.yml's lint job) — confirmed by adding a deliberately-unused import to
+# hil/parse.py and observing ruff report zero files/zero violations both
+# with `ruff check tools/hil` alone and combined with tools/obd_scan. CI's
+# lint job had been trivially green without ever linting this package.
+include = ["tools/obd_scan/**/*.py", "tools/hil/**/*.py"]
 line-length = 120
 
 [tool.ruff.lint]

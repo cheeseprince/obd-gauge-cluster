@@ -6,23 +6,23 @@ avoid.
 """
 import pathlib
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import pytest
-
 from hil.parse import (
     Status,
-    parse_banner,
-    check_boot_mode,
-    check_no_panic,
-    check_no_wdt_spam,
     check_app_wdt_clean,
     check_banner_env,
-    check_encoder,
-    check_theme_ack,
-    check_mock_alarm_ack,
     check_ble_scanning,
+    check_boot_mode,
+    check_encoder,
+    check_mock_alarm_ack,
+    check_no_panic,
+    check_no_wdt_spam,
+    check_theme_ack,
+    parse_banner,
 )
 
 # --- real captures, recorded from the board on 2026-07-29 -------------------
@@ -38,6 +38,34 @@ entry 0x403c9880
 """
 
 DOWNLOAD_MODE_UART = """\
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2 (DOWNLOAD(USB/UART0))
+waiting for download
+"""
+
+# Real capture, 2026-07-29 (`tools/hil/tests/logs/uart_boot.log`, scrubbed of
+# nothing — this board has no PII on the UART side). runner.py opens the UART
+# tap BEFORE flashing, so every genuine capture starts with esptool's own
+# reset INTO download mode to write the image, followed by the real post-flash
+# boot. Both ROM boot lines land in one capture; check_boot_mode must judge
+# the run by the LAST one, not the first.
+TWO_BOOT_UART = DOWNLOAD_MODE_UART + """\
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0xa (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+"""
+
+# The reverse order: a healthy flash boot followed LATER by a download-mode
+# reset (e.g. the board dropped back into the bootloader after booting —
+# a spurious re-flash trigger, a stuck GPIO0, a second `pio upload` racing
+# the same port). Order is the entire point of the fix above: a check that
+# only verified "both patterns appear somewhere in the capture" would pass
+# under the old first-match code AND the new last-match code, and would
+# never catch this case going unhealthy.
+FLASH_THEN_DOWNLOAD_UART = HEALTHY_UART + """\
 ESP-ROM:esp32s3-20210327
 Build:Mar 27 2021
 rst:0x15 (USB_UART_CHIP_RESET),boot:0x2 (DOWNLOAD(USB/UART0))
@@ -109,12 +137,37 @@ def test_boot_mode_passes_on_flash_boot():
 def test_boot_mode_fails_in_download_mode():
     v = check_boot_mode(DOWNLOAD_MODE_UART)
     assert v.status is Status.FAIL
-    assert "DOWNLOAD" in v.detail
+    # Exact, not a substring check: the real ROM line nests parens
+    # ("DOWNLOAD(USB/UART0)"), and a naive [^)]+ capture truncates the value
+    # at the FIRST ')', silently dropping the closing paren. A loose "DOWNLOAD
+    # in detail" assertion would pass either way and hide that bug.
+    assert v.detail == "booted as DOWNLOAD(USB/UART0)"
 
 
 def test_boot_mode_skips_when_there_is_no_rom_line():
     # No evidence is not the same as evidence of health.
     assert check_boot_mode("").status is Status.SKIP
+
+
+def test_boot_mode_judges_the_last_boot_not_the_flash_entry():
+    # THE real-hardware bug found on the first HIL run (2026-07-29): the UART
+    # tap is opened before flashing, so every genuine capture starts with
+    # esptool's own reset into download mode to write the image. That is
+    # normal and not a failure — the outcome that matters is the LAST boot
+    # the ROM reports. Before the fix, check_boot_mode used re.search (first
+    # match) and always FAILed a perfectly healthy flash.
+    v = check_boot_mode(TWO_BOOT_UART)
+    assert v.status is Status.PASS
+    assert v.detail == "SPI_FAST_FLASH_BOOT"
+
+
+def test_boot_mode_fails_when_the_last_boot_is_download_mode():
+    # The reverse of the fixture above. Order, not mere presence, is what the
+    # fix keys off — this pins that a healthy boot line earlier in the
+    # capture cannot paper over an unhealthy one that came later.
+    v = check_boot_mode(FLASH_THEN_DOWNLOAD_UART)
+    assert v.status is Status.FAIL
+    assert v.detail == "booted as DOWNLOAD(USB/UART0)"
 
 
 def test_no_panic_passes_on_clean_log():
@@ -254,3 +307,33 @@ def test_ble_scanning_matches_the_utf8_ellipsis_line():
 def test_ble_scanning_fails_when_the_state_machine_never_scans():
     v = check_ble_scanning("[BOOT] env=crowpanel_obd ver=local git=local profile=generic\n")
     assert v.status is Status.FAIL
+
+
+# --- real captures from the board, tests/logs/ -----------------------------
+#
+# Everything above is a fixture typed by hand. These two files are not: they
+# are `runs/20260729T214724-crowpanel/{native,uart}.log` from the rig's first
+# real run against hardware (2026-07-29), copied verbatim except for the
+# scrub sweep (see the commit message / task-8 report for the exact steps).
+# The uart.log fixture's raw ROM-download bytes are what motivated the
+# check_boot_mode fix above (TWO_BOOT_UART is a hand-shortened stand-in for
+# this same real shape) — this test locks the parser against the actual
+# bytes rather than a fixture someone typed from memory.
+
+LOGS = Path(__file__).parent / "logs"
+
+
+def test_real_captured_boot_log_parses_and_passes():
+    """Locks the parser against bytes the board actually produced, not against
+    a fixture someone typed from memory."""
+    native = (LOGS / "native_boot_crowpanel.log").read_text()
+    uart = (LOGS / "uart_boot.log").read_text()
+
+    b = parse_banner(native)
+    assert b is not None, "the real capture must contain a [BOOT] banner"
+    assert b.env == "crowpanel"
+    assert b.psram_mb == 8 and b.flash_mb == 16
+
+    assert check_boot_mode(uart).status is Status.PASS
+    assert check_no_panic(uart).status is Status.PASS
+    assert check_no_wdt_spam(uart).status is Status.PASS

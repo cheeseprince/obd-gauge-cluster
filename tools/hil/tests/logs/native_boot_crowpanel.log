@@ -1,0 +1,11 @@
+[   408][E][Preferences.cpp:526] getBytesLength(): nvs_get_blob len fail: lat NOT_FOUND
+[   416][E][Preferences.cpp:526] getBytesLength(): nvs_get_blob len fail: lon NOT_FOUND
+[   423][E][Preferences.cpp:506] getString(): nvs_get_str len fail: vehkey NOT_FOUND
+[encoder] found
+[BOOT] env=crowpanel ver=local git=local profile=generic
+[BOOT] psram=8MB flash=16MB reset=11 heap=193668
+[THEME] mode=OFF
+[MOCK] alarm sweep
+[THEME] mode=ON
+[THEME] night (resolved, mode=ON)
+[THEME] mode=OFF

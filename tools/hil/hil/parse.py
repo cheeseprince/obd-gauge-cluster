@@ -104,7 +104,13 @@ def parse_banner(native_log: str) -> Banner | None:
 
 # --- UART bridge checks ----------------------------------------------------
 
-_ROM_BOOT = re.compile(r"boot:0x[0-9a-f]+ \(([^)]+)\)")
+# Greedy `.+` (not `[^)]+`), because the real ROM line nests parens:
+# "boot:0x2 (DOWNLOAD(USB/UART0))" — measured on hardware 2026-07-29. A
+# non-greedy/negated-class capture stops at the FIRST ')', truncating the
+# value to "DOWNLOAD(USB/UART0" and losing the closing paren. `.` does not
+# cross the line's trailing \r\n, so greedy still lands on the last ')' of
+# THIS line, not a later line's.
+_ROM_BOOT = re.compile(r"boot:0x[0-9a-f]+ \((.+)\)")
 
 
 # --- evidence gates ---------------------------------------------------------
@@ -140,11 +146,19 @@ def check_boot_mode(uart_log: str) -> Verdict:
 
     Absent evidence is SKIP: an empty capture proves nothing, and reporting it
     as a pass is how a rig silently stops testing.
+
+    Takes the LAST ROM boot line, not the first — measured on hardware
+    2026-07-29. `runner.py` opens the UART tap BEFORE flashing and holds it
+    for the whole run, so every real capture starts with `pio`/`esptool`
+    resetting the board INTO download mode to write the new image. That line
+    is always present and is not a failure; the boot state that actually
+    matters is whatever the board most recently reset into (the post-flash
+    boot, or a later in-run reset/panic if one happened during the soak).
     """
-    m = _ROM_BOOT.search(uart_log)
-    if not m:
+    matches = list(_ROM_BOOT.finditer(uart_log))
+    if not matches:
         return Verdict("boot mode", Status.SKIP, "no ROM boot line captured")
-    mode = m.group(1)
+    mode = matches[-1].group(1)
     if "SPI_FAST_FLASH_BOOT" in mode or "SPI_FLASH_BOOT" in mode:
         return Verdict("boot mode", Status.PASS, mode)
     return Verdict("boot mode", Status.FAIL, f"booted as {mode}")

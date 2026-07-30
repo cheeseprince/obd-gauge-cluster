@@ -10,7 +10,6 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import pytest
-
 from hil.ports import DeviceEntry, PortResolutionError, resolve_ports
 
 NATIVE = DeviceEntry(device="/dev/ttyACM0", vid=0x303A, pid=0x1001)
