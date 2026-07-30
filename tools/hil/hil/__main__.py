@@ -37,8 +37,6 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--boot-window", type=float, default=15.0)
     p.add_argument("--allow-skips", action="store_true",
                    help="treat SKIPPED checks as acceptable (exit 0 instead of 3)")
-    p.add_argument("--update-baseline", action="store_true",
-                   help="record the observed boot heap as the new baseline")
     return p.parse_args(argv)
 
 
@@ -57,6 +55,16 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
     and `send_key_and_capture` below are called only with `ports.native`.
     Nothing type-enforces that split — it is deliberate discipline, not a
     guardrail — so it must never drift while editing this function.
+
+    The artifact guarantee holds for EVERY way this block can unwind, not
+    just the one explicit `raise` below. `capture_native`'s EACCES path and
+    `send_key_and_capture`'s `_open()` can both raise RigError, and a
+    mid-soak Ctrl-C (KeyboardInterrupt) is arguably the *most likely* way this
+    ever unwinds, since the soak runs 300s by default. `native` and
+    `soak_native` are therefore initialised before the `try` (so the
+    `finally` can always reference them without an UnboundLocalError of its
+    own), and the `art[...]` assignments live in `finally` rather than only
+    after a clean fall-through.
     """
     verdicts: list[Verdict] = []
 
@@ -64,51 +72,69 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
     # evidence still lands here. The native port is not touched until AFTER
     # flash() returns, and flash() itself is never handed the UART port.
     with UartTap(ports.uart) as uart:
-        ok, pio_out = flash(env, ports.native)
-        art["pio"] = pio_out
-        if not ok:
-            # Do not assert against a stale binary — that produces confident
-            # nonsense. Bail out as a rig error. `art` is the caller's dict, so
-            # the pio output recorded above survives this raise.
+        native = ""
+        soak_native, soak_fail = "", None
+        try:
+            ok, pio_out = flash(env, ports.native)
+            art["pio"] = pio_out
+            if not ok:
+                # Do not assert against a stale binary — that produces confident
+                # nonsense. Bail out as a rig error. `art` is the caller's dict, so
+                # the pio output recorded above survives this raise. (The `finally`
+                # below will re-set these same two keys — harmless, and this
+                # explicit pair stays because it documents the flash-failure
+                # case is deliberately handled, not merely caught by luck.)
+                uart.read_new()
+                art["uart"] = uart.text
+                art["uart_error"] = uart.error  # None when the tap is healthy
+                raise RigError(f"pio upload failed for {env}; see pio.log in the run dir")
+            verdicts.append(Verdict("flash", Status.PASS, env))
+
+            native = capture_native(ports.native, a.boot_window)
             uart.read_new()
+
+            # Console probes. Skip them outright if the boot capture is empty —
+            # the port never came back, so writing to it would only raise.
+            if native:
+                native += send_key_and_capture(ports.native, "n", 2.0)
+                if env == "crowpanel":
+                    native += send_key_and_capture(ports.native, "s", 2.0)
+
+            # Soak with an ACTIVE liveness probe. Silence cannot distinguish
+            # "healthy and idle" from "wedged", so poke it and require an answer.
+            elapsed = 0.0
+            while elapsed < a.soak:
+                step = min(30.0, a.soak - elapsed)
+                elapsed += step
+                if not native:
+                    break
+                reply = send_key_and_capture(ports.native, "n", step)
+                soak_native += reply
+                if "[THEME]" not in reply:
+                    soak_fail = f"no [THEME] reply at t+{int(elapsed)}s"
+                    break
+        finally:
+            # Runs on the normal path, on RigError raised anywhere above (flash
+            # failure, or an EACCES from capture_native/send_key_and_capture),
+            # and on KeyboardInterrupt. __exit__ (below, once this `with` body
+            # finishes) drains the port into uart.text too, but that is a LOCAL
+            # attribute on `uart` — it only becomes evidence once copied into
+            # the caller's `art` dict, which is what this block does regardless
+            # of how the try body above exited. `native`/`soak_native` hold
+            # whatever was captured up to the point of any raise, which is
+            # exactly the evidence a rig error or a mid-soak Ctrl-C must not
+            # discard.
             art["uart"] = uart.text
             art["uart_error"] = uart.error  # None when the tap is healthy
-            raise RigError(f"pio upload failed for {env}; see pio.log in the run dir")
-        verdicts.append(Verdict("flash", Status.PASS, env))
-
-        native = capture_native(ports.native, a.boot_window)
-        uart.read_new()
-
-        # Console probes. Skip them outright if the boot capture is empty —
-        # the port never came back, so writing to it would only raise.
-        if native:
-            native += send_key_and_capture(ports.native, "n", 2.0)
-            if env == "crowpanel":
-                native += send_key_and_capture(ports.native, "s", 2.0)
-        art["native_boot"] = native
-
-        # Soak with an ACTIVE liveness probe. Silence cannot distinguish
-        # "healthy and idle" from "wedged", so poke it and require an answer.
-        soak_native, soak_fail = "", None
-        elapsed = 0.0
-        while elapsed < a.soak:
-            step = min(30.0, a.soak - elapsed)
-            elapsed += step
-            if not native:
-                break
-            reply = send_key_and_capture(ports.native, "n", step)
-            soak_native += reply
-            if "[THEME]" not in reply:
-                soak_fail = f"no [THEME] reply at t+{int(elapsed)}s"
-                break
-        art["native_soak"] = soak_native
+            art["native_boot"] = native
+            art["native_soak"] = soak_native
 
     # UartTap.__exit__ already drained the port into .text and closed it, so
-    # read .text rather than calling read_new() on a closed handle. .error is
-    # a Task 5 addition: set (str) if the tap died mid-run — cable out, hub
-    # reset, port stolen — None when it stayed healthy for the whole run.
-    # Surface it into the artifacts here; main() prints it loudly so a run
-    # full of SKIPs is never silently unexplained.
+    # read .text rather than calling read_new() on a closed handle — this
+    # picks up any bytes that arrived between the `finally` above and the tap
+    # actually closing. Only reached on the no-exception path (an exception
+    # skips straight past this to the caller), which is fine: the `finally`
+    # above already guaranteed a value lands in `art` on every other path.
     art["uart"] = uart.text
     art["uart_error"] = uart.error
     uart_text = art["uart"]
@@ -139,8 +165,10 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
     else:
         verdicts.append(Verdict("soak liveness", Status.PASS, f"{int(a.soak)}s"))
 
-    # Boot heap is advisory only. It catches static-allocation bloat; it cannot
-    # see a slow runtime leak, because the firmware emits no periodic heap line.
+    # Boot heap is reported for a human to read, not compared against a
+    # baseline — the firmware emits no periodic heap line, so a single boot
+    # reading could only ever catch static-allocation bloat, not a runtime
+    # leak. Automated regression detection is deferred (see DESIGN.md).
     b = parse.parse_banner(native)
     if b:
         art["heap"] = b.heap

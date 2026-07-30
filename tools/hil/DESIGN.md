@@ -161,7 +161,6 @@ python3 -m hil --env {crowpanel,crowpanel_obd,both}   default: both
                --soak SECONDS                         default: 300
                --boot-window SECONDS                  default: 15
                --allow-skips                          default: off
-               --update-baseline                      accept the current boot heap
 ```
 
 `--expect-knob auto` reports whatever `[encoder]` says without failing on it, because whether a
@@ -198,10 +197,12 @@ so it needs evidence to justify, not speculation.
 
 - **Heap-trend leak detection.** The firmware emits no periodic heap line — heap appears only in
   the OTA path (`ota_update.cpp:115,175,178`). Detecting a slow runtime leak would need more
-  firmware surface than the banner. What Phase 1 gets cheaply instead: the banner's boot heap
-  compared against a committed per-environment baseline, **advisory only** (warn;
-  `--update-baseline` to accept). Static-allocation bloat surfaces; a runtime leak does not.
-  Recorded as a follow-up.
+  firmware surface than the banner. What Phase 1 gets cheaply instead: the banner's boot heap is
+  recorded in `verdict.json` and printed for a human to read. There is no baseline comparison and
+  no `--update-baseline` flag — a single boot reading could only ever catch static-allocation
+  bloat, never a runtime leak, so an automated pass/warn verdict on it would be asserting more
+  than the evidence supports. Automated heap-regression detection against a committed baseline is
+  recorded as a follow-up, not implemented in Phase 1.
 - **Version assertion.** A local `pio run` stamps `FW_VERSION "local"` (`src/fw_git.h:15-16`);
   only `release.yml` sed-stamps a real tag. The harness therefore asserts the *environment* and
   merely reports the *version*. A non-`local` version on a bench build is flagged, not failed.
