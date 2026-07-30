@@ -53,28 +53,34 @@ class PortSet:
     uart: str
 
 
-def _one(entries: list[DeviceEntry], want: tuple[int, int], label: str) -> str:
+def _one(
+    entries: list[DeviceEntry], want: tuple[int, int], label: str, override_var: str
+) -> str:
     """Find exactly one entry matching `want`, or raise.
 
     Two failure shapes, both real:
       * zero matches -> board not plugged in (or CI with no hardware at all).
       * two-or-more matches -> two boards attached; picking one silently
         would risk flashing the wrong device, so refuse instead of guessing.
-    Both messages name the VID:PID searched for and the override escape
-    hatch, so the message alone is enough to unblock a fresh machine.
+    Both messages name the VID:PID searched for and *only their own*
+    override env var as the escape hatch — deliberately not the other
+    port's var name too, so a native-only message can never accidentally
+    contain the substring "UART" (or vice versa). That distinction is what
+    lets a test tell "both ports reported missing" apart from "only one
+    was", which resolve_ports()'s error aggregation depends on.
     """
     hits = [e.device for e in entries if (e.vid, e.pid) == want]
     if not hits:
         raise PortResolutionError(
             f"no {label} port found (looking for "
             f"{want[0]:04x}:{want[1]:04x}); is the board plugged in? "
-            f"override with the HIL_PORT_NATIVE/HIL_PORT_UART env vars"
+            f"override with the {override_var} env var"
         )
     if len(hits) > 1:
         raise PortResolutionError(
             f"more than one {label} port found ({', '.join(sorted(hits))}); "
             f"refusing to guess which one to use — disambiguate with the "
-            f"HIL_PORT_NATIVE/HIL_PORT_UART override env vars"
+            f"{override_var} override env var"
         )
     return hits[0]
 
@@ -100,7 +106,7 @@ def resolve_ports(
         native = native_override
     else:
         try:
-            native = _one(entries, NATIVE_VID_PID, "native USB")
+            native = _one(entries, NATIVE_VID_PID, "native USB", "HIL_PORT_NATIVE")
         except PortResolutionError as e:
             problems.append(str(e))
 
@@ -108,7 +114,7 @@ def resolve_ports(
         uart = uart_override
     else:
         try:
-            uart = _one(entries, UART_VID_PID, "UART bridge")
+            uart = _one(entries, UART_VID_PID, "UART bridge", "HIL_PORT_UART")
         except PortResolutionError as e:
             problems.append(str(e))
 
