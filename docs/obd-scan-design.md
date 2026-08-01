@@ -72,11 +72,21 @@ transport could be substituted later without touching the stages.
 Four subcommands mapping to the four phases of a session:
 
 ```
-obd_scan census   [--host H] [--port P] [--vehicle ford|gm] [-o census.json]
-obd_scan sweep    --census census.json [--blocks B[,B...]] [-o sweep.json]
-obd_scan log      --sweep sweep.json [--hz 1.0] [-o drive.csv]
-obd_scan correlate drive.csv [--sweep sweep.json] [-o report.md] [--pdf] [--workers N]
+obd_scan [--host H] [--port P] census [--vehicle V] [-o census.json]
+obd_scan [--host H] [--port P] sweep  [--census census.json] [--vehicle V] [-o sweep.json]
+obd_scan [--host H] [--port P] log    [--sweep sweep.json] [--vehicle V] [--pids P[,P..]] [--hz 1.0] [-o drive.csv]
+obd_scan correlate drive.csv [-o report.md] [--pdf] [--workers N]
+
+V = ford | gm | bmw | audi | auto        (default: auto — preset chosen from the VIN)
 ```
+
+**`--host` and `--port` are root arguments and must come *before* the subcommand** — they
+configure the ELM transport shared by the three on-vehicle stages. `obd_scan census --host H`
+is a usage error, not a synonym. `correlate` is offline and reads only the CSV.
+
+`--pids` on `log` restricts the drive to an explicit list instead of everything `sweep` found —
+this is what a focused cold-start confirmation drive uses to get dense samples on a handful of
+candidate DIDs rather than thin coverage across hundreds.
 
 `--workers` on `correlate` per the project parallelism mandate; the interpretation ×
 anchor cross-product is embarrassingly parallel per PID. Default `min(cpu_count(), 4)`.
@@ -95,7 +105,13 @@ them," which no source could answer for Ford.
    window is mandatory, not defensive.
 2. **Responder census.** For every candidate header in `catalog.py`, in **both** addressing
    modes, send cheap universal probes and record the classified result:
-   - 11-bit: functional `7DF`; physical `7E0`–`7E7` (`ATSP6`, `ATSH nnn`)
+   - 11-bit: functional `7DF`; physical `7E0`, `7E1`, `7E2` only (`ATSP6`, `ATSH nnn`)
+
+     **A powertrain scan must never probe `7E3`–`7E7`.** The full physical range reaches
+     chassis and ADAS modules: on the 2018 Audi Q5, `7E4` is a driver-assist controller and
+     reading its DIDs tripped pre-sense and "RPM too high" dashboard warnings. Presets
+     therefore default to the narrowed powertrain pool (`HEADERS_11BIT_PT` in `catalog.py`),
+     not the full `HEADERS_11BIT`.
    - 29-bit: functional `18DB33F1`; physical `18DAxxF1` over a curated `xx` list
      (`10, 18, 1A, 28, 00, 11, 17, 58, 60, 7E`) (`ATSP7`, `ATCP18`, `ATSH DAxxF1`)
    - Probes per header: `0100` (Mode-01 support bitmap — near-universal) and one enhanced
@@ -269,10 +285,16 @@ A `--expect` fixture of known-true LZ0 answers. The tool must rediscover, on you
 truck, before it goes to either Ford:
 
 - `221940` @ trans header — transmission temp
-- `220078` @ ECM header — EGT block
+- `220078` @ ECM header — EGT block (multi-frame ISO-TP, 3 sensors behind a presence mask,
+  so it also proves fragment assembly works)
 - `22000B` / `22000F` @ ECM header — MAP and intake (the Mode-22 mirror discovery)
+- `220023` @ ECM header — fuel rail pressure
+- `22009B` @ ECM header — DEF level (byte[3]; byte[1] is concentration and reads stuck)
 - The `2200xx` mirror block broadly
 - The known 29-bit-vs-11-bit adapter-dependent behavior
+
+The fixture itself is `tools/obd_scan/tests/sierra_expect.json`, and its `must_find` list is
+the authoritative version of the table above — update that file, not this prose.
 
 **Rationale:** the Sierra is the only vehicle where every answer is already known. A tool
 that cannot rediscover them is broken, and that must be found in your own driveway rather
