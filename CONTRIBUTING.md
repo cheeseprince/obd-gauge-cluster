@@ -35,10 +35,32 @@ PlatformIO builds the firmware; the tools and tests are Python 3.12.
 pio run -e crowpanel                     # dash UI with mock data (no hardware)
 cd test && make                          # firmware logic tests + fuzz
 cd tools/obd_scan && python3 -m pytest tests -q
+cd tools/hil && python3 -m pytest tests -q
 ```
+
+That last suite is the pure-logic half of the **hardware-in-the-loop rig** (`tools/hil/`),
+which flashes a real board over USB and asserts on its boot serial. Those tests need no
+board — they cover the log parsing and port selection — and CI runs them, so they can fail
+your PR. Running the rig against actual hardware is optional and documented in
+[`tools/hil/README.md`](tools/hil/README.md).
 
 The host tests and scanner are verified in CI on **Linux and macOS** (g++ and
 clang, Python 3.12). The PlatformIO device build is host-OS-independent.
+
+### Knowing which build is actually running
+
+At the end of `setup()` the firmware prints a two-line identity banner to `Serial`:
+
+```
+[BOOT] env=… ver=… git=… profile=…
+[BOOT] psram=…MB flash=…MB reset=… heap=…
+```
+
+Read it before debugging anything, because it settles the question that wastes the most
+time — *is the board even running the build I think it is?* A bench `pio run` stamps `ver`
+and `git` as `local`; only a tagged CI release carries a real version. `reset=` is the
+ESP-IDF reset reason, so a panic reboot is distinguishable from a clean USB reset at a
+glance, and `profile=` shows which vehicle profile the VIN or your manual pick selected.
 
 ### The build platform is pinned to a URL, deliberately
 
@@ -102,10 +124,10 @@ can merge:
 
 | Check | What it enforces |
 | :--- | :--- |
-| **Host tests (ubuntu-latest)** | Firmware logic tests + fuzz, and the scanner tests |
+| **Host tests (ubuntu-latest)** | Firmware logic tests + fuzz, the scanner tests, and the HIL rig's pure-logic tests |
 | **Host tests (macos-latest)** | The same suites again on clang — the host tests are cross-platform |
 | **Device build (PlatformIO)** | The firmware actually compiles for the dash boards |
-| **Lint (ruff)** | Python style and errors in `tools/obd_scan` |
+| **Lint (ruff)** | Python style and errors in `tools/obd_scan` and `tools/hil` |
 | **Scan images/PDFs for sensitive metadata** | No tracked image or PDF carries GPS/EXIF/author metadata |
 | **PII guard (no real VINs)** | Only synthetic test VINs appear in tracked files |
 | **Secret scan (gitleaks)** | No keys, tokens, or passwords committed |

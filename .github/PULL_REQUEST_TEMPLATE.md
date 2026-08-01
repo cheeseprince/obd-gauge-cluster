@@ -1,5 +1,6 @@
-<!-- Thanks for contributing. The three required checks (metadata, host tests, device
-     build) must pass before this can merge. -->
+<!-- Thanks for contributing. Seven checks must pass before this can merge: host tests on
+     Linux and macOS, the device build, ruff, the image/PDF metadata scan, the PII guard,
+     and the gitleaks secret scan. CONTRIBUTING.md lists what each one enforces. -->
 
 ## What this changes
 

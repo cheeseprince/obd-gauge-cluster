@@ -86,10 +86,28 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which:
 1. Builds `crowpanel_obd` and stamps the pushed tag as `FW_VERSION`.
 2. Computes the `.bin`'s SHA-256 and size, writing `manifest.txt`.
 3. Signs `manifest.txt` into `manifest.sig` with the `OTA_SIGNING_KEY` secret.
-4. Publishes `manifest.txt` + `manifest.sig` + `crowpanel_obd.bin` to the `gh-pages` branch
-   (GitHub Pages serves it) — **tag pushes only**.
-5. Creates a GitHub Release for the tag with the same three files attached, for humans
-   browsing the repo (devices never fetch these; they update over the air).
+4. Generates a CycloneDX **SBOM** for the firmware (`tools/gen_sbom.py`) describing the
+   resolved dependency tree the binary was actually built from.
+5. **Attests** both the SBOM and the build provenance to Sigstore, and stages the provenance
+   bundle beside the `.bin` so it is available as a file, not only through the attestations
+   API.
+6. Publishes the whole `out/` directory to the `gh-pages` branch (GitHub Pages serves it) —
+   **tag pushes only**.
+7. Creates a GitHub Release for the tag with the same files attached, for humans browsing
+   the repo (devices never fetch these; they update over the air).
+
+Steps 4–7 put **five** files on both surfaces, not three:
+
+| Asset | What it is |
+| :--- | :--- |
+| `crowpanel_obd.bin` | The firmware image |
+| `manifest.txt` | Version, SHA-256, size — what the device reads to decide whether to update |
+| `manifest.sig` | Signature over the manifest; the device's trust anchor |
+| `crowpanel_obd.bin.cdx.json` | CycloneDX SBOM |
+| `crowpanel_obd.bin.intoto.jsonl` | Sigstore build-provenance bundle |
+
+Only the first three participate in an OTA update. The SBOM and provenance bundle are there
+for verification (`gh attestation verify`) and for anyone auditing what went into a build.
 
 A manual `workflow_dispatch` run (no tag) does steps 1–3 as a dry run — using a
 `dev-<hash>` version string — to prove the build-and-sign pipeline still works, but the
