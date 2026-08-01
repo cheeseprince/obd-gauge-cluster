@@ -13,9 +13,10 @@ board (see the matrix below).
 
 | Adapter | Transport | Build | Status | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Vgate vLinker MS | BLE | `crowpanel_obd` | **Validated on the dash** | **Needs a one-time mode switch before it works:** it ships Classic/MFi-only and will not advertise over BLE until you set it to **BT+BLE** with Vgate's own updater app on a phone. Until then the dash scan never sees it, which is indistinguishable from a broken dash. Once switched — GATT captured on the truck: service `0x18f0`, notify `0x2af0`, write `0x2af1`, the first profile the firmware tries (`src/ble_obd_source.cpp:17-20`, `:384`). |
-| Vgate iCar Pro BLE 4.0 | BLE | `crowpanel_obd` | **Validated on the dash** | **Works out of the box** — no mode switch, unlike the vLinker MS. Confirmed on firmware v0.1.2, 2026-07-27. Standard GATT profile, and `icar` is in the name-hint list (`src/ble_rank.cpp:21`), so it ranks ahead of unrelated BLE devices during scan. See the WiFi-variant footnote below — buy the **BLE 4.0** model, not the WiFi one. |
-| Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | Should work — not bench-tested | Firmware tries both `0xFFF0` (3-characteristic) and `0xFFE0` (notify+write share one `0xFFE1` characteristic) profiles (`src/ble_obd_source.cpp:385-386`). Coded from spec, never confirmed on hardware. |
+| Vgate vLinker MS | BLE | `crowpanel_obd` | **Validated on the dash** | **Needs a one-time mode switch before it works:** it ships Classic/MFi-only and will not advertise over BLE until you set it to **BT+BLE** with Vgate's own updater app on a phone. Until then the dash scan never sees it, which is indistinguishable from a broken dash. Once switched — GATT captured on the truck: service `0x18f0`, notify `0x2af0`, write `0x2af1`, the first profile the firmware tries (the `SVC_UUID` / `NOTIFY_UUID` / `WRITE_UUID` constants, and the `PROFILES`
+table in `bindChars`). |
+| Vgate iCar Pro BLE 4.0 | BLE | `crowpanel_obd` | **Validated on the dash** | **Works out of the box** — no mode switch, unlike the vLinker MS. Confirmed on firmware v0.1.2, 2026-07-27. Standard GATT profile, and `icar` is in the name-hint list (`bleNameLooksLikeObd` in `src/ble_rank.cpp`), so it ranks ahead of unrelated BLE devices during scan. See the WiFi-variant footnote below — buy the **BLE 4.0** model, not the WiFi one. |
+| Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | Should work — not bench-tested | Firmware tries both `0xFFF0` (3-characteristic) and `0xFFE0` (notify+write share one `0xFFE1` characteristic) profiles (the `PROFILES` table in `bindChars`). Coded from spec, never confirmed on hardware. |
 | Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** | The CrowPanel Advance is an ESP32-**S3**, which has no classic-Bluetooth radio — BLE only, in hardware. A classic-BT path existed on the retired ESP32-WROVER board and was removed with it. There is no build that will talk to these adapters. |
 | OBDLink MX+ / CX | BLE (proprietary) | — | **Unsupported** | Investigated and abandoned 2026-07-25. See below — this is not a missing-GATT-profile bug the project can fix from source alone. |
 
@@ -27,7 +28,7 @@ that moves a row from "should work" to "validated."
 
 `BleObdSource::bindChars()` tries four known BLE-ELM327 GATT layouts in order, and binds the
 first one whose service and both characteristics exist on the connected device
-(`src/ble_obd_source.cpp:382-406`):
+(`bindChars` in `src/ble_obd_source.cpp`):
 
 | Order | Tag | Service UUID | Notify (device→client) | Write (client→device) |
 | :- | :--- | :--- | :--- | :--- |
@@ -37,17 +38,17 @@ first one whose service and both characteristics exist on the connected device
 | 4 | `nordic-uart` | `6e400001-b5a3-f393-e0a9-e50e24dcca9e` | `6e400003-b5a3-f393-e0a9-e50e24dcca9e` | `6e400002-b5a3-f393-e0a9-e50e24dcca9e` |
 
 Profile 1 (`0x18f0`) is the vLinker MS's actual GATT layout, captured on the truck (comment at
-`src/ble_obd_source.cpp:17`). Profiles 2–3 cover the common CC2541/HM-10-family clones. Profile 4
+the `SVC_UUID` constant in `src/ble_obd_source.cpp`). Profiles 2–3 cover the common CC2541/HM-10-family clones. Profile 4
 is the Nordic UART Service, present on some BLE-ELM327 clones built on Nordic silicon. If none of
-the four match, `bindChars()` returns false (`src/ble_obd_source.cpp:406`) and its caller
-disconnects and moves on to the next scanned candidate (`src/ble_obd_source.cpp:363-364`).
+the four match, `bindChars()` returns false (`bindChars`) and its caller
+disconnects and moves on to the next scanned candidate (`connectAndSetup`).
 
 These four are **exactly** what the firmware tries — nothing else is in scope for `crowpanel_obd`.
 
 ## How adapters are chosen
 
 On every connect attempt without a cached address, the firmware scans for 6 seconds, then ranks
-every device seen before trying to connect (`src/ble_obd_source.cpp:285-323`, `src/ble_rank.cpp`).
+every device seen before trying to connect (`connectAndSetup` in `src/ble_obd_source.cpp`, and `src/ble_rank.cpp`).
 
 **Ranking is name-hint first, RSSI second.** `bleNameLooksLikeObd()` checks the advertised name
 (case-insensitive substring) against a fixed hint list:
@@ -56,16 +57,16 @@ every device seen before trying to connect (`src/ble_obd_source.cpp:285-323`, `s
 "obd", "vlink", "elm", "icar", "veepeak", "konnwei", "carista", "obdlink"
 ```
 
-(`src/ble_rank.cpp:20-22`, quoted verbatim). Any device whose name contains one of these sorts
+(`bleNameLooksLikeObd` in `src/ble_rank.cpp`, quoted verbatim). Any device whose name contains one of these sorts
 ahead of every device that doesn't — regardless of signal strength — and within each group,
-stronger RSSI sorts first (`src/ble_rank.cpp:31-34`). The sort is a stable insertion sort, so
-devices with identical rank keep their scan order (`src/ble_rank.cpp:39-48`).
+stronger RSSI sorts first (`rankKey` in `src/ble_rank.cpp`). The sort is a stable insertion sort, so
+devices with identical rank keep their scan order (`bleRankCandidates` in `src/ble_rank.cpp`).
 
 The rationale, from the source comment: the adapter is plugged in right next to the board, but in
 a crowded RF environment (a parking lot) a strong nearby phone or watch shouldn't be tried ahead
-of a named OBD dongle (`src/ble_obd_source.cpp:307-310`). After ranking, the firmware attempts to
+of a named OBD dongle (`connectAndSetup`). After ranking, the firmware attempts to
 connect to the top 12 candidates in order, stopping at the first one that both connects and binds
-one of the four GATT profiles above (`src/ble_obd_source.cpp:341-364`).
+one of the four GATT profiles above (`connectAndSetup`).
 
 Note that `obdlink` is in the hint list — the ranking would happily try an OBDLink device first if
 it advertised a matching name. It doesn't; see below.

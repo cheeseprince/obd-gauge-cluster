@@ -6,16 +6,14 @@ automatically, what each profile currently supports, and what "not supported" ac
 ## How a vehicle is chosen
 
 On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** and parses the
-17-character VIN out of the reassembled multi-frame ISO-TP reply (`src/vin.cpp:123-130`,
-`parseVinReply`). The first three characters — the WMI — are looked up in a fixed WMI→profile
+17-character VIN out of the reassembled multi-frame ISO-TP reply (`parseVinReply` in `src/vin.cpp`). The first three characters — the WMI — are looked up in a fixed WMI→profile
 table: `1GT`/`3GT`/`1GC`/`3GC` → `gm_sierra_lz0`, `WBA`/`WBS`/`5UX`/`4US` → `bmw_f10_535i`,
-`WAU`/`WA1`/`WUA`/`TRU` → `audi_q5` (`src/vin.cpp:132-147`, `vinToProfileKey`). An unrecognized
-WMI returns no match (`src/vin.cpp:152-153`), and the display falls back to the Generic
+`WAU`/`WA1`/`WUA`/`TRU` → `audi_q5` (the `MAP` table in `vinToProfileKey`, `src/vin.cpp`). An unrecognized
+WMI returns no match (`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic
 profile.
 
 **Settings → Pick Vehicle** overrides this and locks the choice: with auto-select off, VIN-based
-switching is skipped entirely, regardless of what VIN is read on the wire (`src/vin.cpp:150`,
-the `vehicleAuto` gate in `vinAutoTarget`).
+switching is skipped entirely, regardless of what VIN is read on the wire (the `vehicleAuto` gate in `vinAutoTarget`, `src/vin.cpp`).
 
 Example VIN shape used in this repo's own tests (synthetic, not a real vehicle):
 `1GT0123456789ABCD`.
@@ -28,7 +26,7 @@ ATF/gearbox temp, oil temp, charge-air pressure — but their scaling is a **bes
 on-car**, so they ship with **alarms off**. See [`AUDI-STATUS.md`](AUDI-STATUS.md) for the
 research behind those DIDs and what a confirmation drive would need to establish.
 
-3 pages, 12 tiles (`audi_q5.cpp:139`):
+3 pages, 12 tiles (`AUDI_PAGES` / `AUDI_PAGE_NAMES` in `audi_q5.cpp`):
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
@@ -55,7 +53,7 @@ Two parameters are missing, for two *different* reasons:
 
 See [`BMW-STATUS.md`](BMW-STATUS.md) for the on-car scan results.
 
-3 pages, 11 tiles — the last page has one empty cell (`bmw_f10_535i.cpp:147`):
+3 pages, 11 tiles — the last page has one empty cell (`PAGES` / `PAGE_NAMES` in `bmw_f10_535i.cpp`):
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
@@ -71,7 +69,7 @@ enhanced PID was measured, not guessed. **Chevrolet Silverado 1500 (2023–2026,
 to work**, same LZ0/Global-B as the Sierra, but validated only on the GMC, not separately on a
 Silverado.
 
-7 pages, 27 tiles — the last page has one empty cell (`gm_sierra_lz0.cpp:158`):
+7 pages, 27 tiles — the last page has one empty cell (`PAGES` / `PAGE_NAMES` in `gm_sierra_lz0.cpp`):
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
@@ -86,7 +84,7 @@ Silverado.
 ## Ford
 
 **No profile ships yet.** Ford has no WMI entry in `vinToProfileKey` — the comment at
-`src/vin.cpp:142-143` notes a Ford row (e.g. `1FT`) returns no match "until that profile is
+the `MAP` table in `vinToProfileKey` notes a Ford row (e.g. `1FT`) returns no match "until that profile is
 registered." A Ford vehicle currently lands on the Generic profile below: standard Mode-01
 parameters populate, and the enhanced Power Stroke parameters (transmission temp, EGT, DPF,
 fuel rail pressure, DEF, NOx) do not exist in this firmware yet. See
@@ -95,7 +93,7 @@ establish before that profile can be written.
 
 ## Generic
 
-2 pages, 8 tiles (`generic_obd.cpp:81`).
+2 pages, 8 tiles (`GEN_PAGES` / `GEN_PAGE_NAMES` in `generic_obd.cpp`).
 
 The fallback profile for any VIN whose WMI isn't in the table above, or for any vehicle scanned
 with **Settings → Pick Vehicle** left on auto. Standard Mode-01 only — no manufacturer-specific
@@ -109,7 +107,7 @@ parameters, no vehicle-tuned alarm thresholds.
 | 2 | AIR | Intake · Pedal · Maf · Volts |
 
 Fuel level (`012F`) is polled live on this profile but scheduled as an internal helper value,
-not shown as a tile — both pages are already full (`generic_obd.cpp:82-84`).
+not shown as a tile — both pages are already full (`GEN_HELPERS` in `generic_obd.cpp`).
 
 ## What "not supported" means
 
