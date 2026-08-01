@@ -15,19 +15,19 @@ From **Check update** in the on-screen menu, the dash (`src/ota_update.cpp`,
    [first-time setup](INSTALL.md)).
 2. Fetches `manifest.txt` from `OTA_BASE_URL` (GitHub Pages) over TLS, with the server
    certificate validated against the Mozilla root-CA bundle compiled into the firmware
-   (`src/ota_update.cpp:159-167`).
+   (`otaCheckUpdate` in `src/ota_update.cpp`).
 3. Fetches `manifest.sig` and verifies an ECDSA P-256/SHA-256 signature over the exact bytes
    of `manifest.txt`, using the public key compiled into the firmware
-   (`src/ota_update.cpp:183-215`). **This step is mandatory** — see [Signing](#signing)
+   (`otaVerifyManifest`, called from `otaCheckUpdate`). **This step is mandatory** — see [Signing](#signing)
    below.
 4. Looks up the release matching this device's `OTA_ENV` in the manifest, then compares its
    version against the running firmware's version with a semver comparison. Installs only a
    **strictly newer** release — equal or older is refused, which blocks a
-   replayed-old-manifest downgrade attack (`src/ota_update.cpp:217-228`).
+   replayed-old-manifest downgrade attack (`parseSemver` in `src/ota_update.cpp`).
 5. Streams the `.bin` into the spare OTA slot while hashing it, then checks the streamed
    SHA-256 against the manifest's `sha256` field **before** calling `Update.end()`
-   (`src/ota_update.cpp:264-279`).
-6. Only then activates the new slot and reboots (`src/ota_update.cpp:281-282`).
+   (the streaming-hash loop in `otaCheckUpdate`).
+6. Only then activates the new slot and reboots (the end of `otaCheckUpdate`).
 
 **Every failure path — join failed, manifest fetch failed, signature missing/invalid,
 already up to date, bin fetch failed, size/hash mismatch, flash error — returns without
@@ -40,9 +40,9 @@ keeps running exactly what it was already running; there is no partially-applied
 | :--- | :--- | :--- | :--- |
 | Private signing key | GitHub Actions secret `OTA_SIGNING_KEY` | Never committed | `.github/workflows/release.yml` |
 | Public verification key | Compiled in, `src/ota_pubkey.h` | Committed to the repo (public keys are meant to be public) | `src/ota_pubkey.h` |
-| Enforcement | Firmware | **Mandatory** — file-scope `static_assert(sizeof(OTA_PUBKEY_PEM) > 64, ...)` | `src/ota_update.cpp:39-40` |
+| Enforcement | Firmware | **Mandatory** — file-scope `static_assert(sizeof(OTA_PUBKEY_PEM) > 64, ...)` | the file-scope `static_assert` in `src/ota_update.cpp` |
 
-A real compiled-in public key is not optional. An earlier version of this firmware had a fail-open branch — internally called "transition mode" — that skipped signature verification while `OTA_PUBKEY_PEM` was still an empty placeholder. That branch was deleted as a security fix: a bad merge or a stripped header would otherwise have silently disabled signature enforcement. Today, shipping firmware with no real key **does not compile** — the `static_assert` above turns that failure mode into a build error instead of a weakened device. At runtime, a missing or invalid `manifest.sig` is refused before the `.bin` is ever downloaded (`src/ota_update.cpp:208-215`).
+A real compiled-in public key is not optional. An earlier version of this firmware had a fail-open branch — internally called "transition mode" — that skipped signature verification while `OTA_PUBKEY_PEM` was still an empty placeholder. That branch was deleted as a security fix: a bad merge or a stripped header would otherwise have silently disabled signature enforcement. Today, shipping firmware with no real key **does not compile** — the `static_assert` above turns that failure mode into a build error instead of a weakened device. At runtime, a missing or invalid `manifest.sig` is refused before the `.bin` is ever downloaded (`otaCheckUpdate`, before the download starts).
 
 `publish_ota.sh`, the local fallback publisher, enforces the same posture from the other
 side: it refuses to publish a release with no `manifest.sig` unless you explicitly set
@@ -54,20 +54,20 @@ enforces manifest.sig — no device will install it. Cut a signed
 release with a tag push instead (release.yml).
 ```
 
-(`publish_ota.sh:31-40`). `OTA_ALLOW_UNSIGNED=1` is meant for fork/debug use against a
-device that's had its own unsigned-tolerant `ota_pubkey.h`/build swapped in — a stock
+(the signing guard in `publish_ota.sh`). `OTA_ALLOW_UNSIGNED=1` is meant for fork/debug use
+against a device that's had its own unsigned-tolerant `ota_pubkey.h`/build swapped in — a stock
 build from this repo will still reject an unsigned manifest regardless.
 
 ## Anti-rollback
 
 The only rollback protection is the **semver comparison described above** — a device
 refuses to install a manifest whose version is not strictly newer than what it's already
-running (`src/ota_update.cpp:221-228`). A non-release running version (`local`, `dev-<hash>`,
+running (`parseSemver` in `src/ota_update.cpp`). A non-release running version (`local`, `dev-<hash>`,
 i.e. anything flashed over USB rather than from a tagged release) parses as version `0`, so
 a USB/dev build always accepts the next signed release.
 
 **Be precise about what this is not:** there is no hardware anti-rollback. The CrowPanel
-board is an ESP32-S3 (`board = esp32-s3-devkitc-1`, `platformio.ini:140`), which has an
+board is an ESP32-S3 (`board = esp32-s3-devkitc-1` in `[env:crowpanel_obd]`), which has an
 eFuse secure-version counter for exactly this purpose, and it is **not enabled** on this
 project. A signed manifest for an *older* released version, if an attacker could get a
 device to see it, is only stopped by software semver comparison — it is not fused out at
@@ -112,8 +112,8 @@ for verification (`gh attestation verify`) and for anyone auditing what went int
 A manual `workflow_dispatch` run (no tag) does steps 1–3 as a dry run — using a
 `dev-<hash>` version string — to prove the build-and-sign pipeline still works, but the
 publish and release-creation steps are gated on `github.ref_type == 'tag'`
-(`.github/workflows/release.yml:76-105`), so a manual run can never overwrite the live
-release on `gh-pages`.
+(the `if: github.ref_type == 'tag'` guards in `.github/workflows/release.yml`), so a manual
+run can never overwrite the live release on `gh-pages`.
 
 `publish_ota.sh` does the same build-and-publish locally as a fallback, requiring a clean
 git tree and push access; see [Signing](#signing) above for why it needs

@@ -14,7 +14,7 @@ Generic.
 
 ### GM Sierra LZ0 — 7 pages, 27 tiles
 
-`src/vehicles/gm_sierra_lz0.cpp:158`
+`PAGES` / `PAGE_NAMES` in `src/vehicles/gm_sierra_lz0.cpp`
 
 | Page | Tile | What it means |
 | :--- | :--- | :--- |
@@ -49,7 +49,7 @@ Generic.
 
 ### BMW F10 535i — 3 pages, 11 tiles
 
-`src/vehicles/bmw_f10_535i.cpp:147`
+`PAGES` / `PAGE_NAMES` in `src/vehicles/bmw_f10_535i.cpp`
 
 | Page | Tile | What it means |
 | :--- | :--- | :--- |
@@ -68,7 +68,7 @@ Generic.
 
 ### Audi Q5 — 3 pages, 12 tiles
 
-`src/vehicles/audi_q5.cpp:139`
+`AUDI_PAGES` / `AUDI_PAGE_NAMES` in `src/vehicles/audi_q5.cpp`
 
 | Page | Tile | What it means |
 | :--- | :--- | :--- |
@@ -87,7 +87,7 @@ Generic.
 
 ### Generic OBD — 2 pages, 8 tiles
 
-`src/vehicles/generic_obd.cpp:81`
+`GEN_PAGES` / `GEN_PAGE_NAMES` in `src/vehicles/generic_obd.cpp`
 
 | Page | Tile | What it means |
 | :--- | :--- | :--- |
@@ -102,40 +102,39 @@ Generic.
 
 Generic OBD also polls `FuelLevel` (PID `012F`) live, but both of its pages are already full, so
 it's scheduled as a helper value rather than shown as its own tile
-(`generic_obd.cpp:82-84`).
+(`GEN_HELPERS` in `generic_obd.cpp`).
 
 ## The alarm model
 
 Warn and critical bands are **per-stat and per-vehicle** — they come from each profile's
 `Thresholds` struct (warn/crit high and low), not from a single global table
-(`src/gauge_model.h:10-16`, `zoneFor()`).
+(`zoneFor()` in `src/gauge_model.h`).
 
 An alarm only fires after the stat has been continuously non-Green for **4000 ms**; it resets
 back to armed the moment the stat returns to Green. This hold-off is tracked per stat index, so
-one tile's alarm state doesn't affect another's (`src/alarm_holdoff.h:11`,
-`alarm_holdoff.cpp:3-7`).
+one tile's alarm state doesn't affect another's (`AlarmHoldoff::confirmed` in `src/alarm_holdoff.cpp`).
 
 **Oil pressure gets special arming logic.** The low-pressure alarm only arms once RPM has been
 **≥ 400** for a sustained **20 000 ms** of confirmed engine-running, and it disarms instantly if
-RPM drops, goes invalid, or the OBD link drops (`src/gauge_model.h:23-24`,
-`gauge_model.cpp:36-42`). RPM has to be fresh within the last **4000 ms** to count toward that —
-a held/stale value doesn't arm it (`src/gauge_model.h:31`).
+RPM drops, goes invalid, or the OBD link drops (`LOWARM_MS` / `LOWARM_RPM` in `src/gauge_model.h`, applied by `lowArmTick`
+in `gauge_model.cpp`). RPM has to be fresh within the last **4000 ms** to count toward that —
+a held/stale value doesn't arm it (`LOWARM_RPM_FRESH_MS` in `src/gauge_model.h`).
 
 This exists because gating the same logic on fuel flow instead of RPM failed on the actual truck:
 FUEL is a slow-tier PID (~35 s cadence), so its last-good value stayed stale through exactly the
 transitions that mattered. A 2026-07-17 log replay of that gating produced **11 false fires** at
 auto-stop shutdowns and key-on windows. RPM is fast-tier (~2 s), so arming on sustained RPM
-instead removed all of them (`gauge_model.cpp:21-31`).
+instead removed all of them (the arming rationale recorded above `lowArmTick` in `gauge_model.cpp`).
 
 Stale values — a held value from a PID that's stopped responding — are shown in grey and are
-excluded from alarming entirely (`src/ui.cpp:700`).
+excluded from alarming entirely (the stale branch of `render()` in `src/ui.cpp`).
 
 ## Focus view
 
 Press a tile to zoom into it. Focus view shows a rolling trend graph for that stat, with each
 sample coloured by the alarm zone it was in when it was recorded.
 
-The trend window is **5 minutes**: a 300-sample ring at 1 Hz (`HISTORY_LEN`, `src/history.h:11,13`).
+The trend window is **5 minutes**: a 300-sample ring at 1 Hz (`HISTORY_LEN` in `src/history.h`).
 
 ## Theming
 
