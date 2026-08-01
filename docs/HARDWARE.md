@@ -16,12 +16,14 @@ the old one is an option.
 | Daylight readability | Poor — washes out in a sunlit cab | The reason for the change |
 | Resolution | 480×320 | 480×320 — same, so **no UI rework** |
 | MCU | ESP32 (WROVER) | ESP32-S3 (PSRAM) |
-| Encoder port | none broken out | on-board **I²C-OUT (Qwiic)** header |
+| Encoder port | none broken out | on-board **I²C-OUT (Grove)** header |
 
 The IPS panel is the win: a TN display at ~250–300 nits is hard to read through a
 windshield's worth of daylight, and an IPS panel at 400 nits with wide viewing angles
 solves it. Keeping the same 480×320 resolution meant the entire UI carried over unchanged.
 The on-board I²C-OUT header is what makes the rotary-encoder input clean — no GPIO wiring.
+Note that header is a **Grove** plug and the Modulino knob is **Qwiic**, so the two ends need
+the bridging cable called out in [WIRING.md](WIRING.md) — not a straight Qwiic-to-Qwiic lead.
 
 **Note on Bluetooth:** the CrowPanel Advance is an ESP32-**S3**, which does **BLE only** —
 that is a hardware fact, not a build option. The dash reads OBD over BLE (a Vgate vLinker MS or an iCar Pro BLE 4.0 — both validated).

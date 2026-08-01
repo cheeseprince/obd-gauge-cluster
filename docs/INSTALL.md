@@ -52,7 +52,30 @@ ls /dev/cu.usbmodem*                    # macOS
 pio run -e crowpanel_obd -t upload --upload-port /dev/cu.usbmodemXXXX
 ```
 
-On Linux, the port is typically `/dev/ttyACM*` or `/dev/ttyUSB*`.
+On Linux, the port is typically `/dev/ttyACM*`.
+
+### The board has two USB-C ports, and they do different jobs
+
+This trips people up when a log looks empty. The two ports are not interchangeable:
+
+| Port | Shows up as | Carries | On reset |
+| :--- | :--- | :--- | :--- |
+| **Native USB** (`303a:1001`) | `/dev/ttyACM*`, `/dev/cu.usbmodem*` | **Flashing**, and the firmware's own `Serial` output — the `[BOOT]` banner and every `Serial.println` | **Re-enumerates.** The device node disappears and comes back |
+| **USB-UART bridge** (`1a86:7522`, CH340) | `/dev/ttyUSB*` | UART0: the ROM bootloader log, IDF `ESP_LOG` output, and **panic backtraces** | Survives — the node stays put |
+
+So: **flash and read app output on native USB; watch a crash on the CH340 bridge.** A panic
+backtrace is printed by the ROM/IDF layer on UART0, so it never appears on the native port —
+and the native port is precisely the one that vanishes when the board resets under you.
+
+On Linux, prefer the stable path over the numbered one, since numbering shifts across the
+re-enumeration described above:
+
+```
+ls -l /dev/serial/by-id/
+```
+
+Do not hold the native port open in a monitor while `pio` or `esptool` is using it — a second
+reader contending for the same port returns protocol garbage instead of your log.
 
 **Never glob the port** (e.g. `--upload-port /dev/cu.usbmodem*` passed through unexpanded, or
 scripting around a wildcard match). macOS can leave a **permanent ghost `usbmodem` device
