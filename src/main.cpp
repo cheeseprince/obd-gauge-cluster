@@ -364,9 +364,9 @@ void loop() {
   // gated by MOCK_OBD/HAS_KNOB_MENU) — inputTaskCore0 and obdTaskCore0 run on
   // every build variant.
   {
-    static uint32_t lastStackSampleMs = 0;
-    if ((int32_t)(now - (lastStackSampleMs + 5000)) >= 0) {
-      lastStackSampleMs = now;
+    static uint32_t lastStackSample = 0;
+    if ((int32_t)(now - (lastStackSample + 5000)) >= 0) {
+      lastStackSample = now;
       persistStackMins(now);
     }
   }
