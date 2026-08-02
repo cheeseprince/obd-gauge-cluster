@@ -282,26 +282,36 @@ AUDI_Q5 = VehiclePreset(
 
 JEEP_WS = VehiclePreset(
     name="jeep",
-    note="2022 Jeep Wagoneer 5.7L Hemi eTorque (WS platform, ZF 8HP75). Addressing is "
-         "the unusual part: the transmission answers on 29-bit 18DA18F1, NOT on 11-bit "
-         "7E1 — a captured 2024 Wagoneer lists 7E1.7E9.2204FE as UNSUPPORTED, so the "
-         "Grand Cherokee's 11-bit path does not transfer. Gear 22051A @ DA18 is VERIFIED "
-         "on that capture. ATF temp 2204FE is VERIFIED on a Jeep Grand Cherokee 4th-gen "
-         "at DA18 (OBDb signalset, degC = A-40) but has NEVER been probed on a Wagoneer "
-         "at DA18 — it is the single reason this preset exists. Mode 01 is richer on the "
-         "29-bit functional header DB33F1 than on 11-bit 7E0: engine oil temp 015C and "
-         "torque 0162/0163 appear only there. eTorque 48V data is NOT reachable — its "
-         "BPCM sits behind the Security Gateway, and the same capture lists "
-         "6B4.22D410 (HV battery SoC) as UNSUPPORTED. Do not spend scan time on it.",
+    note="2022 Jeep Wagoneer 5.7L Hemi eTorque (WS platform, ZF 8HP75). VALIDATED ON A "
+         "REAL WAGONEER 2026-08-01 — census + 1024-probe sweep; see docs/JEEP-STATUS.md. "
+         "Addressing is the unusual part, and the scan confirmed it: the 11-bit path is "
+         "ENTIRELY dead (7DF and 7E0 both NO DATA, zero PIDs), while the transmission "
+         "answers on 29-bit 18DA18F1. Gear 22051A @ DA18 returned 62051ADD, byte-exact "
+         "with the 2024 Wagoneer capture. ATF temp 2204FE @ DA18 ANSWERS on a Wagoneer — "
+         "the hypothesis this preset was built to test — but it returns THREE bytes, not "
+         "one: 6204FE 6F 75 76. Applying the Grand Cherokee's degC = A-40 to each gives "
+         "71/77/78 degC, so all three read as plausible ZF 8HP temperatures (sump / "
+         "converter-out / cooler-out is the usual arrangement). WHICH byte is the sump "
+         "is UNDETERMINED — it needs a cold-start warm-up log to separate them. Mode 01 "
+         "is far richer on the 29-bit functional header DB33F1 (53 PIDs) than on 11-bit "
+         "7E0 (silent): torque 0162/0163 are supported there. NOTE: engine oil temp 015C "
+         "is NOT supported — an earlier revision of this note claimed it was, and the "
+         "census bitmask disproved it. eTorque 48V data is believed unreachable (BPCM "
+         "behind the Security Gateway; the 2024 capture lists 6B4.22D410 as UNSUPPORTED) "
+         "but this was NOT tested on-car — treat it as unverified, not as a finding.",
     blocks=[
-        Block("2204xx", 0x2204, note="TCM: ATF temp candidate 04FE — the point of the scan"),
-        Block("2205xx", 0x2205, note="TCM: gear 051A CONFIRMED on a 2024 Wagoneer"),
+        Block("2204xx", 0x2204, note="TCM: ATF temp 04FE CONFIRMED on a Wagoneer (3 bytes)"),
+        Block("2205xx", 0x2205, note="TCM: gear 051A CONFIRMED on a 2024 Wagoneer and on-car"),
     ],
     probes=["0100", "22051A"],       # 22051A is the enhanced go/no-go, like GM's 220005
-    # Powertrain only. 11-bit 7DF/7E0 plus the two 29-bit modules the capture
-    # proves are alive: DB33F1 (functional) and DA18F1 (TCM). Deliberately NOT
-    # DAC7 (tire pressure) or DA30 (wheel speeds/lateral G) — neither is
-    # powertrain, and DA30 is chassis-adjacent.
+    # Powertrain only. The two 29-bit modules proven alive on-car -- DB33F1
+    # (functional) and DA18F1 (TCM) -- plus 11-bit 7DF/7E0. Those two 11-bit
+    # headers are RETAINED DELIBERATELY even though the scan proved them silent:
+    # they cost 4 census probes and nothing in the sweep (which only targets
+    # headers the census marked alive), and they are the control that
+    # demonstrates the 11-bit path is dead rather than merely unqueried.
+    # Deliberately NOT DAC7 (tire pressure) or DA30 (wheel speeds/lateral G) --
+    # neither is powertrain, and DA30 is chassis-adjacent.
     headers=[h for h in HEADERS_11BIT if h.name in ("7DF", "7E0")]
             + [h for h in HEADERS_29BIT if h.name in ("18DB33F1", "18DA18F1")],
 )

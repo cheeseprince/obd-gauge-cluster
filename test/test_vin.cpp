@@ -57,6 +57,8 @@ int main() {
   check(strcmp(vinToProfileKey("WBA0123456789ABCD"),"bmw_f10_535i")==0, "WBA->bmw");
   check(strcmp(vinToProfileKey("WAU0123456789ABCE"),"audi_q5")==0, "WAU->audi_q5");
   check(strcmp(vinToProfileKey("wa10123456789abcd"),"audi_q5")==0, "WA1->audi_q5 (case)");
+  check(strcmp(vinToProfileKey("1C40123456789ABCD"),"jeep_ws")==0, "1C4->jeep_ws");
+  check(strcmp(vinToProfileKey("3c40123456789abcd"),"jeep_ws")==0, "3C4->jeep_ws (case)");
   check(vinToProfileKey("JHM0123456789ABCD")==nullptr, "unknown WMI -> null");
   check(vinToProfileKey("WA")==nullptr, "short -> null");
 

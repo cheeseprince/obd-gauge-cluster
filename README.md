@@ -16,8 +16,9 @@ DEF level — over a cheap Bluetooth adapter on a small dashboard screen.
 
 One firmware image holds **every vehicle profile** and picks the right one automatically from the
 car's **VIN** on connect (with a **Pick Vehicle** menu override). It's **validated on a 2025 GM
-Sierra 1500 3.0L Duramax** (LZ0, Global B); a BMW 535i (F10) and an Audi Q5 (2.0T) are skeleton
-profiles, and a Ford 6.7L Power Stroke is researched (see [Vehicles it works on](#vehicles-it-works-on)).
+Sierra 1500 3.0L Duramax** (LZ0, Global B); a BMW 535i (F10), an Audi Q5 (2.0T) and a Jeep
+Wagoneer (5.7L Hemi) are skeleton profiles, and a Ford 6.7L Power Stroke is researched (see
+[Vehicles it works on](#vehicles-it-works-on)).
 The enhanced parameters above are not standardized and no manufacturer publishes them, so adding
 a vehicle means discovering its PID map on the vehicle itself — the tooling for that is included
 (`tools/obd_scan`).
@@ -91,6 +92,7 @@ the choice.
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Ford | F-250/350 Super Duty | 6.7L Power Stroke | 2017–22 | — none yet | 🔬 Researched, needs a scan |
 | GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOW · POWER · REGEN · RANGE · TRIP · DIAG · MISC | ✅ **Validated on a real truck** |
+| Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–24 | **4** — TEMPS · DRIVE · POWER · MISC | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
 Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW
