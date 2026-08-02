@@ -64,6 +64,9 @@ SRC_LAYOUT = test_layout.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.c
 BIN_HOLD  = test_alarm_holdoff
 SRC_HOLD  = test_alarm_holdoff.cpp ../src/alarm_holdoff.cpp ../src/gauge_model.cpp
 
+BIN_SWATCH = test_stack_watch
+SRC_SWATCH = test_stack_watch.cpp ../src/stack_watch.cpp
+
 BIN_ENC   = test_encoder_logic
 SRC_ENC   = test_encoder_logic.cpp ../src/encoder_logic.cpp
 
@@ -123,7 +126,7 @@ BIN_LFUZZ = fuzz_obd_harness
 SRC_LFUZZ = fuzz_obd_libfuzzer.cpp fuzz_obd_driver.cpp ../src/obd_parse.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 .PHONY: test clean fuzz test-ota-sign
-test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT)
+test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH)
 	./$(BIN_PID)
 	./$(BIN_PARSE)
 	./$(BIN_GAUGE)
@@ -161,6 +164,7 @@ test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(B
 	./$(BIN_FUZZ)
 	./$(BIN_LFUZZ)
 	./$(BIN_BOOT)
+	./$(BIN_SWATCH)
 	bash test_ota_sign.sh
 
 # Standalone: build + run just the sanitized fuzzer.
@@ -247,6 +251,9 @@ $(BIN_LAYOUT): $(SRC_LAYOUT) ../src/readouts.h ../src/app_types.h
 $(BIN_HOLD): $(SRC_HOLD) ../src/alarm_holdoff.h ../src/app_types.h
 	$(CXX) $(CXXFLAGS) $(SRC_HOLD) -o $(BIN_HOLD)
 
+$(BIN_SWATCH): $(SRC_SWATCH) ../src/stack_watch.h
+	$(CXX) $(CXXFLAGS) $(SRC_SWATCH) -o $(BIN_SWATCH)
+
 $(BIN_ENC): $(SRC_ENC) ../src/encoder_logic.h
 	$(CXX) $(CXXFLAGS) $(SRC_ENC) -o $(BIN_ENC)
 
@@ -284,4 +291,4 @@ $(BIN_BOOT): $(SRC_BOOT) ../src/boot_banner.h
 	$(CXX) $(CXXFLAGS) $(SRC_BOOT) -o $(BIN_BOOT)
 
 clean:
-	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT)
+	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH)
