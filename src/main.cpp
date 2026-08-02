@@ -467,9 +467,19 @@ void loop() {
     }
     case MenuAction::ShowVersion: {
       // Blocking ~4s info card (freed the menu footer line for row space).
-      char v[128];
-      snprintf(v, sizeof v, "VERSION\n\nbuild %s\n%s\nenv %s\nOTA: obd-gauge-cluster",
-               FW_DATE, FW_VERSION, OTA_ENV);
+      // 192 (was 128): the two stack lines below overflow a 128-byte buffer,
+      // and snprintf would truncate them silently.
+      char v[192];
+      const StackMins& sm = g_stackWatch.mins();
+      char stk[64];
+      if (sm.loopFree == STACK_UNSET) {
+        snprintf(stk, sizeof stk, "stack free: measuring...");
+      } else {
+        snprintf(stk, sizeof stk, "stack free (min)\n loop %u  obd %u  input %u",
+                 (unsigned)sm.loopFree, (unsigned)sm.obdFree, (unsigned)sm.inputFree);
+      }
+      snprintf(v, sizeof v, "VERSION\n\nbuild %s\n%s\nenv %s\nOTA: obd-gauge-cluster\n\n%s",
+               FW_DATE, FW_VERSION, OTA_ENV, stk);
       ui::hideMenu();
       uint32_t t0 = millis();
       while ((int32_t)(millis() - (t0 + 4000)) < 0) {
