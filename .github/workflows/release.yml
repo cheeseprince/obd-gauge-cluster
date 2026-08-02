@@ -189,8 +189,16 @@ jobs:
         # provenance step binds the build. An unsigned SBOM is a claim; an
         # attested one is a claim someone can check:
         #   gh attestation verify crowpanel_obd.bin --repo <repo>
+        #
+        # actions/attest, not actions/attest-sbom: the latter is deprecated and
+        # since v0.1.5 emitted "actions/attest-sbom has been deprecated, please
+        # use actions/attest instead" on every release. It was only a thin
+        # wrapper — the v0.1.4/v0.1.5 logs show it invoking actions/attest with
+        # these same two inputs — so this is the same operation without the
+        # indirection. sbom-path still selects the SBOM predicate type
+        # automatically; predicate-type is only needed with predicate/-path.
         if: github.ref_type == 'tag'
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e  # v4.1.0
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d  # v4.2.1
         with:
           subject-path: out/crowpanel_obd.bin
           sbom-path: out/crowpanel_obd.bin.cdx.json
