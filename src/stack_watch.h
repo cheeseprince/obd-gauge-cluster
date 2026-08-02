@@ -24,11 +24,20 @@ class StackWatch {
  public:
   // A new low must beat the persisted value by at least this much to earn a
   // write. Without it, a stack that creeps down a few bytes at a time would
-  // write on nearly every sample.
-  static const uint32_t WRITE_DROP_BYTES = 256;
-  // Minimum spacing between writes. Bounds flash wear if something pathological
-  // drives the stack down repeatedly.
-  static const uint32_t WRITE_MIN_INTERVAL_MS = 60000;
+  // write on nearly every sample. This alone already bounds lifetime flash
+  // writes per task to roughly stackSize/WRITE_DROP_BYTES (~108 over a 16 KB
+  // stack's life), and that bound survives reboots since seed() restores
+  // persisted_ too — WRITE_MIN_INTERVAL_MS below is NOT needed for wear.
+  static constexpr uint32_t WRITE_DROP_BYTES = 256;
+  // Extra throttle on REPEAT writes only, once one has already happened —
+  // not a flash-wear bound (the drop threshold above already provides one).
+  // Guards against a task whose stack is degrading in real time writing on
+  // every 5 s sample. The very first write is exempt from this window (see
+  // StackWatch::update()): it is a boot-time seeding sample, and arming the
+  // lockout off of it would swallow the deeper VIN-read/TLS-handshake
+  // reading that follows a few seconds later — the exact reading this
+  // instrument exists to catch.
+  static constexpr uint32_t WRITE_MIN_INTERVAL_MS = 60000;
 
   // Load previously persisted minima (0 for any never written).
   void seed(const StackMins& stored);
@@ -44,6 +53,10 @@ class StackWatch {
  private:
   StackMins mins_;
   StackMins persisted_;
-  uint32_t  lastWriteMs_ = 0;
-  bool      everWrote_   = false;
+  uint32_t  lastWriteMs_   = 0;
+  bool      everWrote_     = false;
+  // Set true once a SECOND write happens. The first write is the boot-time
+  // seeding sample and must not itself start the rate-limit window (see the
+  // WRITE_MIN_INTERVAL_MS comment above and update()'s lockout check).
+  bool      lockoutArmed_  = false;
 };

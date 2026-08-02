@@ -150,12 +150,22 @@ static StackMins sampleStacks() {
 // Stack minima live in the existing "obd" NVS namespace. Keys are deliberately
 // short (NVS keys are capped at 15 chars) and distinct from the settings keys
 // night/nightm/bright/metric/log/vehkey/bleaddr/bletype/appass.
+//
+// "swgit" holds the FW_GIT of the build that wrote swloop/swobd/swinput.
+// mins_ is monotonically non-increasing (minOf() only ever lowers), so
+// without this a low measured under an OLD, possibly buggy, binary would
+// survive forever and misreport the CURRENTLY running image's headroom —
+// the card would show what the stack once was, never what it is now. On a
+// build mismatch (including "never written") loadStackMins() reports all
+// three fields as never-written, so seed() starts this build's record fresh.
 static void loadStackMins(StackMins& m) {
   Preferences p;
   p.begin("obd", true);                 // read-only
-  m.loopFree  = p.getUInt("swloop",  0);   // 0 = never written
-  m.obdFree   = p.getUInt("swobd",   0);
-  m.inputFree = p.getUInt("swinput", 0);
+  String storedGit = p.getString("swgit", "");
+  bool sameBuild = storedGit == FW_GIT;
+  m.loopFree  = sameBuild ? p.getUInt("swloop",  0) : 0;   // 0 = never written
+  m.obdFree   = sameBuild ? p.getUInt("swobd",   0) : 0;
+  m.inputFree = sameBuild ? p.getUInt("swinput", 0) : 0;
   p.end();
 }
 
@@ -165,6 +175,9 @@ static void saveStackMins(const StackMins& m) {
   if (m.loopFree  != STACK_UNSET) p.putUInt("swloop",  m.loopFree);
   if (m.obdFree   != STACK_UNSET) p.putUInt("swobd",   m.obdFree);
   if (m.inputFree != STACK_UNSET) p.putUInt("swinput", m.inputFree);
+  // Stamp the identity that wrote these so a later loadStackMins() on a
+  // different build discards them instead of keeping a stale low forever.
+  p.putString("swgit", FW_GIT);
   p.end();
 }
 
@@ -174,6 +187,30 @@ static void persistStackMins(uint32_t nowMs) {
     saveStackMins(g_stackWatch.mins());
     g_stackWatch.markPersisted(nowMs);
   }
+}
+
+// Unconditional stack-minima persist for the moment right before a reboot,
+// when the just-recorded high-water mark (TLS handshake / VIN read peak) is
+// the freshest it will ever be — the drop threshold and rate limit exist to
+// bound ROUTINE writes, not to gate the one sample that matters most.
+//
+// Two call sites, both about to reboot:
+//   - the CheckUpdate menu handler below, for every otaCheckUpdate() exit
+//     that returns normally (no WiFi, join failed, up to date, download
+//     failed) — control resumes here and this runs exactly once.
+//   - otaCheckUpdate() itself (src/ota_update.cpp), on its SUCCESS path,
+//     immediately before its own internal ESP.restart(). That restart never
+//     returns to the caller, so this runs there instead, and the call below
+//     is not reached a second time for that path. See the extern
+//     declaration in ota_update.cpp.
+void otaPersistStackMins() {
+  g_stackWatch.update(sampleStacks(), millis());
+  saveStackMins(g_stackWatch.mins());
+  g_stackWatch.markPersisted(millis());
+  Serial.printf("[STACK] loop=%u obd=%u input=%u free bytes (min)\n",
+                (unsigned)g_stackWatch.mins().loopFree,
+                (unsigned)g_stackWatch.mins().obdFree,
+                (unsigned)g_stackWatch.mins().inputFree);
 }
 
 void setup() {
@@ -447,20 +484,21 @@ void loop() {
       delay(150);                          // let an in-flight poll() finish
       ui::hideMenu();
       auto pump = [](const char* msg) { ui::showStatus(msg, theme); display::tick(); };
-      if (menuAct == MenuAction::OpenWifiSetup) otaPortalRun(pump);
-      else                                      otaCheckUpdate(pump, settings.geo);   // reboots itself on success
+      if (menuAct == MenuAction::OpenWifiSetup) {
+        otaPortalRun(pump);
+      } else {
+        // otaCheckUpdate() reboots itself internally on SUCCESS (and calls
+        // otaPersistStackMins() there before doing so — see that function's
+        // comment). Every OTHER exit (no WiFi, join failed, up to date,
+        // download failed) returns normally, and control resumes here.
+        otaCheckUpdate(pump, settings.geo);
+      }
       Serial.println("[OTA] flow done — restarting");
-      // The TLS handshake just ran on this task and its peak is recorded in the
-      // high-water mark — but ESP.restart() below destroys it. This is the one
-      // moment the number exists, so write it unconditionally, ignoring both the
-      // drop threshold and the rate limit.
-      g_stackWatch.update(sampleStacks(), millis());
-      saveStackMins(g_stackWatch.mins());
-      g_stackWatch.markPersisted(millis());
-      Serial.printf("[STACK] loop=%u obd=%u input=%u free bytes (min)\n",
-                    (unsigned)g_stackWatch.mins().loopFree,
-                    (unsigned)g_stackWatch.mins().obdFree,
-                    (unsigned)g_stackWatch.mins().inputFree);
+      // Reached for OpenWifiSetup always, and for CheckUpdate on every exit
+      // except the internal-restart SUCCESS path (see above) — so this is
+      // the one-and-only persist call for those paths, same helper the
+      // success path uses.
+      otaPersistStackMins();
       delay(100);
       ESP.restart();
       break;                               // unreachable

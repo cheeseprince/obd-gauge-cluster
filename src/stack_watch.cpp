@@ -30,14 +30,22 @@ bool StackWatch::update(const StackMins& sample, uint32_t nowMs) {
                      dropped(mins_.inputFree, persisted_.inputFree);
   if (!worth) return false;
 
+  // Rate limit only guards REPEAT writes, once at least one write has already
+  // armed it (see markPersisted()) -- the first-ever write is a shallow
+  // boot-time seeding sample and must not lock out the deeper reading (VIN
+  // read / TLS handshake) that typically follows within seconds.
   // Wrap-safe: the same idiom used for the timers in ota_update.cpp/main.cpp.
-  if (everWrote_ &&
+  if (lockoutArmed_ &&
       (int32_t)(nowMs - (lastWriteMs_ + WRITE_MIN_INTERVAL_MS)) < 0) return false;
   return true;
 }
 
 void StackWatch::markPersisted(uint32_t nowMs) {
   persisted_  = mins_;
+  // The write just recorded arms the lockout for the NEXT one, unless this
+  // was itself the first-ever write (in which case it must stay unarmed --
+  // see update()'s comment and the WRITE_MIN_INTERVAL_MS header comment).
+  if (everWrote_) lockoutArmed_ = true;
   lastWriteMs_ = nowMs;
   everWrote_   = true;
 }
