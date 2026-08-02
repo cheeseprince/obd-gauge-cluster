@@ -18,18 +18,18 @@ Generic.
 
 | Page | Tile | What it means |
 | :--- | :--- | :--- |
-| 1 TOW | Trans | Transmission temperature |
-| 1 TOW | Coolant | Coolant temperature |
-| 1 TOW | OilP | Oil pressure |
-| 1 TOW | Egt | Exhaust gas temperature |
+| 1 TOWING | Trans | Transmission temperature |
+| 1 TOWING | Coolant | Coolant temperature |
+| 1 TOWING | OilP | Oil pressure |
+| 1 TOWING | Egt | Exhaust gas temperature |
 | 2 POWER | Boost | Turbo boost |
 | 2 POWER | Hp | Horsepower |
 | 2 POWER | Rpm | Engine speed |
 | 2 POWER | Load | Engine load |
-| 3 REGEN | DpfDp | DPF differential pressure |
-| 3 REGEN | FuelRate | Fuel rate |
-| 3 REGEN | Nox | NOx |
-| 3 REGEN | Rail | Fuel rail pressure |
+| 3 REGENERATION | DpfDp | DPF differential pressure |
+| 3 REGENERATION | FuelRate | Fuel rate |
+| 3 REGENERATION | Nox | NOx |
+| 3 REGENERATION | Rail | Fuel rail pressure |
 | 4 RANGE | FuelLevel | Fuel level |
 | 4 RANGE | DslFill | Diesel fill level |
 | 4 RANGE | Def | DEF level |
@@ -38,14 +38,14 @@ Generic.
 | 5 TRIP | MpgAvg | Average MPG |
 | 5 TRIP | Gal100mi | Gallons per 100 miles |
 | 5 TRIP | L100km | Litres per 100 km |
-| 6 DIAG | Maf | Mass air flow |
-| 6 DIAG | Egr | EGR |
-| 6 DIAG | Cac | Charge air cooler temp |
-| 6 DIAG | Intake | Intake air temperature |
-| 7 MISC | Speed | Vehicle speed |
-| 7 MISC | Volts | Battery voltage |
-| 7 MISC | Oil | Oil temperature |
-| 7 MISC | *(empty)* | Page 7's fourth cell is unused — this is the empty cell, not a bug |
+| 6 DIAGNOSTICS | Maf | Mass air flow |
+| 6 DIAGNOSTICS | Egr | EGR |
+| 6 DIAGNOSTICS | Cac | Charge air cooler temp |
+| 6 DIAGNOSTICS | Intake | Intake air temperature |
+| 7 MISCELLANEOUS | Speed | Vehicle speed |
+| 7 MISCELLANEOUS | Volts | Battery voltage |
+| 7 MISCELLANEOUS | Oil | Oil temperature |
+| 7 MISCELLANEOUS | *(empty)* | Page 7's fourth cell is unused — this is the empty cell, not a bug |
 
 ### BMW F10 535i — 3 pages, 11 tiles
 
@@ -61,10 +61,10 @@ Generic.
 | 2 DRIVE | Speed | Vehicle speed |
 | 2 DRIVE | Intake | Intake air temperature |
 | 2 DRIVE | Ambient | Ambient air temperature |
-| 3 MISC | Baro | Barometric pressure |
-| 3 MISC | FuelLevel | Fuel level |
-| 3 MISC | Volts | Battery voltage |
-| 3 MISC | *(empty)* | Page 3's fourth cell is unused — BMW also has an empty cell, 11 tiles not 12 |
+| 3 MISCELLANEOUS | Baro | Barometric pressure |
+| 3 MISCELLANEOUS | FuelLevel | Fuel level |
+| 3 MISCELLANEOUS | Volts | Battery voltage |
+| 3 MISCELLANEOUS | *(empty)* | Page 3's fourth cell is unused — BMW also has an empty cell, 11 tiles not 12 |
 
 ### Audi Q5 — 3 pages, 12 tiles
 
@@ -72,10 +72,10 @@ Generic.
 
 | Page | Tile | What it means |
 | :--- | :--- | :--- |
-| 1 TEMPS | Trans | Transmission temperature |
-| 1 TEMPS | Oil | Oil temperature |
-| 1 TEMPS | Coolant | Coolant temperature |
-| 1 TEMPS | Boost | Turbo boost |
+| 1 TEMPERATURES | Trans | Transmission temperature |
+| 1 TEMPERATURES | Oil | Oil temperature |
+| 1 TEMPERATURES | Coolant | Coolant temperature |
+| 1 TEMPERATURES | Boost | Turbo boost |
 | 2 DRIVE | Rpm | Engine speed |
 | 2 DRIVE | Speed | Vehicle speed |
 | 2 DRIVE | Load | Engine load |

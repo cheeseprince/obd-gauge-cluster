@@ -23,7 +23,11 @@ inline constexpr uint8_t RF_COMPUTED         = 1 << 0; // filled by updateComput
 inline constexpr uint8_t RF_LOW_NEEDS_ENGINE = 1 << 1; // low alarm armed only after sustained engine running (gauge_model lowArm)
 
 struct ReadoutDef {
-  const char* name;        // cell label, e.g. "TRANS"
+  // STABLE LOG KEY, not the on-screen text — e.g. "TRANS". This string is the
+  // SD-log CSV column header (sd_log.cpp buildHeaderRow), so tools/analyze_logs.py
+  // and every card already recorded depend on it: changing it forks the log
+  // schema. The on-screen text is statLabel() below and may be changed freely.
+  const char* name;
   const char* unit;        // "\xC2\xB0""F", "psi", "V", "mph", "" (none)
   uint8_t     decimals;    // display precision
   Thresholds  thr;         // alarm limits (NAN disables a bound)
@@ -45,7 +49,15 @@ int readoutAt(int page, int cell);  // displayed readout index at (page,cell), o
 int readoutPageOf(int idx);         // display page holding readout idx (0 if not displayed)
 bool isDisplayed(int idx);          // true if the stat occupies a cell in the layout
 bool isActive(int idx);             // true if displayed OR a queried HELPER (else deactivated)
-const char* pageName(int page);     // short page name for the header bar ("" out of range)
+const char* pageName(int page);     // page name for the header bar ("" out of range)
+
+// On-screen text for a stat, by StatId index — the quad cell, the focus title
+// and the alarm overlay. Deliberately NOT ReadoutDef::name: that string is the
+// CSV log key and must stay stable, while this one is free to read as plain
+// English. Shared across every vehicle profile (StatId is a global enum in
+// StatId order), so a stat cannot end up worded two ways on two vehicles.
+// Every string is width-checked against the panel — see readouts.cpp.
+const char* statLabel(int idx);
 
 // Display-time unit conversion. Canonical values are imperial (°F, mph); when
 // metric is true, Temp converts °F->°C and Speed mph->km/h. Everything else is

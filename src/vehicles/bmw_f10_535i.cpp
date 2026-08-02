@@ -155,14 +155,14 @@ static constexpr int BMW_ADDRESSING_COUNT =
   (int)(sizeof(BMW_ADDRESSING) / sizeof(BMW_ADDRESSING[0]));
 
 // --- layout -----------------------------------------------------------------
-// Sedan, gasoline: no TOW/REGEN/RANGE, no DEF/EGT/DPF. Three pages of the tiles
+// Sedan, gasoline: no TOWING/REGENERATION/RANGE, no DEF/EGT/DPF. Three pages of the tiles
 // the scan proved live. Oil temp / ATF land here once a cold-start drive pins
 // them; a PERF page (rail/VANOS/lambda) comes with a combustion sweep.
 #define _ StatId::COUNT
 static const StatId PAGES[][4] = {
   { StatId::Coolant, StatId::OilP,     StatId::Boost, StatId::Load },    // ENGINE
   { StatId::Rpm,     StatId::Speed,    StatId::Intake, StatId::Ambient },// DRIVE
-  { StatId::Baro,    StatId::FuelLevel, StatId::Volts, _ },              // MISC
+  { StatId::Baro,    StatId::FuelLevel, StatId::Volts, _ },              // MISCELLANEOUS
 };
 #undef _
 static const StatId HELPERS[] = {};   // boost uses a fixed baseline — no BARO helper needed
@@ -170,7 +170,7 @@ static const StatId HELPERS[] = {};   // boost uses a fixed baseline — no BARO
 static constexpr int LAYOUT_PAGE_COUNT   = (int)(sizeof(PAGES) / sizeof(PAGES[0]));
 static constexpr int LAYOUT_HELPER_COUNT = (int)(sizeof(HELPERS) / sizeof(HELPERS[0]));
 
-static const char* const PAGE_NAMES[] = { "ENGINE", "DRIVE", "MISC" };
+static const char* const PAGE_NAMES[] = { "ENGINE", "DRIVE", "MISCELLANEOUS" };
 static_assert(sizeof(PAGE_NAMES)/sizeof(PAGE_NAMES[0]) == (size_t)LAYOUT_PAGE_COUNT,
               "PAGE_NAMES must have one entry per PAGES row");
 

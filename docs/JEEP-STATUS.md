@@ -115,10 +115,10 @@ displayed.
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
-| 1 | TEMPS | Trans · Coolant · Intake · Ambient |
+| 1 | TEMPERATURES | Trans · Coolant · Intake · Ambient |
 | 2 | DRIVE | Rpm · Speed · Load · Pedal |
 | 3 | POWER | Torque · RefTq · Hp · Fuel rate |
-| 4 | MISC | Gear · Fuel% · Volts · Baro |
+| 4 | MISCELLANEOUS | Gear · FuelLevel · Volts · Baro |
 
 **The POWER page is what makes this skeleton richer than the BMW and Audi ones**, and every
 input on it was measured rather than guessed. Torque `0162`, reference torque `0163` and fuel

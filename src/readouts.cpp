@@ -105,3 +105,68 @@ const char* pageName(int page) {
   const LayoutDef& L = activeLayout();
   return (page >= 0 && page < L.pageCount) ? L.pageNames[page] : "";
 }
+
+// --- On-screen stat labels ---
+// Plain English, not abbreviations: the dash is read at a glance from the
+// driver's seat by someone who did not write the firmware. Kept here rather
+// than in the per-vehicle tables because a stat is the same physical quantity
+// on every vehicle — one table means "coolant" cannot be COOLANT on the Sierra
+// and CLNT on the BMW. ReadoutDef::name stays the short CSV log key.
+//
+// WIDTH IS A HARD CONSTRAINT — these strings are drawn in four places, and the
+// alarm overlay (not the tile) is the tightest. Measured budgets on the 480x320
+// panel, using LVGL's own text engine against the real widget geometry:
+//   quad tile name   montserrat_20, 204 px  (236 px grid column - 32 px theme pad)
+//   focus title      montserrat_28, 298 px  (must clear the SD status label)
+//   page band        montserrat_20, 298 px  (must clear the clock and SD labels)
+//   alarm line       montserrat_28, 464 px  for the whole "<label> CRITICAL 1450°F"
+// A label that overflows is clipped, not wrapped. "EXHAUST TEMP" was rejected
+// for exactly this reason: it fits the tile at 159 px but its critical line
+// renders 467 px, 3 px past the panel edge. Re-measure before widening any of
+// these — tools/ui_snapshot builds the real UI on the host.
+//
+// No "TEMP" suffix where the tile already prints °F/°C: the unit says it, and
+// the space buys plain words elsewhere.
+static const char* const STAT_LABELS[] = {
+  "TRANSMISSION",   // Trans      (was TRANS)
+  "OIL",            // Oil        — °F distinguishes it from OIL PRESSURE
+  "BOOST",          // Boost
+  "COOLANT",        // Coolant
+  "VOLTAGE",        // Volts      (was VOLTS)
+  "INTAKE",         // Intake
+  "RPM",            // Rpm        — expanding this reads worse than the acronym
+  "SPEED",          // Speed
+  "EXHAUST GAS",    // Egt        (was EGT)
+  "DPF PRESSURE",   // DpfDp      (was DPF dP)
+  "FUEL RATE",      // FuelRate   (was FUEL / FUEL RATE — unified)
+  "ENGINE LOAD",    // Load       (was LOAD)
+  "MPG",            // MpgInst    — the unit is the name
+  "AVERAGE MPG",    // MpgAvg     (was MPG AVG / AVG MPG — unified)
+  "GAL/100 MI",     // Gal100mi   (was GAL/100)
+  "L/100 KM",       // L100km     (was L/100km)
+  "RAIL PRESSURE",  // Rail       (was RAIL)
+  "HORSEPOWER",     // Hp         (was HP)
+  "DEF LEVEL",      // Def        — DEF stays: it is the fluid's actual name
+  "FUEL LEVEL",     // FuelLevel  (was FUEL%)
+  "DIESEL FILL",    // DslFill    (was DSL+ / DSL FILL — unified)
+  "DEF FILL",       // DefFill    (was DEF+ / DEF FILL — unified)
+  "ACTUAL TORQUE",  // ActTq      (was TORQUE / ACT TQ — unified)
+  "REF TORQUE",     // RefTq      (was RefTq / REF TQ — unified)
+  "BAROMETRIC",     // Baro       (was BARO)
+  "AIR FLOW",       // Maf        (was MAF)
+  "AMBIENT",        // Ambient
+  "EGR VALVE",      // Egr        (was EGR — no short plain-English expansion)
+  "ACCEL PEDAL",    // Pedal      (was PEDAL)
+  "CHARGE AIR",     // Cac        (was CAC)
+  "NOx",            // Nox        — chemical formula, not an abbreviation
+  "OIL PRESSURE",   // OilP       (was OIL P)
+  "GEAR",           // Gear       — logged only, never displayed
+};
+// A label added or removed without matching StatId desyncs every label from its
+// stat — silently, since both are just indices. Catch it at compile time.
+static_assert(sizeof(STAT_LABELS)/sizeof(STAT_LABELS[0]) == (size_t)STAT_COUNT,
+              "STAT_LABELS must have one entry per StatId, in StatId order");
+
+const char* statLabel(int idx) {
+  return (idx >= 0 && idx < STAT_COUNT) ? STAT_LABELS[idx] : "";
+}

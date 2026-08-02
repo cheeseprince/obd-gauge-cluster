@@ -129,14 +129,14 @@ static const AddressingDef AUDI_ADDRESSING[] = {
 static constexpr int AUDI_ADDRESSING_COUNT =
   (int)(sizeof(AUDI_ADDRESSING) / sizeof(AUDI_ADDRESSING[0]));
 
-// --- layout: 3-page SUV layout (temps+boost / drive / air). No TOW/REGEN/
+// --- layout: 3-page SUV layout (temps+boost / drive / air). No TOWING/REGENERATION/
 // RANGE pages (gasoline, no DEF/EGT/DPF). ---
 static const StatId AUDI_PAGES[][4] = {
-  { StatId::Trans,  StatId::Oil,   StatId::Coolant, StatId::Boost },   // TEMPS
+  { StatId::Trans,  StatId::Oil,   StatId::Coolant, StatId::Boost },   // TEMPERATURES
   { StatId::Rpm,    StatId::Speed, StatId::Load,    StatId::Volts },   // DRIVE
   { StatId::Intake, StatId::Pedal, StatId::Maf,     StatId::FuelLevel }, // AIR (FUEL% here so 012F is actually scheduled/shown)
 };
-static const char* const AUDI_PAGE_NAMES[] = { "TEMPS", "DRIVE", "AIR" };
+static const char* const AUDI_PAGE_NAMES[] = { "TEMPERATURES", "DRIVE", "AIR" };
 // No HELPERS: unlike GM's boost (MAP - BARO, needs a polled BARO helper),
 // Audi's boost decode uses a fixed sea-level baseline (no baro dependency),
 // and no other computed tile is active in this skeleton -- deviates from the
