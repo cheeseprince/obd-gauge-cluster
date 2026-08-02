@@ -29,6 +29,30 @@
 #define OTA_ENV "n/a"
 #endif
 
+// --- Arduino loop task stack size -------------------------------------------
+// Overrides the core's WEAK getArduinoLoopTaskStackSize()
+// (framework-arduinoespressif32/cores/esp32/main.cpp:39-41), which the core
+// calls once when it creates loopTask. A strong definition here wins at link
+// time, so this needs no sdkconfig change and no Arduino-as-IDF-component
+// migration — the route previously believed to be the only one.
+//
+// WHY 16384 (was 8192): otaCheckUpdate() runs inline on this task, and 4 KB of
+// locals plus the TLS handshake already overflowed the 8 KB default once in the
+// field — a panic-reboot with nothing in the log (see the s_buf comment in
+// ota_update.cpp). Hoisting that buffer to static fixed the symptom and left no
+// margin anyone had measured. This is roughly 2x the known-bad footprint; the
+// StackWatch instrumentation added alongside it replaces the estimate with a
+// measurement.
+//
+// MUST be C++ linkage — the core's symbol is mangled
+// (_Z27getArduinoLoopTaskStackSizev). Wrapping this in extern "C" defines a
+// DIFFERENT symbol, the weak one stays selected, and the stack silently stays
+// at 8 KB. Verify with nm after building: the symbol must read T, not W.
+//
+// Costs 8 KB of internal SRAM for the whole uptime — task stacks are not
+// reclaimed when idle. The [BOOT] banner's heap figure shows the real delta.
+size_t getArduinoLoopTaskStackSize(void) { return 16384; }
+
 // Unknown/empty registry key (fresh device) falls back to the Generic profile.
 extern const VehicleProfile GENERIC_PROFILE;
 
