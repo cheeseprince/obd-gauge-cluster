@@ -3,6 +3,10 @@
 #include <esp_ota_ops.h>   // esp_ota_mark_app_valid_cancel_rollback()
 #include <esp_task_wdt.h>  // esp_task_wdt_reconfigure() — see the TWDT note in setup()
 #include <esp_system.h>    // esp_reset_reason()
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>   // uxTaskGetStackHighWaterMark(), TaskHandle_t
+#include <Preferences.h>
+#include "stack_watch.h"
 #include "display.h"
 #include "ui.h"
 #include "obd_source.h"
@@ -118,6 +122,60 @@ static void obdTaskCore0(void* /*arg*/) {
   }
 }
 
+// Handles for the stack instrumentation. loopTaskHandle is a real global in the
+// Arduino core (cores/esp32/main.cpp:23) that no public header declares, so we
+// declare it ourselves; nm shows it unmangled ("B loopTaskHandle"), which is why
+// a plain C++ extern resolves it without extern "C".
+extern TaskHandle_t loopTaskHandle;
+static TaskHandle_t s_inputTask = nullptr;
+static TaskHandle_t s_obdTask   = nullptr;
+static StackWatch   g_stackWatch;
+
+// One reading of every task's minimum-ever free stack.
+//
+// uxTaskGetStackHighWaterMark() returns BYTES on ESP-IDF (not words as in
+// vanilla FreeRTOS) and is CUMULATIVE — the kernel maintains it by painting the
+// stack, so it reports the smallest free space there has ever been, not an
+// instantaneous reading. That is why sampling from loop() still captures the
+// TLS handshake peak even though loop() is blocked inside otaCheckUpdate()
+// while the handshake runs.
+static StackMins sampleStacks() {
+  StackMins m;
+  if (loopTaskHandle) m.loopFree  = (uint32_t)uxTaskGetStackHighWaterMark(loopTaskHandle);
+  if (s_obdTask)      m.obdFree   = (uint32_t)uxTaskGetStackHighWaterMark(s_obdTask);
+  if (s_inputTask)    m.inputFree = (uint32_t)uxTaskGetStackHighWaterMark(s_inputTask);
+  return m;
+}
+
+// Stack minima live in the existing "obd" NVS namespace. Keys are deliberately
+// short (NVS keys are capped at 15 chars) and distinct from the settings keys
+// night/nightm/bright/metric/log/vehkey/bleaddr/bletype/appass.
+static void loadStackMins(StackMins& m) {
+  Preferences p;
+  p.begin("obd", true);                 // read-only
+  m.loopFree  = p.getUInt("swloop",  0);   // 0 = never written
+  m.obdFree   = p.getUInt("swobd",   0);
+  m.inputFree = p.getUInt("swinput", 0);
+  p.end();
+}
+
+static void saveStackMins(const StackMins& m) {
+  Preferences p;
+  p.begin("obd", false);
+  if (m.loopFree  != STACK_UNSET) p.putUInt("swloop",  m.loopFree);
+  if (m.obdFree   != STACK_UNSET) p.putUInt("swobd",   m.obdFree);
+  if (m.inputFree != STACK_UNSET) p.putUInt("swinput", m.inputFree);
+  p.end();
+}
+
+// Sample, then write only if the watcher says this low is worth the flash.
+static void persistStackMins(uint32_t nowMs) {
+  if (g_stackWatch.update(sampleStacks(), nowMs)) {
+    saveStackMins(g_stackWatch.mins());
+    g_stackWatch.markPersisted(nowMs);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   display::begin();
@@ -186,12 +244,19 @@ void setup() {
 
   // Input + OBD as separate core-0 tasks; input at higher priority (2 vs 1) so a
   // blocking connect can't starve the encoder. LVGL render stays on core 1 (loop).
-  xTaskCreatePinnedToCore(inputTaskCore0, "input_core0", 3072, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(inputTaskCore0, "input_core0", 3072, nullptr, 2, &s_inputTask, 0);
   // 8192 (was 4096): the VIN read on connect (readVinOverIo -> parseVinReply,
   // std::string/vector parsing with exception-cleanup frames) runs on top of the
   // already-deep BLE-connect path and overflowed a 4096-byte stack, crashing
   // obd_core0 in a boot loop (v1.3.0). Bytes on esp32-arduino.
-  xTaskCreatePinnedToCore(obdTaskCore0,   "obd_core0",   8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(obdTaskCore0,   "obd_core0",   8192, nullptr, 1, &s_obdTask,   0);
+
+  // Restore the persisted low-water marks so a reboot does not reset the record.
+  {
+    StackMins stored;
+    loadStackMins(stored);
+    g_stackWatch.seed(stored);
+  }
 
   // Identity banner — the only thing setup() prints on the success path.
   // Emitted last so `heap` reflects the real post-allocation figure, which is
@@ -256,6 +321,18 @@ void loop() {
     ESP.restart();
   }
 #endif
+
+  // Sample every task's stack low-water mark every 5 s; StackWatch decides
+  // whether the new reading is a low worth a flash write. Unconditional (not
+  // gated by MOCK_OBD/HAS_KNOB_MENU) — inputTaskCore0 and obdTaskCore0 run on
+  // every build variant.
+  {
+    static uint32_t lastStackSampleMs = 0;
+    if ((int32_t)(now - (lastStackSampleMs + 5000)) >= 0) {
+      lastStackSampleMs = now;
+      persistStackMins(now);
+    }
+  }
 
   // Serial key handler:
   //   'n' → toggle Day/Night theme + backlight
@@ -373,6 +450,17 @@ void loop() {
       if (menuAct == MenuAction::OpenWifiSetup) otaPortalRun(pump);
       else                                      otaCheckUpdate(pump, settings.geo);   // reboots itself on success
       Serial.println("[OTA] flow done — restarting");
+      // The TLS handshake just ran on this task and its peak is recorded in the
+      // high-water mark — but ESP.restart() below destroys it. This is the one
+      // moment the number exists, so write it unconditionally, ignoring both the
+      // drop threshold and the rate limit.
+      g_stackWatch.update(sampleStacks(), millis());
+      saveStackMins(g_stackWatch.mins());
+      g_stackWatch.markPersisted(millis());
+      Serial.printf("[STACK] loop=%u obd=%u input=%u free bytes (min)\n",
+                    (unsigned)g_stackWatch.mins().loopFree,
+                    (unsigned)g_stackWatch.mins().obdFree,
+                    (unsigned)g_stackWatch.mins().inputFree);
       delay(100);
       ESP.restart();
       break;                               // unreachable
