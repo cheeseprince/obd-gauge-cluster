@@ -67,8 +67,8 @@ Four subcommands, run in this order, each consuming the previous stage's
 output file:
 
 ```
-python3 -m obd_scan census    --vehicle {ford,gm} -o census.json
-python3 -m obd_scan sweep     --vehicle {ford,gm} --census census.json -o sweep.json
+python3 -m obd_scan census    --vehicle {audi,bmw,ford,gm,jeep} -o census.json
+python3 -m obd_scan sweep     --vehicle {audi,bmw,ford,gm,jeep} --census census.json -o sweep.json
 python3 -m obd_scan log       --sweep sweep.json -o drive.csv --hz 1.0
 python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
 ```
@@ -77,6 +77,9 @@ python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
   handful of cheap requests to find out which modules exist and how to
   address them. Writes `census.json` (per-header alive/evidence + generic
   supported-PID list).
+  `--vehicle auto` (the default) reads the VIN and picks the preset from its
+  WMI; pass an explicit preset when the VIN is unreadable or you want to
+  override it.
 - **`sweep`** — for every header `census` found alive, walks the vehicle
   preset's PID blocks (e.g. Ford's `22F4xx`) and records every PID that
   returned a positive reply. Reads `census.json`, writes `sweep.json`

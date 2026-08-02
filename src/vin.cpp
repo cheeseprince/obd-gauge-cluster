@@ -139,6 +139,11 @@ const char* vinToProfileKey(const char* vin) {
     {"1GT","gm_sierra_lz0"},{"3GT","gm_sierra_lz0"},{"1GC","gm_sierra_lz0"},{"3GC","gm_sierra_lz0"},
     {"WBA","bmw_f10_535i"}, {"WBS","bmw_f10_535i"}, {"5UX","bmw_f10_535i"}, {"4US","bmw_f10_535i"},
     {"WAU","audi_q5"}, {"WA1","audi_q5"}, {"WUA","audi_q5"}, {"TRU","audi_q5"},
+    // Stellantis. These WMIs cover Jeep broadly, but the profile was scanned on
+    // a WS-platform Wagoneer specifically — a Wrangler or Cherokee sharing a WMI
+    // gets the Wagoneer's 29-bit addressing, which will simply read nothing on a
+    // vehicle that answers 11-bit. Settings -> Pick Vehicle overrides it.
+    {"1C4","jeep_ws"}, {"1J4","jeep_ws"}, {"3C4","jeep_ws"},
     // Ford (1FT/...) returns nullptr until that profile is registered — add a
     // row + a registry entry together.
   };

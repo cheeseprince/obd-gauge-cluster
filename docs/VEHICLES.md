@@ -8,7 +8,8 @@ automatically, what each profile currently supports, and what "not supported" ac
 On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** and parses the
 17-character VIN out of the reassembled multi-frame ISO-TP reply (`parseVinReply` in `src/vin.cpp`). The first three characters — the WMI — are looked up in a fixed WMI→profile
 table: `1GT`/`3GT`/`1GC`/`3GC` → `gm_sierra_lz0`, `WBA`/`WBS`/`5UX`/`4US` → `bmw_f10_535i`,
-`WAU`/`WA1`/`WUA`/`TRU` → `audi_q5` (the `MAP` table in `vinToProfileKey`, `src/vin.cpp`). An unrecognized
+`WAU`/`WA1`/`WUA`/`TRU` → `audi_q5`, `1C4`/`1J4`/`3C4` → `jeep_ws` (the `MAP` table in
+`vinToProfileKey`, `src/vin.cpp`). An unrecognized
 WMI returns no match (`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic
 profile.
 
@@ -91,6 +92,49 @@ fuel rail pressure, DEF, NOx) do not exist in this firmware yet. See
 [`FORD-STATUS.md`](FORD-STATUS.md) for the research and what a truck scan session would need to
 establish before that profile can be written.
 
+## Jeep
+
+Ships as a skeleton profile (`src/vehicles/jeep_ws.cpp`), auto-detected by VIN (WMI
+`1C4`/`1J4`/`3C4`). Mapped from a **real on-car scan** of a **2022 Jeep Wagoneer (WS platform,
+5.7L Hemi eTorque, ZF 8HP75)** — the first port where the scan came before the profile rather
+than after. Fourteen standard Mode-01 parameters are measured live and are exact.
+
+**This vehicle's addressing is unlike every other profile: the 11-bit path is completely dead.**
+`7DF` and `7E0` both return `NO DATA` with zero supported PIDs, while 29-bit `18DB33F1` carries
+53 Mode-01 PIDs and the transmission answers at `18DA18F1`. Everything — even legislated
+parameters — is 29-bit only, so this profile's addressing emitters send 29-bit headers
+unconditionally.
+
+Two enhanced transmission DIDs answer, and both ship with **alarms off** for different reasons:
+
+- **Trans temp is reachable but ambiguous.** `2204FE` returns **three** bytes (`6F 75 76` →
+  71/77/78 °C) where the Grand Cherokee signalset implies one — most likely sump, converter-out
+  and cooler-out. Byte A is displayed; **which byte is the sump is unverified**. A cold-start
+  warm-up drive settles it.
+- **Gear is reachable but unmapped.** `22051A` returned `DD`, matching a 2024 capture that
+  recorded `DD` in Park. One sample of one gear is not a gear enum, so the tile shows the **raw
+  byte** rather than an invented mapping — drive through every gear and the enum writes itself.
+
+Engine oil temp and MAF are **not available**: PIDs `0x5C` and `0x10` are positively absent from
+the census bitmask (the Hemi is speed-density, using `0x0B` MAP instead). Being naturally
+aspirated, it also has no boost, DPF, DEF, EGT or NOx.
+
+See [`JEEP-STATUS.md`](JEEP-STATUS.md) for the full scan results and confidence table.
+
+4 pages, 16 tiles (`JEEP_PAGES` / `JEEP_PAGE_NAMES` in `jeep_ws.cpp`):
+
+| # | Page | Tiles |
+| :- | :--- | :--- |
+| 1 | TEMPS | Trans · Coolant · Intake · Ambient |
+| 2 | DRIVE | Rpm · Speed · Load · Pedal |
+| 3 | POWER | Torque · RefTq · Hp · Fuel rate |
+| 4 | MISC | Gear · Fuel% · Volts · Baro |
+
+The POWER page is why this skeleton is richer than the BMW and Audi ones — torque, reference
+torque and fuel rate are all measured live, and **Hp** is computed from actual torque, reference
+torque and RPM rather than read. Fuel rate also feeds the trip-economy integrator, so the
+computed MPG values go live even though this layout does not show them.
+
 ## Generic
 
 2 pages, 8 tiles (`GEN_PAGES` / `GEN_PAGE_NAMES` in `generic_obd.cpp`).
@@ -124,3 +168,5 @@ standard parameters populate immediately.
 - [`AUDI-STATUS.md`](AUDI-STATUS.md) — Audi Q5 research and on-car DID capture
 - [`BMW-STATUS.md`](BMW-STATUS.md) — BMW F10 535i research and on-car scan results
 - [`FORD-STATUS.md`](FORD-STATUS.md) — Ford 6.7L Power Stroke research
+- [`JEEP-STATUS.md`](JEEP-STATUS.md) — Jeep Wagoneer WS on-car scan: 29-bit-only addressing,
+  the three-byte ATF reply, and the measured negatives

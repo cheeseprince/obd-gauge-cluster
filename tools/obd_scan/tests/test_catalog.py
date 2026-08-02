@@ -225,3 +225,77 @@ def test_parse_vin_from_payload():
     assert cat.parse_vin_from_payload(b"") is None
     assert cat.parse_vin_from_payload(b"\x01\x02\x03") is None
     assert cat.parse_vin_from_payload(b"\xff" * 17) is None
+
+
+def test_jeep_preset_targets_the_29bit_tcm_not_11bit():
+    """The Wagoneer's transmission answers on 29-bit DA18F1, not 11-bit 7E1.
+
+    A captured 2024 Wagoneer lists 7E1.7E9.2204FE as UNSUPPORTED, so the Grand
+    Cherokee's 11-bit ATF path does NOT transfer. Getting this backwards would
+    make the whole scan silently return nothing from the transmission, which is
+    the one module the scan exists to reach.
+    """
+    preset = cat.PRESETS["jeep"]
+    names = {h.name for h in preset.headers}
+    assert "18DA18F1" in names, "TCM must be reachable on the 29-bit path"
+    assert "7E1" not in names, "11-bit 7E1 is confirmed dead on the Wagoneer"
+    tcm = next(h for h in preset.headers if h.name == "18DA18F1")
+    assert tcm.at_sp == "7" and tcm.at_cp == "18"      # 29-bit/500k needs both
+
+
+def test_jeep_preset_excludes_non_powertrain_modules():
+    """DAC7 (tire pressure) and DA30 (wheel speeds / lateral G) are alive on the
+    vehicle but are not powertrain. Same rule that keeps 7E3-7E7 out of the
+    11-bit pool after the Audi 7E4 pre-sense incident."""
+    names = {h.name for h in cat.PRESETS["jeep"].headers}
+    assert "18DAC7F1" not in names
+    assert "18DA30F1" not in names
+
+
+def test_jeep_sweeps_the_block_holding_the_atf_candidate():
+    """2204FE is the reason this preset exists — the sweep must actually cover it.
+
+    Both are now CONFIRMED on a real 2022 Wagoneer (2026-08-01): 2204FE answered
+    with 6204FE6F7576 and 22051A with 62051ADD."""
+    reqs = {r for b in cat.PRESETS["jeep"].blocks for r in b.requests()}
+    assert "2204FE" in reqs        # ATF temp — CONFIRMED on-car, returns 3 bytes
+    assert "22051A" in reqs        # gear — CONFIRMED on-car, byte-exact with the capture
+
+
+def test_jeep_keeps_11bit_headers_as_silent_controls():
+    """7DF and 7E0 were both proven SILENT on the real Wagoneer (NO DATA, zero
+    PIDs). They are kept anyway, on purpose, and this test stops a well-meaning
+    cleanup from deleting them.
+
+    They cost 4 census probes and nothing in the sweep — cmd_sweep only targets
+    headers the census marked alive. Their value is evidential: without them the
+    scan cannot distinguish "the 11-bit path is dead on this platform" from
+    "nobody asked the 11-bit path."
+    """
+    names = {h.name for h in cat.PRESETS["jeep"].headers}
+    assert "7DF" in names, "11-bit control header must be retained (proves 11-bit is dead)"
+    assert "7E0" in names, "11-bit control header must be retained (proves 11-bit is dead)"
+
+
+def test_jeep_targets_the_29bit_functional_header():
+    """Mode 01 is only reachable on DB33F1: the on-car census found 53 supported
+    PIDs there versus zero on 11-bit 7E0. Losing this header would cost every
+    standard PID on the platform."""
+    preset = cat.PRESETS["jeep"]
+    fn = next((h for h in preset.headers if h.name == "18DB33F1"), None)
+    assert fn is not None, "29-bit functional header carries all Mode-01 data here"
+    assert fn.at_sp == "7" and fn.at_cp == "18"        # 29-bit/500k needs both
+
+
+def test_jeep_note_does_not_resurrect_the_disproven_oil_temp_claim():
+    """An earlier revision claimed engine oil temp 015C was supported on DB33F1.
+    The on-car census bitmask disproved it (PID 0x5C absent while 0x5E/0x60/0x62/
+    0x63 are present, so the walk did reach that range). The note must not assert
+    support again without a new capture."""
+    note = cat.PRESETS["jeep"].note
+    assert "015C" in note, "the correction itself should stay recorded"
+    assert "NOT supported" in note, "015C must be recorded as unsupported, not supported"
+
+
+def test_jeep_wmi_resolves_for_auto_detect():
+    assert cat.preset_for_vin("1C40123456789ABCD") == "jeep"
