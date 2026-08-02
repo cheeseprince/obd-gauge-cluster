@@ -280,7 +280,33 @@ AUDI_Q5 = VehiclePreset(
     headers=[h for h in HEADERS_11BIT if h.name in ("7DF", "7E0", "7E1")],
 )
 
-PRESETS = {p.name: p for p in (FORD_67, GM_LZ0, BMW_F10, AUDI_Q5)}
+JEEP_WS = VehiclePreset(
+    name="jeep",
+    note="2022 Jeep Wagoneer 5.7L Hemi eTorque (WS platform, ZF 8HP75). Addressing is "
+         "the unusual part: the transmission answers on 29-bit 18DA18F1, NOT on 11-bit "
+         "7E1 — a captured 2024 Wagoneer lists 7E1.7E9.2204FE as UNSUPPORTED, so the "
+         "Grand Cherokee's 11-bit path does not transfer. Gear 22051A @ DA18 is VERIFIED "
+         "on that capture. ATF temp 2204FE is VERIFIED on a Jeep Grand Cherokee 4th-gen "
+         "at DA18 (OBDb signalset, degC = A-40) but has NEVER been probed on a Wagoneer "
+         "at DA18 — it is the single reason this preset exists. Mode 01 is richer on the "
+         "29-bit functional header DB33F1 than on 11-bit 7E0: engine oil temp 015C and "
+         "torque 0162/0163 appear only there. eTorque 48V data is NOT reachable — its "
+         "BPCM sits behind the Security Gateway, and the same capture lists "
+         "6B4.22D410 (HV battery SoC) as UNSUPPORTED. Do not spend scan time on it.",
+    blocks=[
+        Block("2204xx", 0x2204, note="TCM: ATF temp candidate 04FE — the point of the scan"),
+        Block("2205xx", 0x2205, note="TCM: gear 051A CONFIRMED on a 2024 Wagoneer"),
+    ],
+    probes=["0100", "22051A"],       # 22051A is the enhanced go/no-go, like GM's 220005
+    # Powertrain only. 11-bit 7DF/7E0 plus the two 29-bit modules the capture
+    # proves are alive: DB33F1 (functional) and DA18F1 (TCM). Deliberately NOT
+    # DAC7 (tire pressure) or DA30 (wheel speeds/lateral G) — neither is
+    # powertrain, and DA30 is chassis-adjacent.
+    headers=[h for h in HEADERS_11BIT if h.name in ("7DF", "7E0")]
+            + [h for h in HEADERS_29BIT if h.name in ("18DB33F1", "18DA18F1")],
+)
+
+PRESETS = {p.name: p for p in (FORD_67, GM_LZ0, BMW_F10, AUDI_Q5, JEEP_WS)}
 
 
 # --- VIN-based preset auto-detection (--vehicle auto) ------------------------
@@ -294,6 +320,7 @@ WMI_PRESET = {
     "1FT": "ford", "1FD": "ford", "1FM": "ford", "1FA": "ford", "3FA": "ford",  # Ford
     "1GT": "gm",   "3GT": "gm",   "1GC": "gm",   "3GC": "gm",                    # GM (GMC/Chevy)
     "WBA": "bmw",  "WBS": "bmw",  "5UX": "bmw",  "4US": "bmw",                   # BMW
+    "1C4": "jeep", "1J4": "jeep", "3C4": "jeep",                                 # Jeep (Stellantis)
 }
 
 

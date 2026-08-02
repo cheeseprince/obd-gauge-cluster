@@ -225,3 +225,39 @@ def test_parse_vin_from_payload():
     assert cat.parse_vin_from_payload(b"") is None
     assert cat.parse_vin_from_payload(b"\x01\x02\x03") is None
     assert cat.parse_vin_from_payload(b"\xff" * 17) is None
+
+
+def test_jeep_preset_targets_the_29bit_tcm_not_11bit():
+    """The Wagoneer's transmission answers on 29-bit DA18F1, not 11-bit 7E1.
+
+    A captured 2024 Wagoneer lists 7E1.7E9.2204FE as UNSUPPORTED, so the Grand
+    Cherokee's 11-bit ATF path does NOT transfer. Getting this backwards would
+    make the whole scan silently return nothing from the transmission, which is
+    the one module the scan exists to reach.
+    """
+    preset = cat.PRESETS["jeep"]
+    names = {h.name for h in preset.headers}
+    assert "18DA18F1" in names, "TCM must be reachable on the 29-bit path"
+    assert "7E1" not in names, "11-bit 7E1 is confirmed dead on the Wagoneer"
+    tcm = next(h for h in preset.headers if h.name == "18DA18F1")
+    assert tcm.at_sp == "7" and tcm.at_cp == "18"      # 29-bit/500k needs both
+
+
+def test_jeep_preset_excludes_non_powertrain_modules():
+    """DAC7 (tire pressure) and DA30 (wheel speeds / lateral G) are alive on the
+    vehicle but are not powertrain. Same rule that keeps 7E3-7E7 out of the
+    11-bit pool after the Audi 7E4 pre-sense incident."""
+    names = {h.name for h in cat.PRESETS["jeep"].headers}
+    assert "18DAC7F1" not in names
+    assert "18DA30F1" not in names
+
+
+def test_jeep_sweeps_the_block_holding_the_atf_candidate():
+    """2204FE is the reason this preset exists — the sweep must actually cover it."""
+    reqs = {r for b in cat.PRESETS["jeep"].blocks for r in b.requests()}
+    assert "2204FE" in reqs        # ATF temp candidate (verified on Grand Cherokee)
+    assert "22051A" in reqs        # gear, verified on a 2024 Wagoneer
+
+
+def test_jeep_wmi_resolves_for_auto_detect():
+    assert cat.preset_for_vin("1C40123456789ABCD") == "jeep"
