@@ -63,6 +63,26 @@ jobs:
       - name: Build the dash firmware
         run: pio run -e crowpanel_obd
 
+      # The snapshot tool links the real UI against every vehicle profile, so
+      # building it catches a profile that was added to src/vehicles/ but never
+      # wired up — which is how it came to fail with "undefined reference to
+      # JEEP_WS_PROFILE" while every other check stayed green. It needs LVGL from
+      # .pio/libdeps, which the firmware build above has already fetched.
+      - name: Build the UI snapshot tool
+        run: cd tools/ui_snapshot && make
+
+      # Then prove the committed screenshots still match what the firmware draws.
+      # Renders are deterministic (FW_DATE is pinned in the tool's Makefile), and
+      # the comparison is on decoded pixels, not file bytes, so a different Pillow
+      # build cannot fail this.
+      - name: Install docs-image dependencies
+        run: python -m pip install --quiet --require-hashes -r requirements/docs.txt
+      - name: Committed renders match the UI code
+        run: |
+          cd tools/ui_snapshot
+          ./snapshot
+          python3 render_docs_images.py --check
+
   pii-guard:
     name: PII guard (no real VINs)
     runs-on: ubuntu-latest
