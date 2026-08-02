@@ -5,7 +5,12 @@ INC    := ../../include
 CC     := cc
 CXX    := c++
 CFLAGS := -O1 -I. -DLV_CONF_INCLUDE_SIMPLE -I$(INC) -I$(LVGL) -I$(SRC) -w
-CXXFLAGS := $(CFLAGS) -std=c++17 -DBOARD_CROWPANEL=1
+# FW_DATE is pinned, NOT __DATE__. ui.cpp prints it on the splash screen, so an
+# unpinned build re-renders splash_day.png with today's date on every run — a
+# spurious binary diff on an image nothing in the change actually touched, and
+# it makes byte-comparing the committed renders impossible. The value is a
+# label for a doc screenshot, so a fixed string is the honest thing to show.
+CXXFLAGS := $(CFLAGS) -std=c++17 -DBOARD_CROWPANEL=1 '-DFW_DATE="(docs)"'
 
 LV_C   := $(shell find $(LVGL)/src -name '*.c')
 LV_O   := $(patsubst $(LVGL)/src/%.c,obj/lvgl/%.o,$(LV_C))

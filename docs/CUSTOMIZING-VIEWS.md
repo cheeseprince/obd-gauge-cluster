@@ -72,12 +72,21 @@ cd tools/ui_snapshot && make snapshot && ./snapshot
 ```
 
 This compiles the real UI code and writes one PPM per page (day, night, and metric
-variants) into `tools/ui_snapshot/`; the committed `docs/images/*.png` are converted from
-those. Check your layout there, then build and flash:
+variants) into `tools/ui_snapshot/`. Check your layout there, then build and flash:
 
 ```
 pio run -e crowpanel_obd -t upload
 ```
+
+**If your change altered anything on screen, refresh the committed screenshots too** —
+CI fails otherwise, because it re-renders and compares them against the code:
+
+```
+cd tools/ui_snapshot && make && ./snapshot && python3 render_docs_images.py
+```
+
+That converts the PPMs into `docs/images/*.png`. Add `--check` to verify without
+writing, which is exactly what CI runs.
 
 ## Adding a whole new vehicle
 

@@ -1,0 +1,9 @@
+# Documentation-image dependencies (CI job: "Device build", render-check step).
+# Compile with:
+#   pip-compile --generate-hashes --output-file=requirements/docs.txt requirements/docs.in
+#
+# Deliberately SEPARATE from build.in: this is only needed to convert the
+# ui_snapshot PPMs into docs/images/*.png and to verify them. Keeping it out of
+# the firmware build closure means Pillow never becomes a firmware build
+# dependency, and its advisories stay scoped to the docs tooling.
+pillow
