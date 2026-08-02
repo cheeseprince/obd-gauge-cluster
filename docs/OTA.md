@@ -109,11 +109,17 @@ Steps 4–7 put **five** files on both surfaces, not three:
 Only the first three participate in an OTA update. The SBOM and provenance bundle are there
 for verification (`gh attestation verify`) and for anyone auditing what went into a build.
 
-A manual `workflow_dispatch` run (no tag) does steps 1–3 as a dry run — using a
-`dev-<hash>` version string — to prove the build-and-sign pipeline still works, but the
+A manual `workflow_dispatch` run (no tag) does steps 1–4 as a dry run — using a
+`dev-<hash>` version string — to prove the build, sign and SBOM pipeline still works, but the
 publish and release-creation steps are gated on `github.ref_type == 'tag'`
 (the `if: github.ref_type == 'tag'` guards in `.github/workflows/release.yml`), so a manual
 run can never overwrite the live release on `gh-pages`.
+
+**SBOM generation is deliberately part of the dry run.** It was tag-only until v0.1.4, which
+meant the step's first ever execution was a real release — and it failed there, after the
+firmware had already been built and signed, because `actions/attest` requires a
+`serialNumber` that the CycloneDX spec treats as optional. A rehearsal that skips a step does
+not rehearse it. Attestation itself stays tag-only, since it mints a real Sigstore entry.
 
 `publish_ota.sh` does the same build-and-publish locally as a fallback, requiring a clean
 git tree and push access; see [Signing](#signing) above for why it needs

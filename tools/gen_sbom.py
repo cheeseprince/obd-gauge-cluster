@@ -26,6 +26,7 @@ import json
 import re
 import subprocess
 import sys
+import uuid
 
 # "├── Name @ 1.2.3 (required: spec)" / "│   ├── Name @ 1.2.3 (required: spec)"
 ENTRY = re.compile(r"^[│\s]*[├└]──\s+(?P<name>.+?)\s+@\s+(?P<version>\S+)"
@@ -101,9 +102,24 @@ def main():
             if any(p["name"] == "platformio:floating" for p in c["properties"]):
                 floating.append(f"[{scope}] {name} {version} (spec {spec})")
 
+    # serialNumber is OPTIONAL in the CycloneDX spec but MANDATORY for GitHub's
+    # attestation action, whose format sniffing is:
+    #     checkIsCycloneDX = !!(bomFormat && serialNumber && specVersion)
+    # Without it a spec-valid document is rejected as "Unsupported SBOM format",
+    # which is what failed the v0.1.4 release after the build had already
+    # succeeded and been signed.
+    #
+    # Derived, not random: a UUIDv5 over the repo, version and firmware digest
+    # means re-running this on the same binary reproduces the same document
+    # byte for byte. A uuid4 here would make every regeneration a diff and
+    # destroy that property for no benefit — the value only has to be unique
+    # per BOM, and (repo, version, image) already is.
+    serial = uuid.uuid5(uuid.NAMESPACE_URL, f"{a.repo}@{a.version}#{sha}")
+
     doc = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
+        "serialNumber": f"urn:uuid:{serial}",
         "version": 1,
         "metadata": {
             "component": {

@@ -140,8 +140,12 @@ jobs:
             exit 1
           fi
       - name: Generate SBOM
-        # Tag pushes only — the SBOM is a release artifact, and a dry run has no
-        # release to describe.
+        # Runs on dry runs TOO, deliberately. This was previously tag-only, so a
+        # workflow_dispatch rehearsal skipped it and the first time it ever ran
+        # was a real release — which is exactly how v0.1.4 failed after the
+        # firmware had already been built and signed. The dry run's whole job is
+        # to prove the pipeline; a step it never executes is not proven.
+        # Attestation below stays tag-only: that mints a real Sigstore entry.
         #
         # NOT GitHub's automatic dependency-graph SBOM. That one sees
         # requirements/*.txt and .github/workflows/, so it lists pytest, numpy,
@@ -151,13 +155,34 @@ jobs:
         # believed. tools/gen_sbom.py reads what PlatformIO actually resolved
         # and linked, and keeps build tools in a separate scope from what is
         # compiled into the image.
-        if: github.ref_type == 'tag'
         run: |
           python3 tools/gen_sbom.py \
             --env crowpanel_obd \
             --bin out/crowpanel_obd.bin \
             --version "$VERSION" \
             --output out/crowpanel_obd.bin.cdx.json
+
+      - name: Validate the SBOM is attestable
+        # actions/attest sniffs the format with
+        #   checkIsCycloneDX = !!(bomFormat && serialNumber && specVersion)
+        # and rejects anything else as "Unsupported SBOM format". serialNumber is
+        # OPTIONAL in the CycloneDX spec, so a perfectly valid document can fail
+        # that check — v0.1.4 did. Assert it here, where the error names the
+        # missing field, instead of discovering it inside a third-party action
+        # after the build and signature have already been produced.
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          sbom = json.load(open("out/crowpanel_obd.bin.cdx.json"))
+          missing = [k for k in ("bomFormat", "serialNumber", "specVersion")
+                     if not sbom.get(k)]
+          if missing:
+              sys.exit("SBOM is not attestable — actions/attest requires "
+                       f"{', '.join(missing)}. See tools/gen_sbom.py.")
+          print(f"SBOM is attestable: {sbom['bomFormat']} {sbom['specVersion']}, "
+                f"{len(sbom.get('components', []))} components, "
+                f"{sbom['serialNumber']}")
+          EOF
 
       - name: Attest SBOM
         # Binds the SBOM to this exact .bin through Sigstore, the same way the
