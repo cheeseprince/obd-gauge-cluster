@@ -471,12 +471,36 @@ void loop() {
       // and snprintf would truncate them silently.
       char v[192];
       const StackMins& sm = g_stackWatch.mins();
-      char stk[64];
-      if (sm.loopFree == STACK_UNSET) {
+      // 80: sized for the declared type's worst case, not the values a real
+      // board reports. Three uint32_t fields at UINT32_MAX (10 digits each)
+      // plus the "stack free (min), bytes" heading and per-field labels is
+      // ~74 bytes; 80 leaves headroom without relying on real stacks staying
+      // small (4-5 digits today).
+      char stk[80];
+      // Check every field independently rather than gating all three off
+      // loopFree alone. Today all three tasks are created before seed() and
+      // before loop() starts, so they leave STACK_UNSET together -- but that
+      // is an invariant of task-creation order, not a guarantee. If task
+      // creation ever became conditional or deferred, a single-field check
+      // would print a stale STACK_UNSET (4294967295) as a real obd/input
+      // reading. Render "--" per unmeasured field instead, so a single
+      // not-yet-measured task reads as unmeasured rather than as a bogus
+      // huge number.
+      if (sm.loopFree == STACK_UNSET && sm.obdFree == STACK_UNSET && sm.inputFree == STACK_UNSET) {
         snprintf(stk, sizeof stk, "stack free: measuring...");
       } else {
-        snprintf(stk, sizeof stk, "stack free (min)\n loop %u  obd %u  input %u",
-                 (unsigned)sm.loopFree, (unsigned)sm.obdFree, (unsigned)sm.inputFree);
+        char loopStr[12], obdStr[12], inputStr[12];
+        if (sm.loopFree == STACK_UNSET)  snprintf(loopStr,  sizeof loopStr,  "--");
+        else                             snprintf(loopStr,  sizeof loopStr,  "%u", (unsigned)sm.loopFree);
+        if (sm.obdFree == STACK_UNSET)   snprintf(obdStr,   sizeof obdStr,   "--");
+        else                             snprintf(obdStr,   sizeof obdStr,   "%u", (unsigned)sm.obdFree);
+        if (sm.inputFree == STACK_UNSET) snprintf(inputStr, sizeof inputStr, "--");
+        else                             snprintf(inputStr, sizeof inputStr, "%u", (unsigned)sm.inputFree);
+        // ", bytes" on the heading spells out the unit -- the Serial log
+        // line already says "free bytes (min)"; a bare number on a card
+        // read at arm's length in a moving vehicle is otherwise ambiguous.
+        snprintf(stk, sizeof stk, "stack free (min), bytes\n loop %s  obd %s  input %s",
+                 loopStr, obdStr, inputStr);
       }
       snprintf(v, sizeof v, "VERSION\n\nbuild %s\n%s\nenv %s\nOTA: obd-gauge-cluster\n\n%s",
                FW_DATE, FW_VERSION, OTA_ENV, stk);
