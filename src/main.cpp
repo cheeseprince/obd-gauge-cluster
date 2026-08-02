@@ -3,6 +3,10 @@
 #include <esp_ota_ops.h>   // esp_ota_mark_app_valid_cancel_rollback()
 #include <esp_task_wdt.h>  // esp_task_wdt_reconfigure() — see the TWDT note in setup()
 #include <esp_system.h>    // esp_reset_reason()
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>   // uxTaskGetStackHighWaterMark(), TaskHandle_t
+#include <Preferences.h>
+#include "stack_watch.h"
 #include "display.h"
 #include "ui.h"
 #include "obd_source.h"
@@ -28,6 +32,30 @@
 #ifndef OTA_ENV
 #define OTA_ENV "n/a"
 #endif
+
+// --- Arduino loop task stack size -------------------------------------------
+// Overrides the core's WEAK getArduinoLoopTaskStackSize()
+// (framework-arduinoespressif32/cores/esp32/main.cpp:39-41), which the core
+// calls once when it creates loopTask. A strong definition here wins at link
+// time, so this needs no sdkconfig change and no Arduino-as-IDF-component
+// migration — the route previously believed to be the only one.
+//
+// WHY 16384 (was 8192): otaCheckUpdate() runs inline on this task, and 4 KB of
+// locals plus the TLS handshake already overflowed the 8 KB default once in the
+// field — a panic-reboot with nothing in the log (see the s_buf comment in
+// ota_update.cpp). Hoisting that buffer to static fixed the symptom and left no
+// margin anyone had measured. This is roughly 2x the known-bad footprint; the
+// StackWatch instrumentation added alongside it replaces the estimate with a
+// measurement.
+//
+// MUST be C++ linkage — the core's symbol is mangled
+// (_Z27getArduinoLoopTaskStackSizev). Wrapping this in extern "C" defines a
+// DIFFERENT symbol, the weak one stays selected, and the stack silently stays
+// at 8 KB. Verify with nm after building: the symbol must read T, not W.
+//
+// Costs 8 KB of internal SRAM for the whole uptime — task stacks are not
+// reclaimed when idle. The [BOOT] banner's heap figure shows the real delta.
+size_t getArduinoLoopTaskStackSize(void) { return 16384; }
 
 // Unknown/empty registry key (fresh device) falls back to the Generic profile.
 extern const VehicleProfile GENERIC_PROFILE;
@@ -92,6 +120,97 @@ static void obdTaskCore0(void* /*arg*/) {
 #endif
     vTaskDelay(pdMS_TO_TICKS(3));
   }
+}
+
+// Handles for the stack instrumentation. loopTaskHandle is a real global in the
+// Arduino core (cores/esp32/main.cpp:23) that no public header declares, so we
+// declare it ourselves; nm shows it unmangled ("B loopTaskHandle"), which is why
+// a plain C++ extern resolves it without extern "C".
+extern TaskHandle_t loopTaskHandle;
+static TaskHandle_t s_inputTask = nullptr;
+static TaskHandle_t s_obdTask   = nullptr;
+static StackWatch   g_stackWatch;
+
+// One reading of every task's minimum-ever free stack.
+//
+// uxTaskGetStackHighWaterMark() returns BYTES on ESP-IDF (not words as in
+// vanilla FreeRTOS) and is CUMULATIVE — the kernel maintains it by painting the
+// stack, so it reports the smallest free space there has ever been, not an
+// instantaneous reading. That is why sampling from loop() still captures the
+// TLS handshake peak even though loop() is blocked inside otaCheckUpdate()
+// while the handshake runs.
+static StackMins sampleStacks() {
+  StackMins m;
+  if (loopTaskHandle) m.loopFree  = (uint32_t)uxTaskGetStackHighWaterMark(loopTaskHandle);
+  if (s_obdTask)      m.obdFree   = (uint32_t)uxTaskGetStackHighWaterMark(s_obdTask);
+  if (s_inputTask)    m.inputFree = (uint32_t)uxTaskGetStackHighWaterMark(s_inputTask);
+  return m;
+}
+
+// Stack minima live in the existing "obd" NVS namespace. Keys are deliberately
+// short (NVS keys are capped at 15 chars) and distinct from the settings keys
+// night/nightm/bright/metric/log/vehkey/bleaddr/bletype/appass.
+//
+// "swgit" holds the FW_GIT of the build that wrote swloop/swobd/swinput.
+// mins_ is monotonically non-increasing (minOf() only ever lowers), so
+// without this a low measured under an OLD, possibly buggy, binary would
+// survive forever and misreport the CURRENTLY running image's headroom —
+// the card would show what the stack once was, never what it is now. On a
+// build mismatch (including "never written") loadStackMins() reports all
+// three fields as never-written, so seed() starts this build's record fresh.
+static void loadStackMins(StackMins& m) {
+  Preferences p;
+  p.begin("obd", true);                 // read-only
+  String storedGit = p.getString("swgit", "");
+  bool sameBuild = storedGit == FW_GIT;
+  m.loopFree  = sameBuild ? p.getUInt("swloop",  0) : 0;   // 0 = never written
+  m.obdFree   = sameBuild ? p.getUInt("swobd",   0) : 0;
+  m.inputFree = sameBuild ? p.getUInt("swinput", 0) : 0;
+  p.end();
+}
+
+static void saveStackMins(const StackMins& m) {
+  Preferences p;
+  p.begin("obd", false);
+  if (m.loopFree  != STACK_UNSET) p.putUInt("swloop",  m.loopFree);
+  if (m.obdFree   != STACK_UNSET) p.putUInt("swobd",   m.obdFree);
+  if (m.inputFree != STACK_UNSET) p.putUInt("swinput", m.inputFree);
+  // Stamp the identity that wrote these so a later loadStackMins() on a
+  // different build discards them instead of keeping a stale low forever.
+  p.putString("swgit", FW_GIT);
+  p.end();
+}
+
+// Sample, then write only if the watcher says this low is worth the flash.
+static void persistStackMins(uint32_t nowMs) {
+  if (g_stackWatch.update(sampleStacks(), nowMs)) {
+    saveStackMins(g_stackWatch.mins());
+    g_stackWatch.markPersisted(nowMs);
+  }
+}
+
+// Unconditional stack-minima persist for the moment right before a reboot,
+// when the just-recorded high-water mark (TLS handshake / VIN read peak) is
+// the freshest it will ever be — the drop threshold and rate limit exist to
+// bound ROUTINE writes, not to gate the one sample that matters most.
+//
+// Two call sites, both about to reboot:
+//   - the CheckUpdate menu handler below, for every otaCheckUpdate() exit
+//     that returns normally (no WiFi, join failed, up to date, download
+//     failed) — control resumes here and this runs exactly once.
+//   - otaCheckUpdate() itself (src/ota_update.cpp), on its SUCCESS path,
+//     immediately before its own internal ESP.restart(). That restart never
+//     returns to the caller, so this runs there instead, and the call below
+//     is not reached a second time for that path. See the extern
+//     declaration in ota_update.cpp.
+void otaPersistStackMins() {
+  g_stackWatch.update(sampleStacks(), millis());
+  saveStackMins(g_stackWatch.mins());
+  g_stackWatch.markPersisted(millis());
+  Serial.printf("[STACK] loop=%u obd=%u input=%u free bytes (min)\n",
+                (unsigned)g_stackWatch.mins().loopFree,
+                (unsigned)g_stackWatch.mins().obdFree,
+                (unsigned)g_stackWatch.mins().inputFree);
 }
 
 void setup() {
@@ -162,12 +281,19 @@ void setup() {
 
   // Input + OBD as separate core-0 tasks; input at higher priority (2 vs 1) so a
   // blocking connect can't starve the encoder. LVGL render stays on core 1 (loop).
-  xTaskCreatePinnedToCore(inputTaskCore0, "input_core0", 3072, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(inputTaskCore0, "input_core0", 3072, nullptr, 2, &s_inputTask, 0);
   // 8192 (was 4096): the VIN read on connect (readVinOverIo -> parseVinReply,
   // std::string/vector parsing with exception-cleanup frames) runs on top of the
   // already-deep BLE-connect path and overflowed a 4096-byte stack, crashing
   // obd_core0 in a boot loop (v1.3.0). Bytes on esp32-arduino.
-  xTaskCreatePinnedToCore(obdTaskCore0,   "obd_core0",   8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(obdTaskCore0,   "obd_core0",   8192, nullptr, 1, &s_obdTask,   0);
+
+  // Restore the persisted low-water marks so a reboot does not reset the record.
+  {
+    StackMins stored;
+    loadStackMins(stored);
+    g_stackWatch.seed(stored);
+  }
 
   // Identity banner — the only thing setup() prints on the success path.
   // Emitted last so `heap` reflects the real post-allocation figure, which is
@@ -232,6 +358,18 @@ void loop() {
     ESP.restart();
   }
 #endif
+
+  // Sample every task's stack low-water mark every 5 s; StackWatch decides
+  // whether the new reading is a low worth a flash write. Unconditional (not
+  // gated by MOCK_OBD/HAS_KNOB_MENU) — inputTaskCore0 and obdTaskCore0 run on
+  // every build variant.
+  {
+    static uint32_t lastStackSample = 0;
+    if ((int32_t)(now - (lastStackSample + 5000)) >= 0) {
+      lastStackSample = now;
+      persistStackMins(now);
+    }
+  }
 
   // Serial key handler:
   //   'n' → toggle Day/Night theme + backlight
@@ -346,18 +484,64 @@ void loop() {
       delay(150);                          // let an in-flight poll() finish
       ui::hideMenu();
       auto pump = [](const char* msg) { ui::showStatus(msg, theme); display::tick(); };
-      if (menuAct == MenuAction::OpenWifiSetup) otaPortalRun(pump);
-      else                                      otaCheckUpdate(pump, settings.geo);   // reboots itself on success
+      if (menuAct == MenuAction::OpenWifiSetup) {
+        otaPortalRun(pump);
+      } else {
+        // otaCheckUpdate() reboots itself internally on SUCCESS (and calls
+        // otaPersistStackMins() there before doing so — see that function's
+        // comment). Every OTHER exit (no WiFi, join failed, up to date,
+        // download failed) returns normally, and control resumes here.
+        otaCheckUpdate(pump, settings.geo);
+      }
       Serial.println("[OTA] flow done — restarting");
+      // Reached for OpenWifiSetup always, and for CheckUpdate on every exit
+      // except the internal-restart SUCCESS path (see above) — so this is
+      // the one-and-only persist call for those paths, same helper the
+      // success path uses.
+      otaPersistStackMins();
       delay(100);
       ESP.restart();
       break;                               // unreachable
     }
     case MenuAction::ShowVersion: {
       // Blocking ~4s info card (freed the menu footer line for row space).
-      char v[128];
-      snprintf(v, sizeof v, "VERSION\n\nbuild %s\n%s\nenv %s\nOTA: obd-gauge-cluster",
-               FW_DATE, FW_VERSION, OTA_ENV);
+      // 192 (was 128): the two stack lines below overflow a 128-byte buffer,
+      // and snprintf would truncate them silently.
+      char v[192];
+      const StackMins& sm = g_stackWatch.mins();
+      // 80: sized for the declared type's worst case, not the values a real
+      // board reports. Three uint32_t fields at UINT32_MAX (10 digits each)
+      // plus the "stack free (min), bytes" heading and per-field labels is
+      // ~74 bytes; 80 leaves headroom without relying on real stacks staying
+      // small (4-5 digits today).
+      char stk[80];
+      // Check every field independently rather than gating all three off
+      // loopFree alone. Today all three tasks are created before seed() and
+      // before loop() starts, so they leave STACK_UNSET together -- but that
+      // is an invariant of task-creation order, not a guarantee. If task
+      // creation ever became conditional or deferred, a single-field check
+      // would print a stale STACK_UNSET (4294967295) as a real obd/input
+      // reading. Render "--" per unmeasured field instead, so a single
+      // not-yet-measured task reads as unmeasured rather than as a bogus
+      // huge number.
+      if (sm.loopFree == STACK_UNSET && sm.obdFree == STACK_UNSET && sm.inputFree == STACK_UNSET) {
+        snprintf(stk, sizeof stk, "stack free: measuring...");
+      } else {
+        char loopStr[12], obdStr[12], inputStr[12];
+        if (sm.loopFree == STACK_UNSET)  snprintf(loopStr,  sizeof loopStr,  "--");
+        else                             snprintf(loopStr,  sizeof loopStr,  "%u", (unsigned)sm.loopFree);
+        if (sm.obdFree == STACK_UNSET)   snprintf(obdStr,   sizeof obdStr,   "--");
+        else                             snprintf(obdStr,   sizeof obdStr,   "%u", (unsigned)sm.obdFree);
+        if (sm.inputFree == STACK_UNSET) snprintf(inputStr, sizeof inputStr, "--");
+        else                             snprintf(inputStr, sizeof inputStr, "%u", (unsigned)sm.inputFree);
+        // ", bytes" on the heading spells out the unit -- the Serial log
+        // line already says "free bytes (min)"; a bare number on a card
+        // read at arm's length in a moving vehicle is otherwise ambiguous.
+        snprintf(stk, sizeof stk, "stack free (min), bytes\n loop %s  obd %s  input %s",
+                 loopStr, obdStr, inputStr);
+      }
+      snprintf(v, sizeof v, "VERSION\n\nbuild %s\n%s\nenv %s\nOTA: obd-gauge-cluster\n\n%s",
+               FW_DATE, FW_VERSION, OTA_ENV, stk);
       ui::hideMenu();
       uint32_t t0 = millis();
       while ((int32_t)(millis() - (t0 + 4000)) < 0) {

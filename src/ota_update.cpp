@@ -73,6 +73,16 @@ static bool otaVerifyManifest(const uint8_t* manifest, size_t mlen, const uint8_
   return rc == 0;
 }
 
+// Defined in main.cpp, next to the other stack-instrumentation persist
+// helpers. Captures the just-recorded high-water mark (this function's own
+// TLS-handshake peak) unconditionally, ignoring the drop threshold and rate
+// limit, because otaCheckUpdate()'s SUCCESS path reboots internally a few
+// lines below and this is the only moment that reading will ever exist.
+// See the call site at the end of this function, and main.cpp's comment on
+// otaPersistStackMins() for why the CheckUpdate menu handler does NOT also
+// call this on that path (it would be unreachable there anyway).
+extern void otaPersistStackMins();
+
 // Join the first stored credential whose SSID is visible. True once connected.
 // Parse a "vX.Y.Z" release string into one monotonically-comparable value.
 // Non-release strings ("local", "dev-<hash>") parse to 0 (oldest), so a USB/dev
@@ -282,6 +292,14 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
   }
 
   say(pump, "Update OK - rebooting", 1500);
+  // Capture the stack high-water mark BEFORE the restart below destroys it.
+  // The force-persist block in the CheckUpdate menu handler (main.cpp) sits
+  // AFTER this call and never runs on this path — ESP.restart() does not
+  // return — so this is the only place the SUCCESS-path measurement is ever
+  // taken. Every other exit from this function (no WiFi, join failed, up to
+  // date, download failed) returns normally instead, and the caller's
+  // force-persist block covers those via the same otaPersistStackMins().
+  otaPersistStackMins();
   ESP.restart();
 }
 
