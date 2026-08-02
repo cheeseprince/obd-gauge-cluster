@@ -70,8 +70,8 @@ ISTA/TIS threshold table becomes available.
 
 | Row | Why |
 | :--- | :--- |
-| **OIL P** | Reachable via `22586F` byte 0, but the **scale is unverified**. A threshold on a guessed scale either cries wolf or stays silent through a real loss of pressure — worse than none. Needs the cold-start drive |
-| TRANS (ATF) | Lives on the EGS module, gateway-blocked on this car |
+| **OIL PRESSURE** | Reachable via `22586F` byte 0, but the **scale is unverified**. A threshold on a guessed scale either cries wolf or stays silent through a real loss of pressure — worse than none. Needs the cold-start drive |
+| TRANSMISSION (ATF) | Lives on the EGS module, gateway-blocked on this car |
 | OIL (temp) | Candidate DIDs never pinned — the only drive was warm-started |
 | BOOST / LOAD / INTAKE / AMBIENT | Decode is sound, but no N55-specific limits are established. Inventing a number buys nothing |
 
@@ -155,7 +155,7 @@ reverse-engineering write-up.)
 
 Note what the confirmed OBDb set gives you cleanly: **oil temp, oil pressure, coolant, and
 transmission fluid temp** — with real, verified 2-byte BMW DIDs. That already covers the
-"TOW page" core of the GM layout. What OBDb **lacks** is every high-value N55 *combustion*
+"TOWING page" core of the GM layout. What OBDb **lacks** is every high-value N55 *combustion*
 signal (boost/MAP, charge-air temp, fuel rail pressure, ignition timing/knock, lambda/AFR,
 VANOS cam position, Valvetronic lift, 12 V IBS state-of-charge). Those must come from the
 community N55 tables and be verified on the car.

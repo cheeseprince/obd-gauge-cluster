@@ -132,20 +132,20 @@ static_assert(sizeof(GM_READOUTS)/sizeof(GM_READOUTS[0]) == (size_t)STAT_COUNT,
 //  derived values, e.g. baro for boost, ActTq/RefTq for HP).
 // ============================================================================
 // Pages are grouped by SITUATION (what you need in one glance), not subsystem:
-// p0 TOW is the page that lives on-screen while towing — every alarmed temp at
-// once. Pages wrap, so p6 (SPEED/VOLTS) is one detent CCW from p0.
+// p0 TOWING is the page that lives on-screen while towing — every alarmed temp
+// at once. Pages wrap, so p6 (SPEED/VOLTAGE) is one detent CCW from p0.
 // Dropped from display (2026-07-05): BARO + TORQUE (still polled as HELPERS —
 // boost needs baro, HP needs ActTq/RefTq); PEDAL + AMBIENT (deactivated, not
 // polled: pedal is the driver's own foot, ambient is on the dash DIC).
 #define _ StatId::COUNT
 static const StatId PAGES[][4] = {
-  { StatId::Trans,   StatId::Coolant, StatId::OilP,     StatId::Egt     }, // TOW: the four alarmed tow gauges (oil PRESSURE; oil temp lives on MISC)
+  { StatId::Trans,   StatId::Coolant, StatId::OilP,     StatId::Egt     }, // TOWING: the four alarmed tow gauges (oil PRESSURE; oil temp lives on MISCELLANEOUS)
   { StatId::Boost,   StatId::Hp,      StatId::Rpm,      StatId::Load    }, // POWER (gear tile: swap LOAD when 22199A confirmed)
-  { StatId::DpfDp,   StatId::FuelRate, StatId::Nox,     StatId::Rail    }, // REGEN: dP + gph up at cruise = regen
+  { StatId::DpfDp,   StatId::FuelRate, StatId::Nox,     StatId::Rail    }, // REGENERATION: dP + gph up at cruise = regen
   { StatId::FuelLevel, StatId::DslFill, StatId::Def,    StatId::DefFill }, // RANGE
   { StatId::MpgInst, StatId::MpgAvg,  StatId::Gal100mi, StatId::L100km  }, // TRIP / efficiency
-  { StatId::Maf,     StatId::Egr,     StatId::Cac,      StatId::Intake  }, // DIAG
-  { StatId::Speed,   StatId::Volts,   StatId::Oil,      _               }, // MISC (adjacent to TOW via wrap)
+  { StatId::Maf,     StatId::Egr,     StatId::Cac,      StatId::Intake  }, // DIAGNOSTICS
+  { StatId::Speed,   StatId::Volts,   StatId::Oil,      _               }, // MISCELLANEOUS (adjacent to TOWING via wrap)
 };
 #undef _
 // Gear is logged-only (towing shift analysis; the DIC already shows gear).
@@ -154,8 +154,11 @@ static const StatId HELPERS[] = { StatId::RefTq, StatId::Baro, StatId::ActTq, St
 static constexpr int LAYOUT_PAGE_COUNT   = (int)(sizeof(PAGES)   / sizeof(PAGES[0]));
 static constexpr int LAYOUT_HELPER_COUNT = (int)(sizeof(HELPERS) / sizeof(HELPERS[0]));
 
-// One short name per PAGES row (shown in the quad view's bottom strip).
-static const char* const PAGE_NAMES[] = { "TOW", "POWER", "REGEN", "RANGE", "TRIP", "DIAG", "MISC" };
+// One name per PAGES row (shown in the quad view's header band, as "NAME  n/m").
+// Budget is 298 px at montserrat_20 including the " n/m" suffix — the longest
+// here, MISCELLANEOUS, measures 213 px. See statLabel() in readouts.cpp.
+static const char* const PAGE_NAMES[] = { "TOWING", "POWER", "REGENERATION", "RANGE",
+                                          "TRIP", "DIAGNOSTICS", "MISCELLANEOUS" };
 static_assert(sizeof(PAGE_NAMES)/sizeof(PAGE_NAMES[0]) == (size_t)LAYOUT_PAGE_COUNT,
               "PAGE_NAMES must have one entry per PAGES row");
 

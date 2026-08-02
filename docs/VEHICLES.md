@@ -31,7 +31,7 @@ research behind those DIDs and what a confirmation drive would need to establish
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
-| 1 | TEMPS | Trans · Oil · Coolant · Boost |
+| 1 | TEMPERATURES | Trans · Oil · Coolant · Boost |
 | 2 | DRIVE | Rpm · Speed · Load · Volts |
 | 3 | AIR | Intake · Pedal · Maf · FuelLevel |
 
@@ -60,7 +60,7 @@ See [`BMW-STATUS.md`](BMW-STATUS.md) for the on-car scan results.
 | :- | :--- | :--- |
 | 1 | ENGINE | Coolant · OilP · Boost · Load |
 | 2 | DRIVE | Rpm · Speed · Intake · Ambient |
-| 3 | MISC | Baro · FuelLevel · Volts · *(empty)* |
+| 3 | MISCELLANEOUS | Baro · FuelLevel · Volts · *(empty)* |
 
 ## Chevrolet / GMC
 
@@ -74,13 +74,13 @@ Silverado.
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
-| 1 | TOW | Trans · Coolant · OilP · Egt |
+| 1 | TOWING | Trans · Coolant · OilP · Egt |
 | 2 | POWER | Boost · Hp · Rpm · Load |
-| 3 | REGEN | DpfDp · FuelRate · Nox · Rail |
+| 3 | REGENERATION | DpfDp · FuelRate · Nox · Rail |
 | 4 | RANGE | FuelLevel · DslFill · Def · DefFill |
 | 5 | TRIP | MpgInst · MpgAvg · Gal100mi · L100km |
-| 6 | DIAG | Maf · Egr · Cac · Intake |
-| 7 | MISC | Speed · Volts · Oil · *(empty)* |
+| 6 | DIAGNOSTICS | Maf · Egr · Cac · Intake |
+| 7 | MISCELLANEOUS | Speed · Volts · Oil · *(empty)* |
 
 ## Ford
 
@@ -125,10 +125,10 @@ See [`JEEP-STATUS.md`](JEEP-STATUS.md) for the full scan results and confidence 
 
 | # | Page | Tiles |
 | :- | :--- | :--- |
-| 1 | TEMPS | Trans · Coolant · Intake · Ambient |
+| 1 | TEMPERATURES | Trans · Coolant · Intake · Ambient |
 | 2 | DRIVE | Rpm · Speed · Load · Pedal |
 | 3 | POWER | Torque · RefTq · Hp · Fuel rate |
-| 4 | MISC | Gear · Fuel% · Volts · Baro |
+| 4 | MISCELLANEOUS | Gear · FuelLevel · Volts · Baro |
 
 The POWER page is why this skeleton is richer than the BMW and Audi ones — torque, reference
 torque and fuel rate are all measured live, and **Hp** is computed from actual torque, reference

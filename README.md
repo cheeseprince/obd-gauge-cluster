@@ -4,6 +4,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cheeseprince/obd-gauge-cluster/badge)](https://scorecard.dev/viewer/?uri=github.com/cheeseprince/obd-gauge-cluster)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13834/badge)](https://www.bestpractices.dev/projects/13834)
 [![OTA](https://img.shields.io/badge/dynamic/regex?url=https%3A//cheeseprince.github.io/obd-gauge-cluster/manifest.txt&search=crowpanel_obd%5Cs%2B(v%5B0-9.%5D%2B)&replace=%241&label=OTA&color=blue)](https://cheeseprince.github.io/obd-gauge-cluster/manifest.txt)
+[![Printables](https://img.shields.io/badge/Printables-Case%20STLs-FA6831?logo=printables&logoColor=fff)](https://www.printables.com/model/1788789-obd-gauge-cluster-case)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=fff)](#ai-assistance)
 
@@ -39,20 +40,20 @@ press to zoom a tile, hold for settings. Out-of-range values turn amber, then re
 **Every screenshot below is the GMC Sierra Duramax profile — 7 pages, 27 tiles.** Other
 vehicles ship fewer and different pages; see [Vehicles it works on](#vehicles-it-works-on).
 
-| TOW | POWER |
+| TOWING | POWER |
 | :---: | :---: |
-| ![TOW](docs/images/page0_day.png) | ![POWER](docs/images/page1_day.png) |
-| Transmission · coolant · oil pressure · EGT | Boost · horsepower · RPM · engine load |
+| ![TOWING](docs/images/page0_day.png) | ![POWER](docs/images/page1_day.png) |
+| Transmission · coolant · oil pressure · exhaust gas | Boost · horsepower · RPM · engine load |
 
-| REGEN | RANGE |
+| REGENERATION | RANGE |
 | :---: | :---: |
-| ![REGEN](docs/images/page2_day.png) | ![RANGE](docs/images/page3_day.png) |
-| DPF Δp · fuel rate · NOx · rail pressure | Fuel and DEF level + gallons-to-fill |
+| ![REGENERATION](docs/images/page2_day.png) | ![RANGE](docs/images/page3_day.png) |
+| DPF pressure · fuel rate · NOx · rail pressure | Fuel and DEF level + gallons-to-fill |
 
-| TRIP | DIAG | MISC |
+| TRIP | DIAGNOSTICS | MISCELLANEOUS |
 | :---: | :---: | :---: |
-| ![TRIP](docs/images/page4_day.png) | ![DIAG](docs/images/page5_day.png) | ![MISC](docs/images/page6_day.png) |
-| Instant + average economy | MAF · EGR · CAC temp · intake temp | Speed · volts · oil temp |
+| ![TRIP](docs/images/page4_day.png) | ![DIAGNOSTICS](docs/images/page5_day.png) | ![MISCELLANEOUS](docs/images/page6_day.png) |
+| Instant + average economy | Air flow · EGR valve · charge air · intake | Speed · voltage · oil temp |
 
 Press the knob to zoom one tile, with a rolling trend graph coloured by alarm zone — a
 **5-minute** window. The theme follows
@@ -68,7 +69,7 @@ warn crossing, red on a critical one, with the trend line coloured per sample.
 | Warning tile | Error tile | Trend graph, all three zones |
 | :---: | :---: | :---: |
 | ![Warning](docs/images/warning_tile.png) | ![Error](docs/images/error_tile.png) | ![Alarm zones](docs/images/alarm_zones.png) |
-| TRANS in the amber warn band | TRANS over the red critical line | Green → amber → red across the window |
+| TRANSMISSION in the amber warn band | TRANSMISSION over the red critical line | Green → amber → red across the window |
 
 The status bar shows link and logging state at a glance: Bluetooth icon, clock, page, and the
 SD-logging indicator.
@@ -87,12 +88,12 @@ the choice.
 
 | Manufacturer | Model | Engine | Years | Pages | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPS · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
-| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–16 | **3** — ENGINE · DRIVE · MISC | 🟡 Skeleton — [details](docs/VEHICLES.md#bmw) |
+| Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPERATURES · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
+| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–16 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#bmw) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Ford | F-250/350 Super Duty | 6.7L Power Stroke | 2017–22 | — none yet | 🔬 Researched, needs a scan |
-| GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOW · POWER · REGEN · RANGE · TRIP · DIAG · MISC | ✅ **Validated on a real truck** |
-| Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–24 | **4** — TEMPS · DRIVE · POWER · MISC | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
+| GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real truck** |
+| Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–24 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
 Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW
@@ -123,7 +124,7 @@ so the SparkFun adapter cable bridges them. Everything else is on-board or plug-
 **Case** — three printed parts plus **8× M3 heat-set inserts** (4 mm long, 5 mm OD) and
 **4× M3×10 + 4× M3×6 screws**. STLs, print settings and photos:
 
-**→ https://www.printables.com/model/1788789-odb-gauge-cluster-case**
+**→ https://www.printables.com/model/1788789-obd-gauge-cluster-case**
 
 ![3D-printed case, CAD assembly](docs/images/case.png)
 

@@ -641,7 +641,7 @@ void render(const GaugeSet& gs, const NavState& navState, Theme theme, const His
       const ReadoutDef& r = READOUTS[(int)id];  // table is source of truth
       const Gauge& g = gs.g[(int)id];
       lv_color_t base = (theme==Theme::Day) ? lv_color_white() : lv_color_hex(0xFF7A00);
-      lv_label_set_text(cells[i].name, r.name);
+      lv_label_set_text(cells[i].name, statLabel((int)id));   // display text, not the log key
       lv_obj_set_style_text_color(cells[i].name, base, 0);
       char buf[24];
       if (!g.valid) {
@@ -682,7 +682,7 @@ void render(const GaugeSet& gs, const NavState& navState, Theme theme, const His
     Zone z = zoneForStat(gs, (int)id);         // thresholds from the table (OIL P gated engine-off)
 
     // Stat name — white in day mode, amber in night mode (consistent with quad cells).
-    lv_label_set_text(fName, r.name);
+    lv_label_set_text(fName, statLabel((int)id));   // display text, not the log key
     lv_obj_set_style_text_color(fName, (theme==Theme::Day) ? lv_color_white()
                                                             : lv_color_hex(0xFF7A00), 0);
     updateSdLabel(fSd, theme);
@@ -809,7 +809,7 @@ void render(const GaugeSet& gs, const NavState& navState, Theme theme, const His
           Zone z = zoneFor(gs.g[s].value, READOUTS[s].thr);  // thresholds from the table
           char b[48];
           snprintf(b, sizeof b, "%s %s %.0f%s",
-                   READOUTS[s].name, z == Zone::Red ? "CRITICAL" : "WARN",
+                   statLabel(s), z == Zone::Red ? "CRITICAL" : "WARN",
                    toDisplayValue(READOUTS[s].quantity, gs.g[s].value, metric),
                    displayUnit(READOUTS[s], metric));
           lv_label_set_text(alarmLine[i], b);

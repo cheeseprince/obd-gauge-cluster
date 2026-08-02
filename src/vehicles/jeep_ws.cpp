@@ -145,7 +145,7 @@ static const AddressingDef JEEP_ADDRESSING[] = {
 static constexpr int JEEP_ADDRESSING_COUNT =
   (int)(sizeof(JEEP_ADDRESSING) / sizeof(JEEP_ADDRESSING[0]));
 
-// --- layout: 4-page full-size SUV layout. No TOW/REGEN/RANGE pages (gasoline,
+// --- layout: 4-page full-size SUV layout. No TOWING/REGENERATION/RANGE pages (gasoline,
 // no DEF/EGT/DPF, and naturally aspirated so no boost page either).
 //
 // The POWER page is what makes this profile richer than the BMW/Audi skeletons.
@@ -159,15 +159,15 @@ static constexpr int JEEP_ADDRESSING_COUNT =
 // FuelRate + Speed), so the computed MPG rows become live as a side effect even
 // though this layout does not display them.
 static const StatId JEEP_PAGES[][4] = {
-  { StatId::Trans, StatId::Coolant,   StatId::Intake, StatId::Ambient  },  // TEMPS
+  { StatId::Trans, StatId::Coolant,   StatId::Intake, StatId::Ambient  },  // TEMPERATURES
   { StatId::Rpm,   StatId::Speed,     StatId::Load,   StatId::Pedal    },  // DRIVE
   { StatId::ActTq, StatId::RefTq,     StatId::Hp,     StatId::FuelRate },  // POWER
-  { StatId::Gear,  StatId::FuelLevel, StatId::Volts,  StatId::Baro     },  // MISC
+  { StatId::Gear,  StatId::FuelLevel, StatId::Volts,  StatId::Baro     },  // MISCELLANEOUS
 };
-static const char* const JEEP_PAGE_NAMES[] = { "TEMPS", "DRIVE", "POWER", "MISC" };
+static const char* const JEEP_PAGE_NAMES[] = { "TEMPERATURES", "DRIVE", "POWER", "MISCELLANEOUS" };
 // No HELPERS: BOOST is absent on this NA engine, so unlike GM there is no
 // MAP-minus-BARO computation needing a polled BARO helper -- BARO is a
-// first-class tile on the MISC page instead. No other computed tile is
+// first-class tile on the MISCELLANEOUS page instead. No other computed tile is
 // displayed in this skeleton.
 static const StatId JEEP_HELPERS[] = {};
 
