@@ -89,7 +89,7 @@ the choice.
 | Manufacturer | Model | Engine | Years | Pages | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPERATURES · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
-| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–16 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#bmw) |
+| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–16 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟢 In use — scanned on-car, no reported errors; not tested as exhaustively as the Sierra — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Ford | F-250/350 Super Duty | 6.7L Power Stroke | 2017–22 | — none yet | 🔬 Researched, needs a scan |
 | GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real truck** |
@@ -266,7 +266,8 @@ Repository layout and the contribution workflow are in
 | [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) | The method for mapping a new vehicle, and the traps |
 | [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) | A worked example of the discovery method |
 | [`docs/obd-scan-design.md`](docs/obd-scan-design.md) | The scanner's design |
-| [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) | Per-vehicle port status |
+| [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) · [`docs/JEEP-STATUS.md`](docs/JEEP-STATUS.md) | Per-vehicle port status |
+| [`ROADMAP.md`](ROADMAP.md) | Where the project is going, and where help is most useful |
 
 ## Safety and scope
 
