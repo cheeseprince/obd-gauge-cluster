@@ -27,6 +27,16 @@ ALLOWED_VINS = {
     "1FT0123456789ABCD",   # Ford
     "JHM0123456789ABCD",   # Honda (unknown-WMI test)
     "3GT0123456789ABCD",   # GM (3GT WMI-case test)
+    # GM 1500 engine-discriminator tests (test_vin). Synthetic: a real GM VIN has
+    # a model-year letter at position 10 and a 6-digit sequential tail, never a
+    # "012345678" run. Positions that matter to the test are vin[3], vin[4] and
+    # vin[7]; everything after is filler.
+    "3GTUUEE8012345678",   # GM 1500, LZ0 3.0 diesel  -> gm_sierra_lz0
+    "1GTUUEE8012345678",   # GM 1500, LZ0 3.0 diesel  -> gm_sierra_lz0 (1GT WMI)
+    "3GTUUEED012345678",   # GM 1500, L84 5.3 gas     -> nullptr
+    "3GTUUEEL012345678",   # GM 1500, L87 6.2 gas     -> nullptr
+    "3GTUUEEK012345678",   # GM 1500, L3B 2.7 gas     -> nullptr
+    "3GTU8EEE012345678",   # Sierra HD (vin[4]='8')   -> nullptr
 }
 
 # A VIN token excludes I/O/Q; a hex hash never has a letter past A-F, so requiring

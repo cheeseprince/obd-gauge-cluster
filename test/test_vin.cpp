@@ -52,8 +52,34 @@ int main() {
     check(!parseVinReply(dup,vin), "duplicate frame -> false (fails closed)"); }
 
   // vinToProfileKey: WMI -> registry key.
-  check(strcmp(vinToProfileKey("1GT0123456789ABCD"),"gm_sierra_lz0")==0, "1GT->gm");
-  check(strcmp(vinToProfileKey("3gt0123456789abcd"),"gm_sierra_lz0")==0, "3GT->gm (case)");
+  //
+  // GM is NOT WMI-only. 1GT/3GT/1GC/3GC are GM light-truck-wide: they also cover
+  // gasoline Silverado/Sierra 1500 (L84 5.3 V8, L87 6.2 V8, L3B 2.7 turbo-4) and
+  // Sierra/Silverado HD (L5P 6.6 Duramax). Handing any of those the LZ0 profile
+  // makes the dash poll Mode-22 PIDs (221940 trans temp, 220078 EGT, 220023 rail,
+  // 220010 MAF) at headers 7E0/7E2 that either do not exist or mean something
+  // else there -- the same over-broad-WMI failure the jeep_ws rows warn about.
+  //
+  // NHTSA vPIC keys the 1500 engine entirely off VIN position 8 (vin[7]), gated
+  // on positions 4-5 (vin[3], vin[4]):
+  //   [NPRUV][HU]**8 -> LZ0 3.0L I6 turbo diesel   <-- the only fit for this profile
+  //   [NPRUV][HU]**D -> L84 5.3L V8 gas
+  //   [NPRUV][HU]**L -> L87 6.2L V8 gas
+  //   [NPRUV][HU]**K -> L3B 2.7L I4 turbo gas
+  // HD lives on a different schema ([NPRUV][89]*E), so vin[4] separates 1500 from HD.
+  //
+  // EVERY VIN BELOW IS SYNTHETIC (…012345678 / …0123456789ABCD tails, no relation
+  // to any real vehicle). Never commit a real VIN -- scripts/check_no_pii.py
+  // allowlists these exact tokens and fails CI on any other VIN-shaped string.
+  check(strcmp(vinToProfileKey("3GTUUEE8012345678"),"gm_sierra_lz0")==0, "3GT LZ0 diesel -> gm");
+  check(strcmp(vinToProfileKey("1GTUUEE8012345678"),"gm_sierra_lz0")==0, "1GT LZ0 diesel -> gm");
+  check(strcmp(vinToProfileKey("3gtuuee8012345678"),"gm_sierra_lz0")==0, "LZ0 -> gm (case)");
+  check(vinToProfileKey("3GTUUEED012345678")==nullptr, "L84 5.3 gas, same WMI -> null");
+  check(vinToProfileKey("3GTUUEEL012345678")==nullptr, "L87 6.2 gas, same WMI -> null");
+  check(vinToProfileKey("3GTUUEEK012345678")==nullptr, "L3B 2.7 gas, same WMI -> null");
+  check(vinToProfileKey("3GTU8EEE012345678")==nullptr, "Sierra HD (vin[4] not H/U) -> null");
+  check(vinToProfileKey("1GT0123456789ABCD")==nullptr, "GM WMI but non-1500 pattern -> null");
+  check(vinToProfileKey("1GTUUEE")==nullptr, "GM WMI but too short to read vin[7] -> null");
   check(strcmp(vinToProfileKey("WBA0123456789ABCD"),"bmw_f10_535i")==0, "WBA->bmw");
   check(strcmp(vinToProfileKey("WAU0123456789ABCE"),"audi_q5")==0, "WAU->audi_q5");
   check(strcmp(vinToProfileKey("wa10123456789abcd"),"audi_q5")==0, "WA1->audi_q5 (case)");
@@ -63,9 +89,15 @@ int main() {
   check(vinToProfileKey("WA")==nullptr, "short -> null");
 
   // vinAutoTarget: the decision.
-  check(strcmp(vinAutoTarget("1GT0123456789ABCD", true, ""),"gm_sierra_lz0")==0, "auto+changed -> key");
-  check(vinAutoTarget("1GT0123456789ABCD", true, "gm_sierra_lz0")==nullptr, "already current -> null");
-  check(vinAutoTarget("1GT0123456789ABCD", false, "")==nullptr, "auto off -> null");
+  check(strcmp(vinAutoTarget("3GTUUEE8012345678", true, ""),"gm_sierra_lz0")==0, "auto+changed -> key");
+  check(vinAutoTarget("3GTUUEE8012345678", true, "gm_sierra_lz0")==nullptr, "already current -> null");
+  check(vinAutoTarget("3GTUUEE8012345678", false, "")==nullptr, "auto off -> null");
+  // Fail CLOSED, and fail QUIETLY: a VIN whose key is now nullptr (a gas 1500 on
+  // a GM truck WMI) must leave the active profile exactly as it was, not reset it
+  // to generic and not swap it. vinAutoTarget returning nullptr is what the caller
+  // reads as "leave the current profile alone".
+  check(vinAutoTarget("3GTUUEED012345678", true, "gm_sierra_lz0")==nullptr, "gas GM VIN -> leave current profile alone");
+  check(vinAutoTarget("3GTUUEED012345678", true, "audi_q5")==nullptr, "gas GM VIN -> no change even from a foreign current");
   check(vinAutoTarget("JHM0123456789ABCD", true, "")==nullptr, "unmapped -> null");
   check(vinAutoTarget("", true, "gm_sierra_lz0")==nullptr, "empty vin -> null");
   check(strcmp(vinAutoTarget("WAU0123456789ABCE", true, "gm_sierra_lz0"),"audi_q5")==0, "audi VIN + auto + different current -> key");

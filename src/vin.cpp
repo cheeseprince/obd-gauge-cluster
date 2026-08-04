@@ -129,25 +129,69 @@ bool parseVinReply(const char* elmReply, char out[18]) {
   return parseVinFromPayload(bytes.data() + 2, (int)(bytes.size() - 2), out);
 }
 
+// A WMI alone is not always enough to pick a profile, so a row may carry an
+// extra predicate over the FULL VIN. Rows without one stay pure WMI matches.
+// Returning false makes the row fail CLOSED (nullptr) rather than falling
+// through to a later row -- a WMI is owned by one manufacturer, so a failed
+// discriminator means "we cannot tell", not "try the next entry".
+//
+// GM light-truck WMIs (1GT/3GT/1GC/3GC) cover far more than the LZ0 diesel this
+// profile was scanned on: gasoline Silverado/Sierra 1500 (L84 5.3 V8, L87 6.2 V8,
+// L3B 2.7 turbo-4) and Sierra/Silverado HD (L5P 6.6 Duramax) share them. Give any
+// of those the LZ0 profile and the dash polls Mode-22 PIDs (221940 trans temp,
+// 220078 EGT, 220023 rail, 220010 MAF) at headers 7E0/7E2 that either do not
+// exist or mean something different -- the over-broad-WMI failure the jeep_ws
+// rows below already warn about.
+//
+// NHTSA vPIC keys the 1500's engine entirely off VIN position 8 (vin[7]), gated
+// on positions 4-5 (vin[3], vin[4]). vPIC key format is vin[3..8] + "|" +
+// vin[9..17], "*" = any:
+//   [NPRUV][HU]**8 -> LZ0 3.0L I6 turbo diesel   <-- the only fit for this profile
+//   [NPRUV][HU]**D -> L84 5.3L V8 gas
+//   [NPRUV][HU]**L -> L87 6.2L V8 gas
+//   [NPRUV][HU]**K -> L3B 2.7L I4 turbo gas
+// Sierra/Silverado HD sits on a different schema ([NPRUV][89]*E), so vin[4]
+// is what separates 1500 from HD.
+static bool gmSierra1500Diesel(const char* vin) {
+  if (std::strlen(vin) < 8) return false;            // need vin[7]; guards the reads below
+  const char c3 = (char)std::toupper((unsigned char)vin[3]);
+  const char c4 = (char)std::toupper((unsigned char)vin[4]);
+  const char c7 = (char)std::toupper((unsigned char)vin[7]);
+  return std::strchr("NPRUV", c3) != nullptr &&
+         std::strchr("HU",    c4) != nullptr &&
+         c7 == '8';
+}
+
 const char* vinToProfileKey(const char* vin) {
   if (!vin || std::strlen(vin) < 3) return nullptr;
   char w[4] = { (char)std::toupper((unsigned char)vin[0]),
                 (char)std::toupper((unsigned char)vin[1]),
                 (char)std::toupper((unsigned char)vin[2]), '\0' };
-  struct M { const char* wmi; const char* key; };
+  // `extra` is optional: nullptr means the row matches on WMI alone. The
+  // BMW/Audi/Jeep rows are still WMI-only and can be tightened the same way when
+  // someone works out their discriminators.
+  struct M { const char* wmi; const char* key; bool (*extra)(const char* vin); };
   static const M MAP[] = {
-    {"1GT","gm_sierra_lz0"},{"3GT","gm_sierra_lz0"},{"1GC","gm_sierra_lz0"},{"3GC","gm_sierra_lz0"},
-    {"WBA","bmw_f10_535i"}, {"WBS","bmw_f10_535i"}, {"5UX","bmw_f10_535i"}, {"4US","bmw_f10_535i"},
-    {"WAU","audi_q5"}, {"WA1","audi_q5"}, {"WUA","audi_q5"}, {"TRU","audi_q5"},
+    {"1GT","gm_sierra_lz0",gmSierra1500Diesel},{"3GT","gm_sierra_lz0",gmSierra1500Diesel},
+    {"1GC","gm_sierra_lz0",gmSierra1500Diesel},{"3GC","gm_sierra_lz0",gmSierra1500Diesel},
+    // STILL WMI-ONLY (nullptr predicate). Each of these is as over-broad as the
+    // GM rows were — a WMI covers a manufacturer's whole range, not one engine.
+    // Tighten them the same way once someone establishes the discriminator.
+    {"WBA","bmw_f10_535i",nullptr}, {"WBS","bmw_f10_535i",nullptr},
+    {"5UX","bmw_f10_535i",nullptr}, {"4US","bmw_f10_535i",nullptr},
+    {"WAU","audi_q5",nullptr}, {"WA1","audi_q5",nullptr},
+    {"WUA","audi_q5",nullptr}, {"TRU","audi_q5",nullptr},
     // Stellantis. These WMIs cover Jeep broadly, but the profile was scanned on
     // a WS-platform Wagoneer specifically — a Wrangler or Cherokee sharing a WMI
     // gets the Wagoneer's 29-bit addressing, which will simply read nothing on a
     // vehicle that answers 11-bit. Settings -> Pick Vehicle overrides it.
-    {"1C4","jeep_ws"}, {"1J4","jeep_ws"}, {"3C4","jeep_ws"},
+    {"1C4","jeep_ws",nullptr}, {"1J4","jeep_ws",nullptr}, {"3C4","jeep_ws",nullptr},
     // Ford (1FT/...) returns nullptr until that profile is registered — add a
     // row + a registry entry together.
   };
-  for (const M& m : MAP) if (std::strcmp(w, m.wmi) == 0) return m.key;
+  for (const M& m : MAP)
+    if (std::strcmp(w, m.wmi) == 0)
+      return (!m.extra || m.extra(vin)) ? m.key : nullptr;
   return nullptr;
 }
 
