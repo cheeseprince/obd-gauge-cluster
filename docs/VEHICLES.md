@@ -6,18 +6,51 @@ automatically, what each profile currently supports, and what "not supported" ac
 ## How a vehicle is chosen
 
 On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** and parses the
-17-character VIN out of the reassembled multi-frame ISO-TP reply (`parseVinReply` in `src/vin.cpp`). The first three characters — the WMI — are looked up in a fixed WMI→profile
-table: `1GT`/`3GT`/`1GC`/`3GC` → `gm_sierra_lz0`, `WBA`/`WBS`/`5UX`/`4US` → `bmw_f10_535i`,
-`WAU`/`WA1`/`WUA`/`TRU` → `audi_q5`, `1C4`/`1J4`/`3C4` → `jeep_ws` (the `MAP` table in
-`vinToProfileKey`, `src/vin.cpp`). An unrecognized
-WMI returns no match (`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic
-profile.
+17-character VIN out of the reassembled multi-frame ISO-TP reply (`parseVinReply` in `src/vin.cpp`). The first three characters — the WMI — are looked up in a fixed table
+(`MAP` in `vinToProfileKey`, `src/vin.cpp`): `1GT`/`3GT`/`1GC`/`3GC` → `gm_sierra_lz0`,
+`WBA`/`WBS`/`5UX`/`4US` → `bmw_f10_535i`, `WAU`/`WA1`/`WUA`/`TRU` → `audi_q5`,
+`1C4`/`1J4`/`3C4` → `jeep_ws`. An unrecognized WMI returns no match
+(`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic profile.
 
-**Settings → Pick Vehicle** overrides this and locks the choice: with auto-select off, VIN-based
-switching is skipped entirely, regardless of what VIN is read on the wire (the `vehicleAuto` gate in `vinAutoTarget`, `src/vin.cpp`).
+**A WMI alone is often not enough.** A WMI identifies a manufacturer and a broad vehicle class,
+not an engine — so a row may carry an **optional extra predicate** over the full VIN. If that
+predicate fails, the row fails *closed* (`nullptr`) rather than falling through to another row:
+a WMI belongs to one manufacturer, so a failed discriminator means "cannot tell", not "try the
+next entry". Failing closed matters because a wrong profile is worse than no profile — the dash
+polls enhanced PIDs at headers that do not exist on that vehicle, and the tiles read nothing or,
+worse, something misinterpreted.
 
-Example VIN shape used in this repo's own tests (synthetic, not a real vehicle):
-`1GT0123456789ABCD`.
+**The GM rows use one.** `1GT`/`3GT`/`1GC`/`3GC` are GM light-truck-wide: they also cover the
+gasoline Silverado/Sierra 1500 (L84 5.3 V8, L87 6.2 V8, L3B 2.7 turbo-4) and Sierra/Silverado HD
+(L5P 6.6 Duramax), none of which this profile fits. NHTSA's **vPIC** database keys the 1500's
+engine off **VIN position 8** (`vin[7]`), gated on positions 4–5:
+
+| Pattern | Engine | Profile |
+| :--- | :--- | :--- |
+| `[NPRUV][HU]**8` | LZ0 3.0L I6 turbo diesel | `gm_sierra_lz0` |
+| `[NPRUV][HU]**D` | L84 5.3L V8 gas | none — Generic |
+| `[NPRUV][HU]**L` | L87 6.2L V8 gas | none — Generic |
+| `[NPRUV][HU]**K` | L3B 2.7L I4 turbo gas | none — Generic |
+| `[NPRUV][89]*E` | Sierra/Silverado HD | none — Generic |
+
+**Tightening another make.** The BMW, Audi and Jeep rows are still WMI-only and are just as
+over-broad — `1C4`/`1J4`/`3C4` cover Wrangler and Cherokee, which would get the Wagoneer's
+29-bit addressing and simply read nothing. To narrow one, derive its discriminator from
+[NHTSA vPIC](https://vpic.nhtsa.dot.gov/) — a US Government database, public domain, and the
+authoritative source for which VIN positions encode which attribute. Do that derivation
+**offline** and commit only the resulting predicate: the firmware should carry a handful of
+character comparisons, never a decoding table. Add the predicate to the row, add both a positive
+and a negative case to `test/test_vin.cpp`, and add any new synthetic VIN to `ALLOWED_VINS` in
+`scripts/check_no_pii.py`.
+
+**Settings → Pick Vehicle** overrides all of this and locks the choice: with auto-select off,
+VIN-based switching is skipped entirely, regardless of what VIN is read on the wire (the
+`vehicleAuto` gate in `vinAutoTarget`, `src/vin.cpp`).
+
+**Never commit a real VIN.** Every VIN in this repository is synthetic and allowlisted; CI fails
+on any VIN-shaped token that is not. The example shape used in the tests is
+`3GTUUEE8012345678` — note that the older `1GT0123456789ABCD` now correctly resolves to *no
+match*, because `vin[3]` is `0` rather than one of `[NPRUV]`.
 
 ## Audi
 
