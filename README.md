@@ -89,11 +89,11 @@ the choice.
 | Manufacturer | Model | Engine | Years | Pages | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPERATURES · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
-| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–16 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟢 In use — scanned on-car, no reported errors; not tested as exhaustively as the Sierra — [details](docs/BMW-STATUS.md) |
+| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟢 In use — scanned on-car, no reported errors; not tested as exhaustively as the Sierra — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Ford | F-250/350 Super Duty | 6.7L Power Stroke | 2017–22 | — none yet | 🔬 Researched, needs a scan |
 | GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real truck** |
-| Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–24 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
+| Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–23 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
 Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW

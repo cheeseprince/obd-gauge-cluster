@@ -152,14 +152,74 @@ bool parseVinReply(const char* elmReply, char out[18]) {
 //   [NPRUV][HU]**K -> L3B 2.7L I4 turbo gas
 // Sierra/Silverado HD sits on a different schema ([NPRUV][89]*E), so vin[4]
 // is what separates 1500 from HD.
+// Every discriminator below reads vin[3..7], so they all need >= 8 characters.
+// vinAt() upper-cases one position; vinIs() tests membership in a small set.
+// The explicit c!=0 guard matters: strchr(set, '\0') returns a pointer to the
+// set's terminator, i.e. NUL would otherwise "match" every set.
+static inline char vinAt(const char* vin, int i) {
+  return (char)std::toupper((unsigned char)vin[i]);
+}
+static inline bool vinIs(const char* set, char c) {
+  return c != '\0' && std::strchr(set, c) != nullptr;
+}
+
 static bool gmSierra1500Diesel(const char* vin) {
   if (std::strlen(vin) < 8) return false;            // need vin[7]; guards the reads below
-  const char c3 = (char)std::toupper((unsigned char)vin[3]);
-  const char c4 = (char)std::toupper((unsigned char)vin[4]);
-  const char c7 = (char)std::toupper((unsigned char)vin[7]);
-  return std::strchr("NPRUV", c3) != nullptr &&
-         std::strchr("HU",    c4) != nullptr &&
-         c7 == '8';
+  return vinIs("NPRUV", vinAt(vin,3)) &&
+         vinIs("HU",    vinAt(vin,4)) &&
+         vinAt(vin,7) == '8';
+}
+
+// BMW F10 535i (N55 3.0 turbo I6) — the car this profile was scanned on.
+// vPIC frame, verified 2011-2015:
+//   vin[3]='F', vin[4]='R' (RWD) or 'U' (xDrive), vin[5]=model, vin[6]='C', vin[7]='5'
+// vin[5] is the model digit and it is the ONLY workable separator:
+//   1 -> 528i, 7 -> 535i, 9 -> 550i.
+// DISPLACEMENT CANNOT BE USED: the 528i is also 3.0L/6-cyl in 2011-13, so a
+// "3.0 six" test would happily match an N52 528i and poll N55 PIDs at it.
+// The frame decodes to nothing from 2016 onward (F10 replaced by the G30), so
+// the pattern is self-limiting and needs no model-year gate.
+static bool bmwF10535i(const char* vin) {
+  if (std::strlen(vin) < 8) return false;
+  return vinAt(vin,3) == 'F' &&
+         vinIs("RU", vinAt(vin,4)) &&
+         vinAt(vin,5) == '7' &&
+         vinAt(vin,6) == 'C' &&
+         vinAt(vin,7) == '5';
+}
+
+// Audi Q5 (typ FY) 2.0T TFSI EA888.3, 2018-20.
+//   vin[3] = trim (A/B/C), vin[4] = engine/line, vin[6]='F', vin[7] = model line
+// Two separators do the work:
+//   vin[4]: 'N' -> Q5 2.0T, '4' -> SQ5 (EA839 3.0 V6 — a different engine with
+//           different PIDs, and the row this most needed to stop matching).
+//   vin[7]: 'Y' -> Q5, '1' -> Q8, '3' -> Q3, '7' -> Q7.
+// Requiring vin[4]='N' also excludes the 2021+ facelift, which moved the Q5 to
+// vin[4]='A' — correct, since the profile was only ever validated on 2018-20.
+static bool audiQ5_20T(const char* vin) {
+  if (std::strlen(vin) < 8) return false;
+  return vinIs("ABC", vinAt(vin,3)) &&
+         vinAt(vin,4) == 'N' &&
+         vinAt(vin,6) == 'F' &&
+         vinAt(vin,7) == 'Y';
+}
+
+// Jeep Wagoneer (WS) 5.7L Hemi eTorque, 2022-23.
+// 1C4/1J4/3C4 are Stellantis-wide. Left on the WMI alone this row matched the
+// Grand Cherokee, Cherokee, Wrangler AND the Ducato / ProMaster VANS — every one
+// of which would then be driven with the Wagoneer's 29-bit addressing.
+//   vin[4]: 'J' -> Wagoneer family ('F' = Ducato, 'R' = ProMaster)
+//   vin[5]: R/S/U/V -> Wagoneer (E,F,G,H,Y = Grand Cherokee; M = Cherokee; X = Wrangler)
+//   vin[6]: A/B/D  -> Wagoneer   (E,F,G = Grand Wagoneer)
+//   vin[7]: ENGINE — 'T' = 5.7 V8, 'P' = 3.0 I6 Hurricane, 'J' = 6.4 V8, 'G' = 3.6 V6
+// The 5.7 is a 2022-23 combination only; 2024 Wagoneers are 3.0 I6 and fall out
+// on vin[7] without needing a year check.
+static bool jeepWagoneer57(const char* vin) {
+  if (std::strlen(vin) < 8) return false;
+  return vinAt(vin,4) == 'J' &&
+         vinIs("RSUV", vinAt(vin,5)) &&
+         vinIs("ABD",  vinAt(vin,6)) &&
+         vinAt(vin,7) == 'T';
 }
 
 const char* vinToProfileKey(const char* vin) {
@@ -174,18 +234,15 @@ const char* vinToProfileKey(const char* vin) {
   static const M MAP[] = {
     {"1GT","gm_sierra_lz0",gmSierra1500Diesel},{"3GT","gm_sierra_lz0",gmSierra1500Diesel},
     {"1GC","gm_sierra_lz0",gmSierra1500Diesel},{"3GC","gm_sierra_lz0",gmSierra1500Diesel},
-    // STILL WMI-ONLY (nullptr predicate). Each of these is as over-broad as the
-    // GM rows were — a WMI covers a manufacturer's whole range, not one engine.
-    // Tighten them the same way once someone establishes the discriminator.
-    {"WBA","bmw_f10_535i",nullptr}, {"WBS","bmw_f10_535i",nullptr},
-    {"5UX","bmw_f10_535i",nullptr}, {"4US","bmw_f10_535i",nullptr},
-    {"WAU","audi_q5",nullptr}, {"WA1","audi_q5",nullptr},
-    {"WUA","audi_q5",nullptr}, {"TRU","audi_q5",nullptr},
-    // Stellantis. These WMIs cover Jeep broadly, but the profile was scanned on
-    // a WS-platform Wagoneer specifically — a Wrangler or Cherokee sharing a WMI
-    // gets the Wagoneer's 29-bit addressing, which will simply read nothing on a
-    // vehicle that answers 11-bit. Settings -> Pick Vehicle overrides it.
-    {"1C4","jeep_ws",nullptr}, {"1J4","jeep_ws",nullptr}, {"3C4","jeep_ws",nullptr},
+    // BMW. The predicate is the F10 535i frame, so the other WMIs (M cars, the
+    // X-series SAVs) fail closed rather than being handed an N55 sedan profile.
+    {"WBA","bmw_f10_535i",bmwF10535i}, {"WBS","bmw_f10_535i",bmwF10535i},
+    {"5UX","bmw_f10_535i",bmwF10535i}, {"4US","bmw_f10_535i",bmwF10535i},
+    {"WAU","audi_q5",audiQ5_20T}, {"WA1","audi_q5",audiQ5_20T},
+    {"WUA","audi_q5",audiQ5_20T}, {"TRU","audi_q5",audiQ5_20T},
+    // Stellantis — see jeepWagoneer57() for why the WMI alone was dangerous here.
+    {"1C4","jeep_ws",jeepWagoneer57}, {"1J4","jeep_ws",jeepWagoneer57},
+    {"3C4","jeep_ws",jeepWagoneer57},
     // Ford (1FT/...) returns nullptr until that profile is registered — add a
     // row + a registry entry together.
   };

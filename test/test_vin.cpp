@@ -80,11 +80,43 @@ int main() {
   check(vinToProfileKey("3GTU8EEE012345678")==nullptr, "Sierra HD (vin[4] not H/U) -> null");
   check(vinToProfileKey("1GT0123456789ABCD")==nullptr, "GM WMI but non-1500 pattern -> null");
   check(vinToProfileKey("1GTUUEE")==nullptr, "GM WMI but too short to read vin[7] -> null");
-  check(strcmp(vinToProfileKey("WBA0123456789ABCD"),"bmw_f10_535i")==0, "WBA->bmw");
-  check(strcmp(vinToProfileKey("WAU0123456789ABCE"),"audi_q5")==0, "WAU->audi_q5");
-  check(strcmp(vinToProfileKey("wa10123456789abcd"),"audi_q5")==0, "WA1->audi_q5 (case)");
-  check(strcmp(vinToProfileKey("1C40123456789ABCD"),"jeep_ws")==0, "1C4->jeep_ws");
-  check(strcmp(vinToProfileKey("3c40123456789abcd"),"jeep_ws")==0, "3C4->jeep_ws (case)");
+  // BMW: the profile was scanned on an F10 535i (N55 3.0 turbo I6). vPIC frame,
+  // verified 2011-2015 -- vin[3]='F', vin[4] R(RWD)/U(xDrive), vin[5]=model,
+  // vin[6]='C', vin[7]='5'. vin[5] is the discriminator and DISPLACEMENT IS NOT:
+  // the 528i is also 3.0/6cyl in 2011-13, so only vin[5]='7' separates them.
+  // The frame decodes to nothing from 2016 (F10 -> G30), so it is self-limiting.
+  check(strcmp(vinToProfileKey("WBAFR7C5012345678"),"bmw_f10_535i")==0, "F10 535i RWD -> bmw");
+  check(strcmp(vinToProfileKey("WBAFU7C5012345678"),"bmw_f10_535i")==0, "F10 535i xDrive -> bmw");
+  check(strcmp(vinToProfileKey("wbafr7c5012345678"),"bmw_f10_535i")==0, "F10 535i -> bmw (case)");
+  check(vinToProfileKey("WBAFR1C5012345678")==nullptr, "528i (also 3.0 I6) -> null");
+  check(vinToProfileKey("WBAFR9C5012345678")==nullptr, "550i 4.4 V8 -> null");
+  check(vinToProfileKey("WBA0123456789ABCD")==nullptr, "BMW WMI, non-F10 pattern -> null");
+
+  // Audi: profile is the Q5 (typ FY) 2.0T EA888.3, 2018-20. vin[4] separates the
+  // Q5 (N) from the SQ5 (4, EA839 3.0 V6 -- different PIDs entirely) and vin[7]
+  // separates Q5 (Y) from Q3(3)/Q7(7)/Q8(1). 2021 moved the Q5 to vin[4]='A',
+  // so requiring 'N' also keeps the later facelift out.
+  check(strcmp(vinToProfileKey("WA1ANAFY012345678"),"audi_q5")==0, "Q5 2.0T -> audi_q5");
+  check(strcmp(vinToProfileKey("WA1BNAFY012345678"),"audi_q5")==0, "Q5 2.0T other trim -> audi_q5");
+  check(strcmp(vinToProfileKey("wa1anafy012345678"),"audi_q5")==0, "Q5 2.0T -> audi_q5 (case)");
+  check(vinToProfileKey("WA1A4AFY012345678")==nullptr, "SQ5 3.0 V6 -> null");
+  check(vinToProfileKey("WA1ANAF1012345678")==nullptr, "Q8 -> null");
+  check(vinToProfileKey("WA1ANAF7012345678")==nullptr, "Q7 -> null");
+  check(vinToProfileKey("WAU0123456789ABCE")==nullptr, "Audi WMI, non-Q5 pattern -> null");
+
+  // Jeep: profile scanned on a WS Wagoneer 5.7 Hemi eTorque. 1C4/1J4/3C4 are
+  // Stellantis-wide and cover Grand Cherokee, Cherokee, Wrangler AND the Ducato /
+  // ProMaster vans (vin[4] F and R) -- all of which previously got the Wagoneer's
+  // 29-bit addressing. vin[7] is the engine: T=5.7 V8, P=3.0 I6 Hurricane,
+  // J=6.4 V8, G=3.6 V6. The 5.7 is 2022-23 only; 2024 Wagoneers are 3.0 I6.
+  check(strcmp(vinToProfileKey("1C4SJVBT012345678"),"jeep_ws")==0, "Wagoneer 5.7 -> jeep_ws");
+  check(strcmp(vinToProfileKey("1c4sjvbt012345678"),"jeep_ws")==0, "Wagoneer 5.7 -> jeep_ws (case)");
+  check(vinToProfileKey("1C4SJVBP012345678")==nullptr, "Wagoneer 3.0 Hurricane -> null");
+  check(vinToProfileKey("1C4SJVBJ012345678")==nullptr, "Wagoneer 6.4 V8 -> null");
+  check(vinToProfileKey("1C4SJVET012345678")==nullptr, "Grand Wagoneer -> null");
+  check(vinToProfileKey("1C4SJXBT012345678")==nullptr, "Wrangler -> null");
+  check(vinToProfileKey("1C4SFVBT012345678")==nullptr, "Ducato van (vin[4]='F') -> null");
+  check(vinToProfileKey("1C40123456789ABCD")==nullptr, "Jeep WMI, non-Wagoneer pattern -> null");
   check(vinToProfileKey("JHM0123456789ABCD")==nullptr, "unknown WMI -> null");
   check(vinToProfileKey("WA")==nullptr, "short -> null");
 
@@ -100,7 +132,7 @@ int main() {
   check(vinAutoTarget("3GTUUEED012345678", true, "audi_q5")==nullptr, "gas GM VIN -> no change even from a foreign current");
   check(vinAutoTarget("JHM0123456789ABCD", true, "")==nullptr, "unmapped -> null");
   check(vinAutoTarget("", true, "gm_sierra_lz0")==nullptr, "empty vin -> null");
-  check(strcmp(vinAutoTarget("WAU0123456789ABCE", true, "gm_sierra_lz0"),"audi_q5")==0, "audi VIN + auto + different current -> key");
+  check(strcmp(vinAutoTarget("WA1ANAFY012345678", true, "gm_sierra_lz0"),"audi_q5")==0, "audi VIN + auto + different current -> key");
 
   if (failures) { printf("%d FAILED\n", failures); return 1; }
   printf("test_vin: ALL PASS\n"); return 0;

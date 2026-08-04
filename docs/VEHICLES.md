@@ -33,15 +33,35 @@ engine off **VIN position 8** (`vin[7]`), gated on positions 4–5:
 | `[NPRUV][HU]**K` | L3B 2.7L I4 turbo gas | none — Generic |
 | `[NPRUV][89]*E` | Sierra/Silverado HD | none — Generic |
 
-**Tightening another make.** The BMW, Audi and Jeep rows are still WMI-only and are just as
-over-broad — `1C4`/`1J4`/`3C4` cover Wrangler and Cherokee, which would get the Wagoneer's
-29-bit addressing and simply read nothing. To narrow one, derive its discriminator from
+**Every profile row now carries one.** All four were derived from
 [NHTSA vPIC](https://vpic.nhtsa.dot.gov/) — a US Government database, public domain, and the
-authoritative source for which VIN positions encode which attribute. Do that derivation
-**offline** and commit only the resulting predicate: the firmware should carry a handful of
-character comparisons, never a decoding table. Add the predicate to the row, add both a positive
-and a negative case to `test/test_vin.cpp`, and add any new synthetic VIN to `ALLOWED_VINS` in
-`scripts/check_no_pii.py`.
+authoritative source for which VIN positions encode which attribute:
+
+| Profile | Positions 3–7 | Verified years | What it now excludes |
+| :--- | :--- | :--- | :--- |
+| `gm_sierra_lz0` | `[NPRUV]` `[HU]` `*` `*` `8` | — | L84 5.3 / L87 6.2 / L3B 2.7 gas, Sierra HD |
+| `bmw_f10_535i` | `F` `[RU]` `7` `C` `5` | 2011–2015 | 528i, 550i, M cars, X-series |
+| `audi_q5` | `[ABC]` `N` `*` `F` `Y` | 2018–2020 | SQ5 3.0 V6, Q3, Q7, Q8, 2021+ facelift |
+| `jeep_ws` | `*` `J` `[RSUV]` `[ABD]` `T` | 2022–2023 | Grand Wagoneer, Grand Cherokee, Cherokee, Wrangler, **Ducato / ProMaster vans** |
+
+Two of these are worth understanding before changing them:
+
+- **BMW cannot be discriminated on displacement.** The 528i is also 3.0 L / 6-cylinder in
+  2011–13, so only the model digit `vin[5]` separates it from the 535i's N55.
+- **The Jeep WMIs are Stellantis-wide, not Jeep-wide.** `vin[4]='F'` is a Fiat Ducato and
+  `'R'` is a Ram ProMaster. Without the predicate, a work van would have been driven with the
+  Wagoneer's 29-bit addressing.
+
+Each pattern is also self-limiting in time: the BMW frame decodes to nothing from 2016 (F10 →
+G30), the Audi one from 2021 (facelift moved the Q5 to `vin[4]='A'`), and the Jeep engine code
+`T` disappears in 2024 (3.0 Hurricane). None of them needs an explicit model-year check.
+
+**Adding or tightening one.** Derive the discriminator from vPIC **offline** — decode partial
+VINs (8 characters plus `modelyear` is enough) and sweep one position at a time to see which
+positions change the reported model or engine. Commit only the resulting predicate: the firmware
+should carry a handful of character comparisons, never a decoding table. Then add both a
+positive and a negative case to `test/test_vin.cpp`, and add any new synthetic VIN to
+`ALLOWED_VINS` in `scripts/check_no_pii.py`.
 
 **Settings → Pick Vehicle** overrides all of this and locks the choice: with auto-select off,
 VIN-based switching is skipped entirely, regardless of what VIN is read on the wire (the
