@@ -331,11 +331,35 @@ def check_ble_link(native_log: str, expect: str) -> Verdict:
     bench is a property of the bench, not of the firmware.
     """
     scanned = "[BLE] scanning" in native_log
-    linked = "[BLE] connected + ELM ready" in native_log
+    # Accept EITHER proof of a completed link, because the native capture is
+    # lossy — the port re-enumerates on reset and the reader races it, so a long
+    # line can arrive cut in half. A real 2026-08-05 run linked successfully and
+    # was failed by this check because "[BLE] connected + ELM ready" landed as
+    # "[BLE] connecte".
+    #
+    # Both markers prove the same thing, and neither is weaker:
+    #   "[BLE] adapter = … — cached"   ble_obd_source.cpp:402, printed ONLY on
+    #                                  the bindChars() success path, i.e. after
+    #                                  GATT bind AND the ELM init succeeded
+    #   "[BLE] connected + ELM ready"  :183, printed by the caller once
+    #                                  connectAndSetup() has returned true
+    # The first is shorter and printed earlier, so it survives truncation the
+    # second does not. Deliberately NOT matched: "try …", "connected; checking
+    # GATT…" or a bare "connected" — the firmware connects to strangers and then
+    # rejects them for exposing no OBD profile, so those prove nothing.
+    if "[BLE] connected + ELM ready" in native_log:
+        linked, how = True, "connected + ELM ready"
+    elif "[BLE] adapter = " in native_log:
+        # Say which marker was seen. The detail line exists to tell the operator
+        # what was actually observed, and "connected + ELM ready" would be a
+        # claim about a line that is not in the capture.
+        linked, how = True, "connected (adapter cached; log truncated)"
+    else:
+        linked, how = False, ""
 
     if expect == "yes":
         if linked:
-            return Verdict("BLE link", Status.PASS, "connected + ELM ready")
+            return Verdict("BLE link", Status.PASS, how)
         if scanned:
             return Verdict("BLE link", Status.FAIL,
                            "scanned but never linked — a peer was expected")
@@ -343,7 +367,7 @@ def check_ble_link(native_log: str, expect: str) -> Verdict:
                        "no scan and no connection — peer expected")
 
     if linked:
-        return Verdict("BLE link", Status.PASS, "connected + ELM ready")
+        return Verdict("BLE link", Status.PASS, how)
     if scanned:
         return Verdict("BLE link", Status.PASS, "scanning; no peer linked")
     return Verdict("BLE link", Status.FAIL,
