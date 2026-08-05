@@ -21,8 +21,12 @@ there." That is Phase 2 (`docs/OBD-BACKLOG.md` §12, private).
 
 If an OBD adapter **is** in range, `--expect-peer yes` narrows that gap: check 9
 then requires a completed link rather than accepting a scan, so "never found the
-peer" becomes a failure instead of a pass. It still asserts nothing about what
-the adapter *answers* — scripted OBD responses remain Phase 2.
+peer" becomes a failure instead of a pass.
+
+**Phase 2 now ships** — [`emulator/`](emulator/) is a fake BLE OBD adapter that
+gives the rig something to connect to and answer with, so the whole
+`BleObdSource` path becomes testable: connect, GATT bind, ELM327 handshake,
+query, parse, and VIN-driven profile selection.
 
 Passing this rig does **not** make a release safe to tag.
 

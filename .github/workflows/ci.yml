@@ -29,6 +29,12 @@ jobs:
           cd tools/obd_scan && python -m pytest tests -q
       - name: HIL rig tests (pure logic, no board)
         run: cd tools/hil && python -m pytest tests -q
+      - name: HIL emulator tests (ELM327 protocol, no board or Bluetooth)
+        # The responder's output is parsed by the same firmware code that talks
+        # to a real adapter, so byte-exactness is the contract. These run here
+        # because they need neither hardware nor BlueZ — only ble_elm.py does,
+        # and it is transport-only.
+        run: cd tools/hil/emulator && python -m pytest tests -q
 
   lint:
     name: Lint (ruff)
