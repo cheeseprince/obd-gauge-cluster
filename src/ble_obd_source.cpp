@@ -305,6 +305,11 @@ bool BleObdSource::connectAndSetup() {
 
   // Discovery: scan, then connect (strongest signal first — the adapter is
   // plugged in next to the board) and keep the one exposing the 0x18f0 profile.
+  //
+  // Kick before the scan: the cached-connect attempt above already spent up to
+  // its 4 s connect timeout plus a full bindChars() (bonding included) before
+  // failing, and the 6 s blocking scan below is charged to the same poll().
+  obdWatchdogKick();
   setPhase(ConnPhase::Scanning);
   Serial.println("[BLE] scanning 6s …");
   NimBLEScan* scan = NimBLEDevice::getScan();
@@ -364,7 +369,18 @@ bool BleObdSource::connectAndSetup() {
   }
 
   // Try the strongest few; the vLinker should be near the top.
+  //
+  // WATCHDOG: this loop is long synchronous core-0 work inside ONE poll(), which
+  // is exactly the shape wdt_kick.h exists for — the heartbeat is stamped once
+  // per poll(), so without a kick a slow round looks identical to a hang. The
+  // round is not small: a 6 s scan, then up to twelve iterations of a 4 s connect
+  // plus bindChars()'s secureConnection() bonding, which takes many seconds
+  // against a stranger's device. main.cpp already widened the watchdog window
+  // from 90 s to 240 s because of this, which treated the symptom; kicking here
+  // addresses it directly. Kick per ITERATION, not once before the loop, or a
+  // round that stalls late still trips it.
   for (int k = 0; k < m && k < 12; k++) {
+    obdWatchdogKick();
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
     const NimBLEAdvertisedDevice* dev = res.getDevice(order[k]);   // 2.x: pointer
 #else
@@ -396,7 +412,14 @@ bool BleObdSource::connectAndSetup() {
 bool BleObdSource::bindChars() {
   setPhase(ConnPhase::Initializing);
   bleStep("securing..");
+  // secureConnection() is the single longest blocking call in the connect path —
+  // bonding with a device that is not an OBD adapter (which is most of what a
+  // busy RF environment offers) can take many seconds and has no timeout we set.
+  // Kick either side of it: before, so a slow bond starts from a fresh heartbeat;
+  // after, so the time it consumed is not charged to the AT init that follows.
+  obdWatchdogKick();
   client_->secureConnection();          // bond if the adapter requires it
+  obdWatchdogKick();
   bleStep("find svc");
   // Try known BLE-ELM327 GATT profiles in order so the cheapest adapter works:
   // {service, notify-char, write-char}. vLinker MS first, then generic clones

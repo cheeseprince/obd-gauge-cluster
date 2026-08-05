@@ -9,6 +9,29 @@ static bool has(const char* hay, const char* needle){ return std::strstr(hay, ne
 int main() {
   char buf[256];
 
+  // connPhaseName: the watchdog in main.cpp prints the phase the OBD task was in
+  // when its heartbeat stalled. "[WDT] OBD task stalled" on its own says nothing
+  // about WHERE, which is exactly the information needed to tell a genuine hang
+  // from a long-but-healthy connect round.
+  check(std::strcmp(connPhaseName(ConnPhase::Idle),         "Idle")         == 0, "phase name Idle");
+  check(std::strcmp(connPhaseName(ConnPhase::Scanning),     "Scanning")     == 0, "phase name Scanning");
+  check(std::strcmp(connPhaseName(ConnPhase::Connecting),   "Connecting")   == 0, "phase name Connecting");
+  check(std::strcmp(connPhaseName(ConnPhase::Initializing), "Initializing") == 0, "phase name Initializing");
+  check(std::strcmp(connPhaseName(ConnPhase::Up),           "Up")           == 0, "phase name Up");
+
+  // Every enumerator must map to a DISTINCT name. A switch with a default that
+  // swallows an unlisted value would still return a string, so a new phase added
+  // later would silently print as "Idle" and send someone hunting the wrong path.
+  {
+    const ConnPhase all[] = { ConnPhase::Idle, ConnPhase::Scanning, ConnPhase::Connecting,
+                              ConnPhase::Initializing, ConnPhase::Up };
+    bool distinct = true;
+    for (int i = 0; i < 5; i++)
+      for (int j = i + 1; j < 5; j++)
+        if (std::strcmp(connPhaseName(all[i]), connPhaseName(all[j])) == 0) distinct = false;
+    check(distinct, "every ConnPhase maps to a distinct name");
+  }
+
   // Connecting, with a saved adapter and 12s elapsed on attempt 4.
   ConnStatus c; c.phase = ConnPhase::Connecting; c.attempts = 4;
   c.sinceMs = 1000; c.addr = "AA:BB:CC:DD:EE:FF";

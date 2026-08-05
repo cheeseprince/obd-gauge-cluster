@@ -14,6 +14,13 @@ struct ConnStatus {
   const char* addr     = "";      // saved adapter address, "" if none
 };
 
+// Human-readable name for a phase. Public because the software watchdog in
+// main.cpp reports the phase the OBD task was in when its heartbeat stalled --
+// "OBD task stalled" alone does not distinguish a genuine hang from a long but
+// healthy connect round, which is the distinction that matters when deciding
+// whether to reboot.
+const char* connPhaseName(ConnPhase p);
+
 // Build the 4-line connecting overlay text into out. now = current millis().
 void formatConnStatus(const ConnStatus& cs, uint32_t now, char* out, int outSize);
 
