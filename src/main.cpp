@@ -352,8 +352,26 @@ void loop() {
   // (each can take many seconds), so a legitimate round can exceed 90s (bench-observed
   // false restarts at 90s with no adapter present). 240s still catches a true hang —
   // a call that never returns — while clearing the real worst-case connect round.
-  if (g_obdHeartbeat != 0 && (now - g_obdHeartbeat) > 240000) {
-    Serial.println("[WDT] OBD task stalled >240s — restarting");
+  // obdHeartbeatStalled() rather than an inline unsigned compare: `now` was
+  // sampled at the top of loop() and is already stale by the time we get here
+  // (the OTA mark-valid above is a blocking flash write), so the heartbeat can
+  // legitimately be NEWER than `now`. See wdt_kick.h — the unsigned form
+  // underflowed and rebooted healthy boards at ~20 s.
+  if (obdHeartbeatStalled(now, g_obdHeartbeat, 240000)) {
+    // Say WHERE it stalled, not just that it did. A bare "OBD task stalled"
+    // sends the next person hunting the whole core-0 path; the phase narrows it
+    // to one of scan / connect / GATT-init / polling immediately. This is
+    // printed from core 1 about core-0 state, so the values are a snapshot and
+    // may be a few ms stale — which is irrelevant next to a 240 s stall, and far
+    // better than no evidence at all. It cost a full debugging session to
+    // establish this by other means once.
+    ConnStatus cs = g_obd.connStatus();
+    Serial.printf("[WDT] OBD task stalled %lus in phase %s (%lus in phase, "
+                  "%u connect attempts) — restarting\n",
+                  (unsigned long)((now - g_obdHeartbeat) / 1000),
+                  connPhaseName(cs.phase),
+                  (unsigned long)((now - cs.sinceMs) / 1000),
+                  (unsigned)cs.attempts);
     delay(50);
     ESP.restart();
   }

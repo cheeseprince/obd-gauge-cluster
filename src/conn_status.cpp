@@ -1,7 +1,7 @@
 #include "obd_source.h"
 #include <cstdio>
 
-static const char* phaseName(ConnPhase p) {
+const char* connPhaseName(ConnPhase p) {
   switch (p) {
     case ConnPhase::Scanning:     return "Scanning";
     case ConnPhase::Connecting:   return "Connecting";
@@ -19,6 +19,6 @@ void formatConnStatus(const ConnStatus& cs, uint32_t now, char* out, int outSize
   // ASCII only — LVGL Montserrat lacks middle-dot / arrow glyphs.
   snprintf(out, outSize,
            "%s\n%s\nPhase: %s   Attempt %u - %us\nhold knob for settings",
-           title, who, phaseName(cs.phase),
+           title, who, connPhaseName(cs.phase),
            (unsigned)cs.attempts, (unsigned)elapsed);
 }
