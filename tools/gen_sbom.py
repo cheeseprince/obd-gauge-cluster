@@ -49,6 +49,57 @@ def pio_list(env, flag):
     return rows
 
 
+# SPDX identifier per package. `pio pkg list` does not report licences, so this
+# table is curated -- each entry was read from the upstream project's own licence
+# file on 2026-08-04, not inferred from a registry summary.
+#
+# An SBOM that omits licences omits the main thing an SBOM is consulted for, so
+# an UNKNOWN package is surfaced loudly (see main()) rather than silently
+# emitting a component with no licence field.
+#
+# Full texts and notices: THIRD-PARTY-NOTICES.md.
+LICENCES = {
+    # linked into the shipped image
+    "framework-arduinoespressif32":      "LGPL-2.1-or-later",
+    "framework-arduinoespressif32-libs": "Apache-2.0",   # prebuilt ESP-IDF
+    "NimBLE-Arduino":                    "Apache-2.0",
+    "lvgl":                              "MIT",
+    "Arduino_Modulino":                  "MPL-2.0",
+    # LovyanGFX's licence file is a composite -- FreeBSD/BSD-2 for LovyanGFX
+    # itself plus retained Adafruit (MIT/BSD) and TFT_eSPI (FreeBSD) notices.
+    # BSD-2-Clause is the closest single SPDX id; the file is reproduced whole in
+    # THIRD-PARTY-NOTICES.md because no identifier captures it.
+    "LovyanGFX":                         "BSD-2-Clause",
+    # Resolved as dependencies of Modulino and compiled, but NOT present in the
+    # firmware: --gc-sections discards them, verified 2026-08-04 with `nm` on
+    # firmware.elf (zero surviving symbols for each). Recorded for completeness.
+    "ArduinoGraphics":                   "MPL-2.0",
+    "Arduino_HS300x":                    "LGPL-2.1-only",
+    "Arduino_LPS22HB":                   "LGPL-2.1-only",
+    "Arduino_LSM6DSOX":                  "LGPL-2.1-only",
+    "Arduino_LTR381RGB":                 "MPL-2.0",
+    "STM32duino VL53L4CD":               "BSD-3-Clause",
+    "STM32duino VL53L4ED":               "BSD-3-Clause",
+    # build tools -- they produce the image, none of their code is inside it
+    "framework-espidf":                  "Apache-2.0",
+    "tool-cmake":                        "BSD-3-Clause",
+    "tool-ninja":                        "Apache-2.0",
+    "tool-esptoolpy":                    "GPL-2.0-or-later",
+    "tool-mklittlefs":                   "MIT",
+    "tool-mkspiffs":                     "MIT",
+    "tool-mkfatfs":                      "Apache-2.0",
+    "toolchain-esp32ulp":                "GPL-2.0-or-later",   # binutils
+    "tool-riscv32-esp-elf-gdb":          "GPL-3.0-or-later",
+    "tool-xtensa-esp-elf-gdb":           "GPL-3.0-or-later",
+    # GCC: GPL-3.0 WITH the Runtime Library Exception, which is precisely what
+    # permits distributing a binary it compiled without that binary becoming
+    # GPL. Spelling out the exception matters -- "GPL-3.0" alone would misstate
+    # the position of every compiled artefact here.
+    "toolchain-riscv32-esp":             "GPL-3.0-or-later WITH GCC-exception-3.1",
+    "toolchain-xtensa-esp-elf":          "GPL-3.0-or-later WITH GCC-exception-3.1",
+}
+
+
 def component(name, version, spec, scope, direct):
     c = {
         "type": "library",
@@ -61,6 +112,15 @@ def component(name, version, spec, scope, direct):
              "value": "direct" if direct else "transitive"},
         ],
     }
+    licence = LICENCES.get(name)
+    if licence:
+        # CycloneDX: an SPDX id goes in `license.id`; an expression carrying a
+        # WITH clause is not a bare id and must use `expression` instead, or the
+        # document fails schema validation.
+        if " WITH " in licence or " OR " in licence or " AND " in licence:
+            c["licenses"] = [{"expression": licence}]
+        else:
+            c["licenses"] = [{"license": {"id": licence}}]
     if spec:
         c["properties"].append({"name": "platformio:required-spec", "value": spec})
         # A caret/tilde range means this version was chosen at BUILD time and can
@@ -89,7 +149,7 @@ def main():
     # -- the exact build-vs-runtime conflation this file exists to avoid.
     tool_names = {name for name, _, _, _ in pio_list(a.env, "--only-tools")}
 
-    comps, floating, seen = [], [], set()
+    comps, floating, seen, unlicensed = [], [], set(), []
     for flag in ("--only-tools", "--only-libraries", "--only-platforms"):
         for name, version, spec, depth in pio_list(a.env, flag):
             # Same package appears under more than one listing; keep it once.
@@ -101,6 +161,8 @@ def main():
             comps.append(c)
             if any(p["name"] == "platformio:floating" for p in c["properties"]):
                 floating.append(f"[{scope}] {name} {version} (spec {spec})")
+            if "licenses" not in c:
+                unlicensed.append(f"[{scope}] {name} {version}")
 
     # serialNumber is OPTIONAL in the CycloneDX spec but MANDATORY for GitHub's
     # attestation action, whose format sniffing is:
@@ -156,6 +218,19 @@ def main():
               f"commit can build a different binary later:", file=sys.stderr)
         for f_ in floating:
             print(f"    - {f_}", file=sys.stderr)
+
+    if unlicensed:
+        # Also not fatal -- a release must stay cuttable -- but stated loudly.
+        # A new dependency arriving with no licence entry is exactly when
+        # someone needs to go read its licence file and decide whether it can
+        # ship at all. Silence here would let an incompatible dependency (a
+        # GPL or non-commercial library) into the firmware unremarked, and the
+        # published SBOM would assert nothing either way.
+        print(f"  WARNING: {len(unlicensed)} component(s) have NO licence in "
+              f"tools/gen_sbom.py's LICENCES table. Read the upstream licence, "
+              f"add it there, and update THIRD-PARTY-NOTICES.md:", file=sys.stderr)
+        for u in unlicensed:
+            print(f"    - {u}", file=sys.stderr)
 
 
 if __name__ == "__main__":

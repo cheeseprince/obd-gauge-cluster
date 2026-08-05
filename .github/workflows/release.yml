@@ -74,6 +74,14 @@ jobs:
           cp "$BIN" out/crowpanel_obd.bin
           echo "crowpanel_obd $VERSION $SHA $SIZE crowpanel_obd.bin" > out/manifest.txt
           cat out/manifest.txt
+          # Ship the third-party notices WITH the binary, not merely in the
+          # repository. The firmware statically links LGPL-2.1, Apache-2.0,
+          # MPL-2.0, BSD and MIT code, and several of those licences require
+          # their notices to accompany a redistribution IN BINARY FORM
+          # specifically. Someone who only ever fetches crowpanel_obd.bin from
+          # gh-pages -- which is every device doing an OTA -- would otherwise
+          # receive none of them.
+          cp THIRD-PARTY-NOTICES.md out/THIRD-PARTY-NOTICES.md
       - name: Sign the manifest
         env:
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
@@ -269,7 +277,12 @@ jobs:
           # manifest.sig: the attest step above is tag-gated and fails the run on
           # error, so on a tag it is always present. A missing bundle should fail
           # here rather than quietly ship a release without provenance.
-          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig out/crowpanel_obd.bin.intoto.jsonl out/crowpanel_obd.bin.cdx.json"
+          # THIRD-PARTY-NOTICES.md is listed unconditionally and deliberately.
+          # It is not a convenience: the licences of code linked into the binary
+          # require their notices to accompany a redistribution in binary form,
+          # and a Release asset IS such a redistribution. If the file is missing
+          # this step should fail rather than publish a binary without it.
+          ASSETS="out/crowpanel_obd.bin out/manifest.txt out/manifest.sig out/crowpanel_obd.bin.intoto.jsonl out/crowpanel_obd.bin.cdx.json out/THIRD-PARTY-NOTICES.md"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $ASSETS --clobber --repo "$GITHUB_REPOSITORY"
           else
