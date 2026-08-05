@@ -34,6 +34,8 @@ cd tools/hil
 python3 -m hil                          # both environments, 300 s soak each
 python3 -m hil --env crowpanel --soak 60
 python3 -m hil --expect-knob yes        # assert a Modulino knob is attached
+python3 -m hil --expect-peer yes        # a BLE OBD peer is present: require a
+                                        # completed link, so merely scanning fails
 python3 -m hil --boot-window 25         # longer post-flash capture (default 15 s)
 python3 -m hil --allow-skips            # accept SKIPped checks (exit 0, not 3)
 ```
