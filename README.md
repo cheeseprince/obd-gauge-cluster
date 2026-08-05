@@ -282,4 +282,28 @@ here.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+This project's own code is **MIT** — see [`LICENSE`](LICENSE).
+
+The firmware **statically links third-party libraries** under other licences, and the compiled
+binary is distributed both as a release asset and over the air from `gh-pages`. Their notices are
+reproduced in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md), which ships **alongside the
+binary** as well as living here, because several of those licences require their notices to
+accompany a redistribution in binary form.
+
+| Linked into the firmware | Licence |
+| :--- | :--- |
+| Arduino core for ESP32 | **LGPL-2.1-or-later** |
+| ESP-IDF, NimBLE-Arduino | Apache-2.0 |
+| LovyanGFX | FreeBSD/BSD-2, with retained MIT and BSD notices |
+| Modulino | MPL-2.0 |
+| LVGL | MIT |
+
+**On the LGPL-2.1 component.** The Arduino core is LGPL-2.1 and is statically linked. LGPL-2.1
+section 6 requires that you be able to modify that library and relink it into a working
+executable — and you can: the whole of this project is published as source under MIT, every
+dependency is pinned to an exact version in [`platformio.ini`](platformio.ini), and
+[the build](docs/INSTALL.md) is one reproducible command. Substitute a modified Arduino core and
+rebuild.
+
+Every component's licence is also recorded per-component in the CycloneDX SBOM published with
+each release (`crowpanel_obd.bin.cdx.json`).
