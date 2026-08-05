@@ -80,6 +80,11 @@ def _args(argv: list[str] | None = None) -> argparse.Namespace:
                    choices=["crowpanel", "crowpanel_obd", "both"])
     p.add_argument("--expect-knob", default="auto", choices=["yes", "no", "auto"],
                    help="auto reports [encoder] without asserting on it")
+    p.add_argument("--expect-peer", default="auto", choices=["yes", "no", "auto"],
+                   help="is a BLE OBD peer present (a real adapter, or the Phase 2 "
+                        "emulator)? yes = require a completed link, so merely scanning "
+                        "is a failure. auto/no accept either, since whether an adapter "
+                        "is on the bench is a property of the bench, not the firmware")
     p.add_argument("--soak", type=float, default=300.0, help="soak seconds")
     p.add_argument("--boot-window", type=float, default=15.0)
     p.add_argument("--allow-skips", action="store_true",
@@ -269,10 +274,19 @@ def _run_env(env: str, ports: PortSet, a: argparse.Namespace, art: dict) -> list
         if env == "crowpanel":
             verdicts.append(parse.check_mock_alarm_ack(all_native))
         if env == "crowpanel_obd":
-            # Deliberately NOT all_native: check 9 is documented as "appears at
-            # least once in the boot capture", and the state machine is expected
-            # to start scanning at boot, not eventually.
-            verdicts.append(parse.check_ble_scanning(native))
+            # Scope depends on what we are asserting.
+            #
+            # SCANNING starts at boot, so the boot capture is the right scope —
+            # deliberately NOT all_native, because "starts scanning at boot" is
+            # a stronger claim than "scans eventually".
+            #
+            # A completed LINK is different: scan alone is 6 s, then connect,
+            # GATT discovery and the ELM init sequence. That routinely exceeds
+            # --boot-window (15 s by default), so judging it on the boot capture
+            # would fail a perfectly healthy board for being slower than an
+            # arbitrary window. When a peer is expected, look at everything.
+            scope = all_native if a.expect_peer == "yes" else native
+            verdicts.append(parse.check_ble_link(scope, a.expect_peer))
     else:
         verdicts.append(Verdict("console probes", Status.SKIP,
                                 "native port never re-enumerated"))

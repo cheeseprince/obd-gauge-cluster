@@ -16,7 +16,7 @@ from hil.parse import (
     Verdict,
     check_app_wdt_clean,
     check_banner_env,
-    check_ble_scanning,
+    check_ble_link,
     check_boot_mode,
     check_encoder,
     check_mock_alarm_ack,
@@ -366,15 +366,56 @@ def test_a_theme_ack_is_not_accepted_as_a_mock_ack():
     assert check_theme_ack(LATE_ACK_BOOT + "[MOCK] alarm sweep\n").status is Status.FAIL
 
 
-def test_ble_scanning_matches_the_utf8_ellipsis_line():
+# A board that reaches a peer does NOT scan: it reconnects straight to the
+# cached address. Observed on the bench once HIL Phase 2 gave it something to
+# talk to. Connecting is strictly STRONGER evidence than scanning, so a check
+# that keys only off "scanning" fails on the better outcome.
+PEER_NATIVE = """\
+[BOOT] env=crowpanel_obd ver=local git=local profile=gm_sierra_lz0
+[BOOT] psram=8MB flash=16MB reset=1 heap=241344
+[encoder] found
+[BLE] connecting cached b8:fb:b3:9c:fd:98 …
+   bound GATT profile vlinker 18f0
+[BLE] connected + ELM ready
+"""
+
+
+def test_ble_link_matches_the_utf8_ellipsis_line():
     # ble_obd_source.cpp:309 uses U+2026, NOT three ASCII dots. Matching "..."
     # would silently never fire, so the check must key off the prefix.
-    assert check_ble_scanning(HEALTHY_NATIVE).status is Status.PASS
+    assert check_ble_link(HEALTHY_NATIVE, "auto").status is Status.PASS
 
 
-def test_ble_scanning_fails_when_the_state_machine_never_scans():
-    v = check_ble_scanning("[BOOT] env=crowpanel_obd ver=local git=local profile=generic\n")
+def test_ble_link_fails_when_the_state_machine_does_nothing():
+    v = check_ble_link("[BOOT] env=crowpanel_obd ver=local git=local profile=generic\n", "auto")
     assert v.status is Status.FAIL
+
+
+def test_ble_link_passes_when_it_connected_without_ever_scanning():
+    # THE REGRESSION THIS FIXES. With a peer present the board reconnects to a
+    # cached address and never prints "scanning" — the old check called that a
+    # failure while the firmware was doing better than the passing case.
+    assert check_ble_link(PEER_NATIVE, "auto").status is Status.PASS
+
+
+def test_ble_link_requires_a_completed_link_when_a_peer_is_expected():
+    # --expect-peer yes means an adapter (or the Phase 2 emulator) is present.
+    # Scanning alone then means it never FOUND the peer, which is a real failure
+    # and exactly what the rig should catch.
+    assert check_ble_link(PEER_NATIVE, "yes").status is Status.PASS
+    assert check_ble_link(HEALTHY_NATIVE, "yes").status is Status.FAIL
+
+
+def test_ble_link_with_no_peer_expected_accepts_scanning():
+    # The no-adapter bench case: hunting is all we can ask for.
+    assert check_ble_link(HEALTHY_NATIVE, "no").status is Status.PASS
+
+
+def test_ble_link_reports_which_outcome_it_saw():
+    # A bare PASS hides whether the board linked or merely hunted; the operator
+    # needs to know which, because they mean very different things.
+    assert "connected" in check_ble_link(PEER_NATIVE, "auto").detail
+    assert "scan" in check_ble_link(HEALTHY_NATIVE, "auto").detail
 
 
 # --- real captures from the board, tests/logs/ -----------------------------

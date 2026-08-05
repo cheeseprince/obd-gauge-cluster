@@ -309,15 +309,45 @@ def check_mock_alarm_ack(native_log: str) -> Verdict:
     return Verdict("mock alarm ack ('s')", Status.FAIL, "no [MOCK] line anywhere in the capture")
 
 
-def check_ble_scanning(native_log: str) -> Verdict:
-    """ble_obd_source.cpp:309 prints "[BLE] scanning 6s …" with a UTF-8 ellipsis
-    (U+2026), not three ASCII dots. Match the prefix and treat the rest as
-    opaque, or this check silently never fires.
+def check_ble_link(native_log: str, expect: str) -> Verdict:
+    """Did the BLE state machine get anywhere? `expect` is "yes", "no" or "auto".
+
+    This used to assert only on "[BLE] scanning", which INVERTED the logic for
+    the better outcome. A board that can actually reach a peer does not scan at
+    all: it reconnects straight to the cached address and prints
+    "[BLE] connecting cached …" then "[BLE] connected + ELM ready". So once HIL
+    Phase 2 gave the rig an adapter to talk to, the check began failing runs in
+    which the firmware performed *better* than in the passing case. Scanning is
+    the weaker evidence; a completed link is the stronger one.
+
+    ble_obd_source.cpp:309 prints the scan line with a UTF-8 ellipsis (U+2026),
+    not three ASCII dots — match the prefix and treat the rest as opaque, or the
+    check silently never fires.
+
+    "yes" means a peer (a real adapter, or the Phase 2 emulator) is present, and
+    then scanning alone is a genuine failure: it means the board never FOUND the
+    peer, which is exactly the regression class the rig exists to catch. "no" and
+    "auto" accept either outcome, because whether an adapter is plugged into the
+    bench is a property of the bench, not of the firmware.
     """
-    if "[BLE] scanning" in native_log:
-        return Verdict("BLE scanning", Status.PASS)
-    return Verdict("BLE scanning", Status.FAIL,
-                   "state machine never reported a scan")
+    scanned = "[BLE] scanning" in native_log
+    linked = "[BLE] connected + ELM ready" in native_log
+
+    if expect == "yes":
+        if linked:
+            return Verdict("BLE link", Status.PASS, "connected + ELM ready")
+        if scanned:
+            return Verdict("BLE link", Status.FAIL,
+                           "scanned but never linked — a peer was expected")
+        return Verdict("BLE link", Status.FAIL,
+                       "no scan and no connection — peer expected")
+
+    if linked:
+        return Verdict("BLE link", Status.PASS, "connected + ELM ready")
+    if scanned:
+        return Verdict("BLE link", Status.PASS, "scanning; no peer linked")
+    return Verdict("BLE link", Status.FAIL,
+                   "state machine never scanned or connected")
 
 
 # --- cross-cutting verdict logic -------------------------------------------

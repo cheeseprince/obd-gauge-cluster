@@ -150,7 +150,7 @@ capture still holds the boot reason and any panic output, so boot evidence is ne
 | 6 | `[encoder] found\|MISSING` matches `--expect-knob` | native | I²C or knob wiring regression | `encoder_input.cpp:47`; v1.3.1 invisible-menu class |
 | 7 | `'n'` is acknowledged by a `[THEME]` line **somewhere in the run's capture** | native | a console that stopped answering; LVGL repaint hang | latency is asserted by check 10, not here |
 | 8 | `'s'` is acknowledged by **any** `[MOCK]` line, likewise anywhere in the capture, then no panic | native | full-screen alarm-overlay render crash | mock environment only; the toggle's direction depends on prior state, so either `[MOCK] alarm sweep` or `[MOCK] safe bands` counts |
-| 9 | `crowpanel_obd`: `[BLE] scanning` appears **at least once** | native | a state machine that never starts searching at all. It does **not** catch one that scanned once and then wedged — a single occurrence anywhere in the boot capture passes | `ble_obd_source.cpp:309`; the Phase 2 boundary |
+| 9 | `crowpanel_obd`: the BLE state machine got somewhere — `[BLE] scanning` **or** `[BLE] connected + ELM ready`. With `--expect-peer yes`, a completed link is **required** and scanning alone FAILS | native | a state machine that never starts searching at all; with a peer, one that searches but never finds it. It does **not** catch one that scanned once and then wedged | `ble_obd_source.cpp:309`; **originally keyed only off "scanning", which inverted the logic once Phase 2 gave the rig a peer — a board that reconnects to a cached address never scans, so the check failed the BETTER outcome** |
 | 10 | soak: the `'n'` probe answers every 30 s for 300 s | native | silent late hang | v1.3.0 boot loop; the 240 s heartbeat path, `main.cpp:205-210` |
 
 Check 10 is an **active** probe rather than passive silence, because silence cannot distinguish
@@ -181,6 +181,7 @@ of a wedged console rather than absent evidence.
 ```
 python3 -m hil --env {crowpanel,crowpanel_obd,both}   default: both
                --expect-knob {yes,no,auto}            default: auto
+               --expect-peer {yes,no,auto}            default: auto
                --soak SECONDS                         default: 300
                --boot-window SECONDS                  default: 15
                --allow-skips                          default: off
@@ -189,6 +190,14 @@ python3 -m hil --env {crowpanel,crowpanel_obd,both}   default: both
 `--expect-knob auto` reports whatever `[encoder]` says without failing on it, because whether a
 Modulino knob is attached to the bench board is a property of the bench, not of the firmware.
 `yes` and `no` turn it into an assertion for a rig whose wiring is known and fixed.
+
+`--expect-peer` follows the same principle for check 9. `auto`/`no` accept either scanning or a
+completed link, because whether an OBD adapter is within range is a property of the bench. `yes`
+says one **is** present and turns the check into a real assertion: scanning alone then means the
+board never found it. Note the scope changes with the assertion — scanning is judged on the boot
+capture, but a completed link (6 s scan, then connect, GATT discovery and ELM init) routinely
+exceeds `--boot-window`, so `yes` reads the whole capture instead. Judging a link on the boot
+window would fail a healthy board for being slower than an arbitrary number.
 
 ### One parser pitfall, recorded so it is not rediscovered
 
