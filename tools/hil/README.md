@@ -19,6 +19,11 @@ connect timeout). With nothing to connect to, "connect failed because the
 timeout is wrong" is indistinguishable from "connect failed because nothing is
 there." That is Phase 2 (`docs/OBD-BACKLOG.md` §12, private).
 
+If an OBD adapter **is** in range, `--expect-peer yes` narrows that gap: check 9
+then requires a completed link rather than accepting a scan, so "never found the
+peer" becomes a failure instead of a pass. It still asserts nothing about what
+the adapter *answers* — scripted OBD responses remain Phase 2.
+
 Passing this rig does **not** make a release safe to tag.
 
 ## Requirements

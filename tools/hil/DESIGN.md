@@ -181,6 +181,7 @@ of a wedged console rather than absent evidence.
 ```
 python3 -m hil --env {crowpanel,crowpanel_obd,both}   default: both
                --expect-knob {yes,no,auto}            default: auto
+               --expect-peer {yes,no,auto}            default: auto
                --soak SECONDS                         default: 300
                --boot-window SECONDS                  default: 15
                --allow-skips                          default: off
@@ -189,6 +190,14 @@ python3 -m hil --env {crowpanel,crowpanel_obd,both}   default: both
 `--expect-knob auto` reports whatever `[encoder]` says without failing on it, because whether a
 Modulino knob is attached to the bench board is a property of the bench, not of the firmware.
 `yes` and `no` turn it into an assertion for a rig whose wiring is known and fixed.
+
+`--expect-peer` follows the same principle for check 9. `auto`/`no` accept either scanning or a
+completed link, because whether an OBD adapter is within range is a property of the bench. `yes`
+says one **is** present and turns the check into a real assertion: scanning alone then means the
+board never found it. Note the scope changes with the assertion — scanning is judged on the boot
+capture, but a completed link (6 s scan, then connect, GATT discovery and ELM init) routinely
+exceeds `--boot-window`, so `yes` reads the whole capture instead. Judging a link on the boot
+window would fail a healthy board for being slower than an arbitrary number.
 
 ### One parser pitfall, recorded so it is not rediscovered
 
