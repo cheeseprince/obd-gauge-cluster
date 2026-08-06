@@ -1,18 +1,18 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:c0c61a78-0fda-5e01-823d-863f01cb07cc",
+  "serialNumber": "urn:uuid:0f3377bc-41cb-5199-bbdc-5743f72db804",
   "version": 1,
   "metadata": {
     "component": {
       "type": "firmware",
       "name": "crowpanel_obd",
-      "version": "v0.2.0",
+      "version": "v0.3.0",
       "description": "ESP32-S3 OBD-II gauge cluster firmware",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "98321f0fa168d1b2cdf02e451ddaa35f65ee2eda43a2b33f973de0f0218f1853"
+          "content": "7dc341149bc26b75f41f019d5596b80009619ec7f799f2c1b7d072a2e0299dc5"
         }
       ],
       "externalReferences": [
@@ -56,6 +56,13 @@
           "name": "platformio:required-spec",
           "value": "https://github.com/espressif/arduino-esp32/releases/download/3.1.3/esp32-3.1.3.zip"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-2.1-or-later"
+          }
+        }
       ]
     },
     {
@@ -76,6 +83,13 @@
           "name": "platformio:required-spec",
           "value": "https://github.com/espressif/esp32-arduino-lib-builder/releases/download/idf-release_v5.3/esp32-arduino-libs-idf-release_v5.3-489d7a2b-v1.zip"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
       ]
     },
     {
@@ -95,6 +109,13 @@
         {
           "name": "platformio:required-spec",
           "value": "https://github.com/pioarduino/esptool/releases/download/v4.8.6/esptool.zip"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-2.0-or-later"
+          }
         }
       ]
     },
@@ -120,6 +141,13 @@
           "name": "platformio:floating",
           "value": "true"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
       ]
     },
     {
@@ -139,6 +167,13 @@
         {
           "name": "platformio:required-spec",
           "value": "platformio/tool-riscv32-esp-elf-gdb @ 14.2.0+20240403"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-3.0-or-later"
+          }
         }
       ]
     },
@@ -160,6 +195,13 @@
           "name": "platformio:required-spec",
           "value": "platformio/tool-xtensa-esp-elf-gdb @ 14.2.0+20240403"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-3.0-or-later"
+          }
+        }
       ]
     },
     {
@@ -179,6 +221,11 @@
         {
           "name": "platformio:required-spec",
           "value": "platformio/toolchain-riscv32-esp @ 13.2.0+20240530"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "GPL-3.0-or-later WITH GCC-exception-3.1"
         }
       ]
     },
@@ -200,6 +247,11 @@
           "name": "platformio:required-spec",
           "value": "platformio/toolchain-xtensa-esp-elf @ 13.2.0+20240530"
         }
+      ],
+      "licenses": [
+        {
+          "expression": "GPL-3.0-or-later WITH GCC-exception-3.1"
+        }
       ]
     },
     {
@@ -219,6 +271,13 @@
         {
           "name": "platformio:required-spec",
           "value": "git+https://github.com/arduino-libraries/Modulino.git#1f40e45a4d11232f790039e681de6d9518b79385"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
         }
       ]
     },
@@ -240,6 +299,13 @@
           "name": "platformio:required-spec",
           "value": "ArduinoGraphics"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
       ]
     },
     {
@@ -259,6 +325,13 @@
         {
           "name": "platformio:required-spec",
           "value": "Arduino_HS300x"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-2.1-only"
+          }
         }
       ]
     },
@@ -280,6 +353,13 @@
           "name": "platformio:required-spec",
           "value": "Arduino_LPS22HB"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-2.1-only"
+          }
+        }
       ]
     },
     {
@@ -299,6 +379,13 @@
         {
           "name": "platformio:required-spec",
           "value": "Arduino_LSM6DSOX"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-2.1-only"
+          }
         }
       ]
     },
@@ -320,6 +407,13 @@
           "name": "platformio:required-spec",
           "value": "Arduino_LTR381RGB"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
       ]
     },
     {
@@ -339,6 +433,13 @@
         {
           "name": "platformio:required-spec",
           "value": "STM32duino VL53L4CD"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
         }
       ]
     },
@@ -360,6 +461,13 @@
           "name": "platformio:required-spec",
           "value": "STM32duino VL53L4ED"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
       ]
     },
     {
@@ -379,6 +487,13 @@
         {
           "name": "platformio:required-spec",
           "value": "lovyan03/LovyanGFX @ 1.2.26"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
         }
       ]
     },
@@ -400,6 +515,13 @@
           "name": "platformio:required-spec",
           "value": "h2zero/NimBLE-Arduino @ 2.5.0"
         }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
       ]
     },
     {
@@ -419,6 +541,13 @@
         {
           "name": "platformio:required-spec",
           "value": "lvgl/lvgl @ 8.4.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
         }
       ]
     }
