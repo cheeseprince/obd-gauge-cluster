@@ -6,6 +6,41 @@ update channel on a fork.
 
 There is one board and one OTA image; everything below describes it.
 
+## ⚡ Before you update: run the engine
+
+**Update with the engine running, not on accessory power.**
+
+The TLS handshake is the highest-current operation this device performs — sustained WiFi
+transmit plus the crypto — and a truck USB port with the engine off cannot hold it up. The
+board browns out mid-handshake and the dash shows:
+
+```
+Update: manifest
+HTTP -1
+```
+
+`-1` is `HTTPC_ERROR_CONNECTION_REFUSED`: the connection never opened, so there is no HTTP
+status to report. **It looks exactly like a network fault and is not one.**
+
+What makes this genuinely misleading is that everything *else* works on accessory power. In one
+diagnosis (2026-08-05) the dash on engine-off power:
+
+- associated with WiFi normally,
+- **synced its clock over NTP**, which proves DNS and outbound connectivity are fine,
+- ran the BLE link to the OBD adapter,
+
+and still failed every update attempt. It failed on multiple SSIDs, parked close to the access
+point, with the SD card removed, and with the OBD adapter unplugged. It succeeded the moment a
+laptop was plugged into the second USB-C port — a second power source — and succeeded reliably
+with the engine running.
+
+None of the software-side suspects held up: heap before the handshake measured **61,964 bytes**
+on the vehicle versus **60,764** on a bench board that never fails, and the certificate path does
+not check validity dates (`CONFIG_MBEDTLS_HAVE_TIME_DATE` is unset in the prebuilt libraries), so
+a wrong clock cannot cause it either.
+
+**If you see `HTTP -1`, check power before you debug anything else.**
+
 ## How a device updates
 
 From **Check update** in the on-screen menu, the dash (`src/ota_update.cpp`,

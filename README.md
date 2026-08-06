@@ -192,6 +192,17 @@ Gauges appear once the adapter links. From here, updates are over-the-air — no
 
 ## Updates
 
+> ### ⚡ Run the engine while updating
+>
+> **Accessory power with the engine off is not enough.** The WiFi TLS handshake is by a wide
+> margin the highest-current thing this device does, and on a truck USB port with the engine off
+> it browns out mid-handshake. The dash reports **`Update: manifest HTTP -1`**, which looks
+> exactly like a network fault and is not one.
+>
+> Everything else works fine on accessory power — the dash joins WiFi, syncs its clock over NTP
+> and talks to the OBD adapter — because none of those draw anything like as much. So the symptom
+> appears *only* at update time. **Start the engine, then Check update.**
+
 The dash updates itself over WiFi — **Settings → Check update**. It fetches the published
 manifest, refuses anything not signed by this project's key, verifies a SHA-256 of the image,
 and flashes into a spare slot. Failure at any step leaves the running firmware untouched. No

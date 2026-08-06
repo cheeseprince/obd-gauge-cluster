@@ -87,6 +87,13 @@ exact name, and pass that.
 
 Plug it into a switched USB port. The dash boots to a connecting screen.
 
+**Use a port that can actually supply current, and a short cable.** Everyday running is
+undemanding, but the OTA update's TLS handshake is not: on a marginal supply the board browns
+out mid-handshake and the update fails with `HTTP -1` while everything else — WiFi, the clock,
+the OBD link — keeps working normally. Measured on a real truck (2026-08-05): updates fail on
+accessory power with the engine off and succeed with the engine running. **Run the engine when
+you update** — see [`OTA.md`](OTA.md).
+
 ## 4. Provision over WiFi
 
 From your phone: long-press the knob to open **WiFi setup**. (That same long-press is the
