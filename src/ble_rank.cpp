@@ -28,10 +28,20 @@ bool bleNameLooksLikeObd(const char* name) {
 // Sort key: OBD-named devices sort ahead of everything else, and within each
 // group stronger RSSI sorts first. RSSI is ~[-100, 0] dBm; bias it positive and
 // keep it well below the OBD flag's weight so the flag always dominates.
+bool bleShouldSkip(const BleCand& c) {
+  return c.svc == SvcHint::Other;
+}
+
 static long rankKey(const BleCand& c) {
+  // Weights are decades apart so each tier strictly dominates the one below:
+  // a service match beats any name, and any name beats any signal. Advertising
+  // our service UUID is stronger evidence than a name -- names are chosen by
+  // whoever made the clone, service UUIDs are what the firmware must actually
+  // find after connecting.
+  long svc = (c.svc == SvcHint::Obd) ? 100000000L : 0L;
   long obd = bleNameLooksLikeObd(c.name) ? 1000000L : 0L;
   long sig = (long)c.rssi + 200;   // -100..0 dBm -> 100..200, always positive
-  return obd + sig;
+  return svc + obd + sig;
 }
 
 void bleRankCandidates(const BleCand* cands, int n, int* order) {
