@@ -411,6 +411,46 @@ def test_ble_link_with_no_peer_expected_accepts_scanning():
     assert check_ble_link(HEALTHY_NATIVE, "no").status is Status.PASS
 
 
+# A REAL capture from 2026-08-05. The board linked — it bound the profile and
+# cached the adapter — but the native log was cut mid-write, so the long
+# "connected + ELM ready" line arrived as "[BLE] connecte". The rig's own docs
+# describe this capture as lossy (the port re-enumerates on reset and the reader
+# races it), so keying a check on one long exact string is a design error.
+TRUNCATED_LINK_NATIVE = """\
+[BOOT] env=crowpanel_obd ver=local git=local profile=gm_sierra_lz0
+[BOOT] psram=8MB flash=16MB reset=1 heap=241344
+[encoder] found
+[BLE] scanning 6s …
+[BLE] try b8:fb:b3:9c:fd:98 rssi -32 'vLinker MS-B'
+   bound GATT profile vlinker 18f0
+[BLE] adapter = b8:fb:b3:9c:fd:98 — cached
+[BLE] connecte
+"""
+
+
+def test_ble_link_accepts_a_truncated_capture_that_still_proves_the_link():
+    # "[BLE] adapter = … — cached" is printed ONLY on the bindChars() success
+    # path (ble_obd_source.cpp:402), i.e. after GATT bind AND the ELM init. It
+    # proves everything "connected + ELM ready" proves, and it is shorter, so it
+    # survives a truncated capture the longer line does not.
+    assert check_ble_link(TRUNCATED_LINK_NATIVE, "yes").status is Status.PASS
+    assert check_ble_link(TRUNCATED_LINK_NATIVE, "auto").status is Status.PASS
+
+
+def test_ble_link_does_not_accept_a_mere_connection_attempt():
+    # Guard against over-loosening: "try …" and even a bare "connected" are NOT
+    # proof of a working link — the firmware connects to strangers and then
+    # rejects them for having no OBD profile. Only the bind-success markers count.
+    attempted = (
+        "[BLE] scanning 6s …\n"
+        "[BLE] try aa:bb:cc:dd:ee:ff rssi -70 ''\n"
+        "   connected; checking GATT…\n"
+        "   no known BLE-ELM327 profile\n"
+        "[BLE] no OBD adapter found this round\n"
+    )
+    assert check_ble_link(attempted, "yes").status is Status.FAIL
+
+
 def test_ble_link_reports_which_outcome_it_saw():
     # A bare PASS hides whether the board linked or merely hunted; the operator
     # needs to know which, because they mean very different things.
