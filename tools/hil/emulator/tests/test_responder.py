@@ -97,11 +97,11 @@ def test_long_payload_is_split_into_indexed_frames_with_a_length_header():
     # Frame 0 carries SIX bytes (the CAN first-frame PCI eats two); every
     # consecutive frame carries seven. The header is the total payload length
     # in HEX, and 0x014 == 20 == 6+7+7.
-    vin_payload = "490201" + "".join(f"{ord(c):02X}" for c in "3GTUUEE8012345678")
+    vin_payload = "490201" + "".join(f"{ord(c):02X}" for c in "3GTUUEE80S2345678")
     out = iso_tp_frames(vin_payload)
     assert out.startswith("014\r")
     assert "\r0:490201334754\r" in out
-    assert "\r1:55554545383031\r" in out
+    assert "\r1:55554545383053\r" in out
     assert "\r2:32333435363738\r" in out
     assert out.endswith("\r\r>")
 
@@ -116,12 +116,12 @@ def test_frame_index_wraps_in_the_low_nibble():
 def test_vin_reply_round_trips_to_the_expected_vin():
     # End-to-end on the fixture itself: the bytes the dash will reassemble must
     # spell the VIN we pinned, or the profile-selection test proves nothing.
-    e = r(vin="3GTUUEE8012345678"); e.handle("ATE0")
+    e = r(vin="3GTUUEE80S2345678"); e.handle("ATE0")
     out = e.handle("0902")
     hexes = "".join(part.split(":", 1)[1] for part in out.split("\r") if ":" in part)
     payload = bytes.fromhex(hexes)
     assert payload[:3] == b"\x49\x02\x01"
-    assert payload[3:20].decode() == "3GTUUEE8012345678"
+    assert payload[3:20].decode() == "3GTUUEE80S2345678"
 
 
 # --- spaces ----------------------------------------------------------------

@@ -37,12 +37,12 @@ engine off **VIN position 8** (`vin[7]`), gated on positions 4–5:
 [NHTSA vPIC](https://vpic.nhtsa.dot.gov/) — a US Government database, public domain, and the
 authoritative source for which VIN positions encode which attribute:
 
-| Profile | Positions 3–7 | Verified years | What it now excludes |
-| :--- | :--- | :--- | :--- |
-| `gm_sierra_lz0` | `[NPRUV]` `[HU]` `*` `*` `8` | — | L84 5.3 / L87 6.2 / L3B 2.7 gas, Sierra HD |
-| `bmw_f10_535i` | `F` `[RU]` `7` `C` `5` | 2011–2015 | 528i, 550i, M cars, X-series |
-| `audi_q5` | `[ABC]` `N` `*` `F` `Y` | 2018–2020 | SQ5 3.0 V6, Q3, Q7, Q8, 2021+ facelift |
-| `jeep_ws` | `*` `J` `[RSUV]` `[ABD]` `T` | 2022–2023 | Grand Wagoneer, Grand Cherokee, Cherokee, Wrangler, **Ducato / ProMaster vans** |
+| Profile | WMI | Positions 3–7 | Model year `vin[9]` | What it excludes |
+| :--- | :--- | :--- | :--- | :--- |
+| `gm_sierra_lz0` | `1GT` `3GT` `1GC` `3GC` | `[NPRUV]` `[HU]` `*` `*` `8` | **`P R S T`** (2023–26) | gas L84 / L87 / L3B, Sierra HD, **2011–12 Express van** |
+| `bmw_f10_535i` | `WBA` `WBS` `5UX` `4US` | `F` `[RU]` `7` `C` `5` | — (frame is year-unique) | 528i, 550i, M cars, X-series |
+| `audi_q5` | `WAU` `WA1` `WUA` `TRU` | `[ABC]` `N` `*` `F` `Y` | — (frame is year-unique) | SQ5 3.0 V6, Q3, Q7, Q8, 2021+ facelift |
+| `jeep_ws` | **`1C4` only** | `*` `J` `[RSUV]` `[ABD]` `T` | **`N P`** (2022–23) | Grand Wagoneer, Grand Cherokee, Cherokee, Wrangler, **Ducato / ProMaster vans**, **Voyager 2001–03** |
 
 Two of these are worth understanding before changing them:
 
@@ -52,9 +52,27 @@ Two of these are worth understanding before changing them:
   `'R'` is a Ram ProMaster. Without the predicate, a work van would have been driven with the
   Wagoneer's 29-bit addressing.
 
-Each pattern is also self-limiting in time: the BMW frame decodes to nothing from 2016 (F10 →
-G30), the Audi one from 2021 (facelift moved the Q5 to `vin[4]='A'`), and the Jeep engine code
-`T` disappears in 2024 (3.0 Hurricane). None of them needs an explicit model-year check.
+**Two of these needed an explicit model-year check, and two did not.** That distinction was
+established by sweeping vPIC across every model-year code, not assumed — an earlier version of
+this document claimed all four patterns were "self-limiting in time", and that was **wrong for
+GM and Jeep**:
+
+- **BMW and Audi genuinely are self-limiting.** The BMW frame decodes to nothing from 2016
+  (F10 → G30) and the Audi one from 2021 (the facelift moved the Q5 to `vin[4]='A'`). Verified
+  against every year code: neither matches anything unexpected.
+- **GM was not.** A **2011–12 Chevrolet Express van with the 6.6 L Duramax** satisfies
+  `1GC` + `[NPRUV]` + `H` + `8` exactly. A working van is likelier to meet an OBD dongle than
+  most false positives.
+- **Jeep was not.** The Wagoneer rule also matched a Chrysler **Voyager** (2001–03).
+
+`vin[9]` is VIN position 10, the model-year code: `N`=2022, `P`=2023, `R`=2024, `S`=2025,
+`T`=2026. **Year codes repeat every 30 years** (`N` is also 1992), so the gate alone cannot
+separate a 1992 vehicle from a 2022 one on the same WMI — which is why `jeep_ws` also dropped
+`1J4` and `3C4`. At the Wagoneer year codes vPIC resolves `1J4` to a 1992–96 Cherokee, and
+`3C4` to no vehicle at all; only `1C4` is a Wagoneer.
+
+A model year outside the verified range **fails closed**: a 2027 truck gets the Generic profile
+until somebody confirms the profile still fits it.
 
 **Adding or tightening one.** Derive the discriminator from vPIC **offline** — decode partial
 VINs (8 characters plus `modelyear` is enough) and sweep one position at a time to see which
@@ -69,7 +87,7 @@ VIN-based switching is skipped entirely, regardless of what VIN is read on the w
 
 **Never commit a real VIN.** Every VIN in this repository is synthetic and allowlisted; CI fails
 on any VIN-shaped token that is not. The example shape used in the tests is
-`3GTUUEE8012345678` — note that the older `1GT0123456789ABCD` now correctly resolves to *no
+`3GTUUEE80S2345678` — note that the older `1GT0123456789ABCD` now correctly resolves to *no
 match*, because `vin[3]` is `0` rather than one of `[NPRUV]`.
 
 ## Audi

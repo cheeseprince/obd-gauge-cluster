@@ -163,11 +163,38 @@ static inline bool vinIs(const char* set, char c) {
   return c != '\0' && std::strchr(set, c) != nullptr;
 }
 
+// vin[9] is VIN position 10: the MODEL YEAR code. Verified against NHTSA vPIC,
+// which resolves the year from that position when given no hint:
+//   N=2022  P=2023  R=2024  S=2025  T=2026  V=2027
+//
+// The positional engine/model rules are NOT unique across 20 model years, so a
+// profile row needs to say which years it was actually established on. Found
+// 2026-08-05 by sweeping vPIC over every year code:
+//   * a 2011-12 Chevrolet EXPRESS VAN (6.6 Duramax) satisfies the GM 1500
+//     diesel rule exactly, and
+//   * a Chrysler Voyager (2001-03) satisfies the Jeep Wagoneer rule.
+// Neither is theoretical -- a working van is likelier to meet an OBD dongle
+// than most vehicles.
+//
+// CAUTION: year codes REPEAT every 30 years (N is 1992 and 2022), so this gate
+// alone cannot separate a 1992 vehicle from a 2022 one on the same WMI. Where
+// that matters, the WMI list is the discriminator -- see the Jeep rows.
+//
+// A year outside the verified range fails CLOSED: a 2027 truck gets Generic
+// until someone confirms the profile still fits it.
+static bool vinModelYearIn(const char* vin, const char* codes) {
+  if (std::strlen(vin) < 10) return false;
+  return vinIs(codes, vinAt(vin, 9));
+}
+
 static bool gmSierra1500Diesel(const char* vin) {
   if (std::strlen(vin) < 8) return false;            // need vin[7]; guards the reads below
   return vinIs("NPRUV", vinAt(vin,3)) &&
          vinIs("HU",    vinAt(vin,4)) &&
-         vinAt(vin,7) == '8';
+         vinAt(vin,7) == '8' &&
+         // 2023-2026, the years this profile is established on. Excludes the
+         // 2011-12 Express van, which matches every positional rule above.
+         vinModelYearIn(vin, "PRST");
 }
 
 // BMW F10 535i (N55 3.0 turbo I6) — the car this profile was scanned on.
@@ -219,7 +246,10 @@ static bool jeepWagoneer57(const char* vin) {
   return vinAt(vin,4) == 'J' &&
          vinIs("RSUV", vinAt(vin,5)) &&
          vinIs("ABD",  vinAt(vin,6)) &&
-         vinAt(vin,7) == 'T';
+         vinAt(vin,7) == 'T' &&
+         // 2022-2023 only: the 5.7 Hemi years. 2024+ Wagoneers are the 3.0
+         // Hurricane, and this also excludes the 2001-03 Voyager.
+         vinModelYearIn(vin, "NP");
 }
 
 const char* vinToProfileKey(const char* vin) {
@@ -241,8 +271,12 @@ const char* vinToProfileKey(const char* vin) {
     {"WAU","audi_q5",audiQ5_20T}, {"WA1","audi_q5",audiQ5_20T},
     {"WUA","audi_q5",audiQ5_20T}, {"TRU","audi_q5",audiQ5_20T},
     // Stellantis — see jeepWagoneer57() for why the WMI alone was dangerous here.
-    {"1C4","jeep_ws",jeepWagoneer57}, {"1J4","jeep_ws",jeepWagoneer57},
-    {"3C4","jeep_ws",jeepWagoneer57},
+    // 1C4 ONLY. 1J4 and 3C4 were here and are removed: vPIC resolves 1J4 at the
+    // Wagoneer-era year codes to a 1992-96 Cherokee (year codes repeat every 30
+    // years, so the gate above cannot separate them), and 3C4 produces no
+    // vehicle at all at those codes. Both offered false positives and matched
+    // nothing real.
+    {"1C4","jeep_ws",jeepWagoneer57},
     // Ford (1FT/...) returns nullptr until that profile is registered — add a
     // row + a registry entry together.
   };

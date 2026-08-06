@@ -31,12 +31,12 @@ ALLOWED_VINS = {
     # a model-year letter at position 10 and a 6-digit sequential tail, never a
     # "012345678" run. Positions that matter to the test are vin[3], vin[4] and
     # vin[7]; everything after is filler.
-    "3GTUUEE8012345678",   # GM 1500, LZ0 3.0 diesel  -> gm_sierra_lz0
-    "1GTUUEE8012345678",   # GM 1500, LZ0 3.0 diesel  -> gm_sierra_lz0 (1GT WMI)
-    "3GTUUEED012345678",   # GM 1500, L84 5.3 gas     -> nullptr
-    "3GTUUEEL012345678",   # GM 1500, L87 6.2 gas     -> nullptr
-    "3GTUUEEK012345678",   # GM 1500, L3B 2.7 gas     -> nullptr
-    "3GTU8EEE012345678",   # Sierra HD (vin[4]='8')   -> nullptr
+    "3GTUUEE80S2345678",   # GM 1500, LZ0 3.0 diesel  -> gm_sierra_lz0
+    "1GTUUEE80S2345678",   # GM 1500, LZ0 3.0 diesel  -> gm_sierra_lz0 (1GT WMI)
+    "3GTUUEED0S2345678",   # GM 1500, L84 5.3 gas     -> nullptr
+    "3GTUUEEL0S2345678",   # GM 1500, L87 6.2 gas     -> nullptr
+    "3GTUUEEK0S2345678",   # GM 1500, L3B 2.7 gas     -> nullptr
+    "3GTU8EEE0S2345678",   # Sierra HD (vin[4]='8')   -> nullptr
     # BMW F10 discriminator tests (test_vin). vin[5] is the model digit.
     "WBAFR7C5012345678",   # F10 535i RWD             -> bmw_f10_535i
     "WBAFU7C5012345678",   # F10 535i xDrive          -> bmw_f10_535i
@@ -49,12 +49,21 @@ ALLOWED_VINS = {
     "WA1ANAF1012345678",   # Q8                       -> nullptr
     "WA1ANAF7012345678",   # Q7                       -> nullptr
     # Jeep Wagoneer discriminator tests. vin[7] = engine.
-    "1C4SJVBT012345678",   # Wagoneer 5.7 Hemi        -> jeep_ws
-    "1C4SJVBP012345678",   # Wagoneer 3.0 Hurricane   -> nullptr
-    "1C4SJVBJ012345678",   # Wagoneer 6.4 V8          -> nullptr
-    "1C4SJVET012345678",   # Grand Wagoneer           -> nullptr
-    "1C4SJXBT012345678",   # Wrangler                 -> nullptr
-    "1C4SFVBT012345678",   # Ducato van               -> nullptr
+    "1C4SJVBT0N2345678",   # Wagoneer 5.7 Hemi        -> jeep_ws
+    "1C4SJVBP0N2345678",   # Wagoneer 3.0 Hurricane   -> nullptr
+    "1C4SJVBJ0N2345678",   # Wagoneer 6.4 V8          -> nullptr
+    "1C4SJVET0N2345678",   # Grand Wagoneer           -> nullptr
+    "1C4SJXBT0N2345678",   # Wrangler                 -> nullptr
+    "1C4SFVBT0N2345678",   # Ducato van               -> nullptr
+    # Model-year gate tests (test_vin). vin[9] is VIN position 10, the model
+    # year: N=2022, P=2023, S=2025, T=2026, V=2027, B=2011.
+    "3GTUUEE80P2345678",   # GM LZ0 MY2023                -> gm_sierra_lz0
+    "3GTUUEE80T2345678",   # GM LZ0 MY2026                -> gm_sierra_lz0
+    "3GTUUEE80V2345678",   # GM MY2027, unverified year   -> nullptr (fails closed)
+    "1GCNHEE80B2345678",   # 2011 Express van 6.6 Duramax -> nullptr
+    "1C4SJVBT0P2345678",   # Wagoneer 5.7 MY2023          -> jeep_ws
+    "1C4SJVBT0T2345678",   # MY2026 is Grand Wagoneer     -> nullptr
+    "1J4SJVBT0N2345678",   # 1J4 is not a Wagoneer WMI    -> nullptr
 }
 
 # A VIN token excludes I/O/Q; a hex hash never has a letter past A-F, so requiring

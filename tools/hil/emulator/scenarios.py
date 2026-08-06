@@ -58,7 +58,7 @@ GENERIC = Scenario(
 # forgot to switch headers would read nothing here — which is exactly the class
 # of bug a single-ECU fixture would hide.
 GM_SIERRA = Scenario(
-    vin="3GTUUEE8012345678",
+    vin="3GTUUEE80S2345678",
     mode01=dict(_COMMON_MODE01),
     mode22={
         "7E0": {                 # engine module
