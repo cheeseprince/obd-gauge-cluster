@@ -278,6 +278,22 @@ bool BleObdSource::currentPeerAllowed() const {
 // ---------------------------------------------------------------------------
 // Connection
 // ---------------------------------------------------------------------------
+// The GATT profiles this firmware can drive. FILE SCOPE deliberately: both the
+// pre-connect advertisement filter in connectAndSetup() and the post-connect
+// bind in bindChars() read this same table, and two copies would drift -- the
+// filter would skip a device the binder could actually have handled.
+struct Profile { NimBLEUUID svc, notify, write; const char* tag; };
+static const Profile PROFILES[] = {
+  {NimBLEUUID((uint16_t)0x18f0), NimBLEUUID((uint16_t)0x2af0), NimBLEUUID((uint16_t)0x2af1), "vlinker 18f0"},
+  {NimBLEUUID((uint16_t)0xfff0), NimBLEUUID((uint16_t)0xfff1), NimBLEUUID((uint16_t)0xfff2), "clone fff0"},
+  {NimBLEUUID((uint16_t)0xffe0), NimBLEUUID((uint16_t)0xffe1), NimBLEUUID((uint16_t)0xffe1), "clone ffe0"},
+  // Nordic UART Service (some BLE-ELM327 clones on Nordic silicon): TX
+  // (device->client, notify) ...0003, RX (client->device, write) ...0002.
+  {NimBLEUUID("6e400001-b5a3-f393-e0a9-e50e24dcca9e"),
+   NimBLEUUID("6e400003-b5a3-f393-e0a9-e50e24dcca9e"),
+   NimBLEUUID("6e400002-b5a3-f393-e0a9-e50e24dcca9e"), "nordic-uart"},
+};
+
 bool BleObdSource::connectAndSetup() {
   attempts_++;
   if (!client_) client_ = NimBLEDevice::createClient();
@@ -350,6 +366,22 @@ bool BleObdSource::connectAndSetup() {
 #endif
     cands[i].name = bleNames[i].c_str();
     cands[i].rssi = RSSI_OF(res, i);
+    // Read what the ADVERTISEMENT claims about services, before connecting to
+    // anything. This is the whole point of UX-6: the old path connected first
+    // and inspected afterwards, so it GATT-connected to strangers' phones and
+    // attempted bonding with them.
+#if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
+    const NimBLEAdvertisedDevice* ad = res.getDevice(i);
+#else
+    NimBLEAdvertisedDevice adObj = res.getDevice(i);
+    const NimBLEAdvertisedDevice* ad = &adObj;
+#endif
+    cands[i].svc = SvcHint::None;
+    for (const Profile& p : PROFILES) {
+      if (ad->isAdvertisingService(p.svc)) { cands[i].svc = SvcHint::Obd; break; }
+    }
+    if (cands[i].svc == SvcHint::None && ad->haveServiceUUID())
+      cands[i].svc = SvcHint::Other;   // said something, and it was not us
   }
   bleRankCandidates(cands, m, order);
 
@@ -379,8 +411,22 @@ bool BleObdSource::connectAndSetup() {
   // from 90 s to 240 s because of this, which treated the symptom; kicking here
   // addresses it directly. Kick per ITERATION, not once before the loop, or a
   // round that stalls late still trips it.
+  // Bound the round. Even with the skip below, a busy RF environment can offer
+  // more silent devices than there is time for, and connectAndSetup() runs
+  // inside ONE poll() -- the caller retries every 3 s, so giving up early costs
+  // nothing and stops one round monopolising the OBD task.
+  const uint32_t roundDeadline = millis() + 45000;
+  int skipped = 0;
   for (int k = 0; k < m && k < 12; k++) {
     obdWatchdogKick();
+    if ((int32_t)(millis() - roundDeadline) >= 0) {
+      Serial.printf("[BLE] round budget spent after %d tried — retrying shortly\n", k);
+      break;
+    }
+    // Never connect to something that advertised a service set that is not
+    // ours. Devices advertising NOTHING are still tried: silence is not
+    // evidence, and some adapters do not advertise their service UUID.
+    if (bleShouldSkip(cands[order[k]])) { skipped++; continue; }
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
     const NimBLEAdvertisedDevice* dev = res.getDevice(order[k]);   // 2.x: pointer
 #else
@@ -404,7 +450,8 @@ bool BleObdSource::connectAndSetup() {
     }
     if (client_->isConnected()) client_->disconnect();
   }
-  Serial.println("[BLE] no OBD adapter found this round");
+  Serial.printf("[BLE] no OBD adapter found this round (%d skipped: advertised other services)\n",
+                skipped);
   return false;
 }
 
@@ -428,17 +475,6 @@ bool BleObdSource::bindChars() {
   // tried in order so the cheapest adapter still works. NimBLEUUID holds both
   // 16-bit (clones) and 128-bit (Nordic UART) identifiers. Built locally, not
   // static, to avoid global-init ordering on the 128-bit string UUIDs.
-  struct Profile { NimBLEUUID svc, notify, write; const char* tag; };
-  const Profile PROFILES[] = {
-    {NimBLEUUID((uint16_t)0x18f0), NimBLEUUID((uint16_t)0x2af0), NimBLEUUID((uint16_t)0x2af1), "vlinker 18f0"},
-    {NimBLEUUID((uint16_t)0xfff0), NimBLEUUID((uint16_t)0xfff1), NimBLEUUID((uint16_t)0xfff2), "clone fff0"},
-    {NimBLEUUID((uint16_t)0xffe0), NimBLEUUID((uint16_t)0xffe1), NimBLEUUID((uint16_t)0xffe1), "clone ffe0"},
-    // Nordic UART Service (some BLE-ELM327 clones on Nordic silicon): TX
-    // (device->client, notify) ...0003, RX (client->device, write) ...0002.
-    {NimBLEUUID("6e400001-b5a3-f393-e0a9-e50e24dcca9e"),
-     NimBLEUUID("6e400003-b5a3-f393-e0a9-e50e24dcca9e"),
-     NimBLEUUID("6e400002-b5a3-f393-e0a9-e50e24dcca9e"), "nordic-uart"},
-  };
   writeChar_ = notifyChar_ = nullptr;
   for (const Profile& p : PROFILES) {
     NimBLERemoteService* svc = client_->getService(p.svc);

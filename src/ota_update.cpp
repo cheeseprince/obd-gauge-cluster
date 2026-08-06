@@ -187,7 +187,27 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
   int code = http.GET();
   Serial.printf("[OTA] manifest HTTP %d, heap %u\n", code, (unsigned)ESP.getFreeHeap());
   if (code != 200) {
-    char m[64]; snprintf(m, sizeof m, "Update: manifest\nHTTP %d", code);
+    char m[96];
+    if (code < 0) {
+      // A NEGATIVE code is not an HTTP status -- it is HTTPClient's own error,
+      // and it means the connection never opened at all (-1 is
+      // HTTPC_ERROR_CONNECTION_REFUSED). Showing the raw number tells the
+      // person standing at the vehicle nothing, and it looks like a network
+      // fault even when it is not.
+      //
+      // The known cause, root-caused on a real truck 2026-08-05: the TLS
+      // handshake is by a wide margin the highest-current thing this device
+      // does, and accessory power with the engine OFF cannot sustain it. The
+      // board browns out mid-handshake. Everything else keeps working on
+      // accessory power -- WiFi associates, NTP syncs the clock, the OBD link
+      // runs -- so the symptom appears only here. Say the actionable thing
+      // first; keep the code for anyone reading a bug report.
+      snprintf(m, sizeof m, "Update: no connection\nStart the engine,\nthen retry (net %d)", code);
+    } else {
+      snprintf(m, sizeof m, "Update: manifest\nHTTP %d", code);
+    }
+    Serial.printf("[OTA] manifest fetch failed, code %d%s\n", code,
+                  code < 0 ? "  (connection never opened — check power/signal)" : "");
     http.end(); say(pump, m); return;
   }
   String manifest = http.getString();
