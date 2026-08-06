@@ -203,12 +203,25 @@ class Characteristic(dbus.service.Object):
         pass
 
     def notify(self, chunk: bytes):
-        if not self.notifying:
-            return False
-        self.PropertiesChanged(
-            GATT_CHRC, {"Value": dbus.Array(chunk, signature="y")}, []
-        )
-        return True
+        """Emit one notification. ALWAYS returns False.
+
+        This is scheduled onto the GLib loop, and GLib REPEATS any source whose
+        callback returns True. Returning True here (the obvious-looking "it
+        worked" value) turned every single reply into a timer that re-sent the
+        same bytes every 35 ms forever: the dash was fed stale duplicates -- a
+        plausible cause of reads running one behind -- and the accumulated
+        sources eventually saturated the main loop, starving the re-advertise
+        watchdog until the shim stopped being discoverable at all. One run
+        accrued 95,000 log lines this way.
+
+        So: never return a truthy value from a GLib callback that should run
+        once. The delivery result is not the scheduler's business.
+        """
+        if self.notifying:
+            self.PropertiesChanged(
+                GATT_CHRC, {"Value": dbus.Array(chunk, signature="y")}, []
+            )
+        return False
 
 
 class Service(dbus.service.Object):
@@ -381,23 +394,40 @@ def main():
     # right across connect/disconnect races.
     ad_props = dbus.Interface(bus.get_object(BLUEZ, args.adapter), DBUS_PROPS)
 
+    # Rate-limited so a persistently failing probe reports once rather than
+    # every 5 s forever, but is never silent. Both handlers below used to
+    # `return True` with no log at all, which meant a watchdog that had stopped
+    # working looked identical to one with nothing to do -- and it did stop
+    # working, silently, through a whole test run.
+    warned = {"probe": False, "objects": False}
+
     def ensure_advertising():
         try:
             active = int(ad_props.Get(LE_AD_MANAGER, "ActiveInstances"))
-        except Exception:
-            return True                      # adapter busy; try again next tick
+        except Exception as e:
+            if not warned["probe"]:
+                warned["probe"] = True
+                log(f"[adv] cannot read ActiveInstances ({type(e).__name__}: {e}) — "
+                    f"the re-advertise watchdog is NOT protecting you")
+            return True                      # try again next tick
+        warned["probe"] = False
         if active > 0:
             return True
         # Not advertising. If a central is connected that is expected and
         # correct; only re-arm once nothing is connected.
         try:
             om = dbus.Interface(bus.get_object(BLUEZ, "/"), DBUS_OM)
-            for _path, ifaces in om.GetManagedObjects().items():
-                dev = ifaces.get("org.bluez.Device1")
-                if dev and bool(dev.get("Connected", False)):
-                    return True              # connected: silence is correct
-        except Exception:
+            connected = [p for p, i in om.GetManagedObjects().items()
+                         if i.get("org.bluez.Device1", {}).get("Connected", False)]
+        except Exception as e:
+            if not warned["objects"]:
+                warned["objects"] = True
+                log(f"[adv] cannot enumerate devices ({type(e).__name__}: {e}) — "
+                    f"the re-advertise watchdog is NOT protecting you")
             return True
+        warned["objects"] = False
+        if connected:
+            return True                      # connected: silence is correct
         try:
             am.UnregisterAdvertisement(adv.path)
         except Exception:
