@@ -119,7 +119,7 @@ static void buildVehPick() {
 static lv_obj_t* splashScreen = nullptr;
 static lv_obj_t* splashClock  = nullptr;   // updatable clock line, set by showSplash()
 
-static void buildSplash() {
+static void buildSplash(const Settings& cfg) {
   splashScreen = lv_obj_create(lv_layer_top());
   lv_obj_set_size(splashScreen, 480, 320);
   lv_obj_set_style_bg_color(splashScreen, lv_color_black(), 0);
@@ -128,10 +128,20 @@ static void buildSplash() {
   lv_obj_set_style_radius(splashScreen, 0, 0);
   lv_obj_clear_flag(splashScreen, LV_OBJ_FLAG_SCROLLABLE);
 
+  // A vehicle we identified but have no profile for names ITSELF here; anything
+  // else falls back to the active profile's caption. This is the only place the
+  // two can disagree -- a Ford Super Duty runs the Generic profile, so VEHICLE
+  // would caption it "Generic" while the truck is perfectly well identified.
+  // cfg's strings outlive this function (Settings is owned by main), so storing
+  // the pointers in `lines` is safe; lv_label_set_text copies anyway.
+  const bool detected = cfg.detectedName[0] != '\0';
+  const char* idName   = detected ? cfg.detectedName   : VEHICLE.name;
+  const char* idEngine = detected ? cfg.detectedEngine : VEHICLE.engine;
+
   struct SplashLine { const char* txt; const lv_font_t* font; uint32_t color; int y; };
-  static const SplashLine lines[] = {
-    {VEHICLE.name,           &lv_font_montserrat_28, 0xFFFFFF,  70},
-    {VEHICLE.engine,         &lv_font_montserrat_20, 0xFFB000, 118},
+  const SplashLine lines[] = {
+    {idName,                 &lv_font_montserrat_28, 0xFFFFFF,  70},
+    {idEngine,               &lv_font_montserrat_20, 0xFFB000, 118},
     {"OBD-II Monitor",       &lv_font_montserrat_20, 0xCCCCCC, 150},
     {"build " FW_DATE "  " FW_VERSION, &lv_font_montserrat_14, 0x888888, 210},
     {"connecting to OBD...", &lv_font_montserrat_14, 0x888888, 240},
@@ -450,7 +460,7 @@ void ackAlarm() { g_alarmAck.ack(); }
 bool alarmShown() { return g_alarmShown; }
 
 // Build all static screen objects on first boot; load quad as the starting screen.
-void begin() {
+void begin(const Settings& s) {
   buildQuad();
   buildFocus();
   buildAlarm();            // alarm banner on lv_layer_top() — created once, hidden by default
@@ -458,7 +468,7 @@ void begin() {
   buildMenu();             // settings menu overlay on lv_layer_top() — hidden by default
   buildTimeSet();          // date/time editor overlay on lv_layer_top() — hidden by default
   buildVehPick();          // vehicle-picker overlay on lv_layer_top() — hidden by default
-  buildSplash();           // boot splash on lv_layer_top() — shown by main() at power-up
+  buildSplash(s);          // boot splash on lv_layer_top() — shown by main() at power-up
   lv_scr_load(quadScreen);
 }
 

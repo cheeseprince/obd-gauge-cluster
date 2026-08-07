@@ -55,6 +55,11 @@ void loadSettings(Settings& s) {
   strncpy(s.vehicleKey, vk.c_str(), sizeof s.vehicleKey - 1);
   s.vehicleKey[sizeof s.vehicleKey - 1] = '\0';
   s.vehicleAuto = p.getUChar("vehauto", 1) != 0;
+  String dn = p.getString("detname", ""), de = p.getString("deteng", "");
+  strncpy(s.detectedName, dn.c_str(), sizeof s.detectedName - 1);
+  s.detectedName[sizeof s.detectedName - 1] = '\0';
+  strncpy(s.detectedEngine, de.c_str(), sizeof s.detectedEngine - 1);
+  s.detectedEngine[sizeof s.detectedEngine - 1] = '\0';
   p.end();
   if (s.brightnessPct == 0 || s.brightnessPct > 100) s.brightnessPct = 100;
   if (s.nightMode > NIGHT_NIGHT) s.nightMode = NIGHT_AUTO;
@@ -73,6 +78,8 @@ void saveSettings(const Settings& s) {
   p.putChar("tz", (int8_t)s.geo.tzStd);
   p.putString("vehkey", s.vehicleKey);
   p.putUChar("vehauto", s.vehicleAuto ? 1 : 0);
+  p.putString("detname", s.detectedName);
+  p.putString("deteng",  s.detectedEngine);
   p.end();
 }
 #endif

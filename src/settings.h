@@ -17,6 +17,18 @@ struct Settings {
   GeoLocation geo;                     // provisioned location (unset sentinel by default)
   char vehicleKey[24] = "";            // registry key of the selected profile ("" = default/Generic)
   bool        vehicleAuto   = true;    // NVS "vehauto". true = VIN auto-detect governs; false = manually locked.
+  // Identity of a vehicle we can NAME but have no profile for (e.g. a Ford
+  // Super Duty). Empty when the vehicle IS profiled -- the profile supplies its
+  // own name -- or when nothing has been identified yet.
+  //
+  // These hold the RESOLVED STRINGS, not the VIN. Persisting the VIN and
+  // re-running vinIdentify() at boot would be the DRY choice and would let a
+  // firmware update improve the name for free, but it writes a full VIN to
+  // flash -- a privacy surface this project does not otherwise have. The cost
+  // of storing strings instead is one boot of staleness: the next OBD connect
+  // re-identifies and overwrites.
+  char detectedName[24]   = "";        // NVS "detname"
+  char detectedEngine[24] = "";        // NVS "deteng"
 };
 
 // Next brightness preset, cycling 25->50->75->100->25. A non-preset value

@@ -8,7 +8,7 @@
 enum class Theme { Day, Night };
 
 namespace ui {
-void begin();                                            // build static objects once
+void begin(const Settings& s);                           // build static objects once (splash needs the detected identity)
 // Renders the active screen. In Focus view the 5-min trend graph is drawn from `hist`.
 void render(const GaugeSet& gs, const NavState& nav, Theme theme, const HistorySet& hist, bool metric);
 bool anyAlarm(const GaugeSet& gs);                       // true if any thresholded stat is Amber or Red

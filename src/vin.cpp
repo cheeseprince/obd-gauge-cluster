@@ -252,7 +252,28 @@ static bool jeepWagoneer57(const char* vin) {
          vinModelYearIn(vin, "NP");
 }
 
-const char* vinToProfileKey(const char* vin) {
+// Ford Super Duty with the 6.7L Power Stroke. vPIC frame, verified across EVERY
+// model-year code B..W (2011-2028): vin[3]='7' is an F-250 and '8' an F-350,
+// with vin[4]='W' and vin[6..7]='BT'. Unusually, this pattern IS stable across
+// the whole range -- it reports F-250/F-350 6.7L at every year and nothing else
+// -- so unlike the GM and Jeep rules it needs no model-year gate.
+//
+// We have NO profile for it (docs/FORD-STATUS.md: researched, needs a scan), so
+// it identifies only. That is the point of VinIdentity.
+static bool fordSuperDuty67(const char* vin) {
+  if (std::strlen(vin) < 8) return false;
+  // Deliberately silent on vin[3] (the series digit): fordF250/fordF350 each
+  // pin it exactly, so re-checking it here is dead code -- and worse, it MASKED
+  // a mutation, letting fordF350 drop its own vin[3] gate with every test still
+  // green. Platform + engine only; series belongs to the callers.
+  return vinAt(vin,4) == 'W' &&
+         vinAt(vin,6) == 'B' &&
+         vinAt(vin,7) == 'T';
+}
+static bool fordF250(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '7'; }
+static bool fordF350(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '8'; }
+
+const VinIdentity* vinIdentify(const char* vin) {
   if (!vin || std::strlen(vin) < 3) return nullptr;
   char w[4] = { (char)std::toupper((unsigned char)vin[0]),
                 (char)std::toupper((unsigned char)vin[1]),
@@ -260,30 +281,62 @@ const char* vinToProfileKey(const char* vin) {
   // `extra` is optional: nullptr means the row matches on WMI alone. The
   // BMW/Audi/Jeep rows are still WMI-only and can be tightened the same way when
   // someone works out their discriminators.
-  struct M { const char* wmi; const char* key; bool (*extra)(const char* vin); };
+  // A row is (WMI, optional predicate) -> identity. `key` may be nullptr: that
+  // is a vehicle we can NAME but have no profile for, which is the whole reason
+  // identity and profile selection are separate.
+  // The identity is stored IN the row, and callers get a pointer to that const
+  // row. An earlier draft filled a function-local `static VinIdentity` and
+  // returned its address -- a shared mutable static, which is the exact pattern
+  // ObdSource::latest() documents avoiding. Two callers would have shared one
+  // object.
+  struct M { const char* wmi; bool (*extra)(const char* vin); VinIdentity id; };
   static const M MAP[] = {
-    {"1GT","gm_sierra_lz0",gmSierra1500Diesel},{"3GT","gm_sierra_lz0",gmSierra1500Diesel},
-    {"1GC","gm_sierra_lz0",gmSierra1500Diesel},{"3GC","gm_sierra_lz0",gmSierra1500Diesel},
+    {"1GT",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},{"3GT",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},
+    {"1GC",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},{"3GC",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},
     // BMW. The predicate is the F10 535i frame, so the other WMIs (M cars, the
     // X-series SAVs) fail closed rather than being handed an N55 sedan profile.
-    {"WBA","bmw_f10_535i",bmwF10535i}, {"WBS","bmw_f10_535i",bmwF10535i},
-    {"5UX","bmw_f10_535i",bmwF10535i}, {"4US","bmw_f10_535i",bmwF10535i},
-    {"WAU","audi_q5",audiQ5_20T}, {"WA1","audi_q5",audiQ5_20T},
-    {"WUA","audi_q5",audiQ5_20T}, {"TRU","audi_q5",audiQ5_20T},
+    {"WBA",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}}, {"WBS",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}},
+    {"5UX",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}}, {"4US",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}},
+    {"WAU",audiQ5_20T,{"audi_q5",nullptr,nullptr}}, {"WA1",audiQ5_20T,{"audi_q5",nullptr,nullptr}},
+    {"WUA",audiQ5_20T,{"audi_q5",nullptr,nullptr}}, {"TRU",audiQ5_20T,{"audi_q5",nullptr,nullptr}},
     // Stellantis — see jeepWagoneer57() for why the WMI alone was dangerous here.
     // 1C4 ONLY. 1J4 and 3C4 were here and are removed: vPIC resolves 1J4 at the
     // Wagoneer-era year codes to a 1992-96 Cherokee (year codes repeat every 30
     // years, so the gate above cannot separate them), and 3C4 produces no
     // vehicle at all at those codes. Both offered false positives and matched
     // nothing real.
-    {"1C4","jeep_ws",jeepWagoneer57},
-    // Ford (1FT/...) returns nullptr until that profile is registered — add a
-    // row + a registry entry together.
+    {"1C4",jeepWagoneer57,{"jeep_ws",nullptr,nullptr}},
+    // FORD SUPER DUTY 6.7L POWER STROKE — IDENTIFIED, NOT PROFILED.
+    // key is nullptr on purpose: docs/FORD-STATUS.md has the research but no
+    // scan, so the dash stays on Generic and simply says what the truck is
+    // instead of pretending it does not know. Fill in the key when a profile
+    // lands; nothing else here changes.
+    {"1FT", fordF250, {nullptr, "Ford F-250", "6.7L Power Stroke"}},
+    {"1FT", fordF350, {nullptr, "Ford F-350", "6.7L Power Stroke"}},
+    {"3FT", fordF250, {nullptr, "Ford F-250", "6.7L Power Stroke"}},
+    {"3FT", fordF350, {nullptr, "Ford F-350", "6.7L Power Stroke"}},
   };
-  for (const M& m : MAP)
-    if (std::strcmp(w, m.wmi) == 0)
-      return (!m.extra || m.extra(vin)) ? m.key : nullptr;
+  // First matching row wins. Two rows may share a WMI (the F-250 and F-350
+  // predicates both live under 1FT and differ only at vin[3]), so the predicate
+  // — not the WMI — decides, and a row whose predicate fails must fall through
+  // to the next rather than terminating the search.
+  for (const M& m : MAP) {
+    if (std::strcmp(w, m.wmi) != 0) continue;
+    if (m.extra && !m.extra(vin)) continue;
+    return &m.id;
+  }
   return nullptr;
+}
+
+const VinIdentity* vinDisplayIdentity(const char* vin) {
+  const VinIdentity* id = vinIdentify(vin);
+  if (!id || id->profileKey) return nullptr;   // unknown, or profiled -> nothing to store
+  return id;
+}
+
+const char* vinToProfileKey(const char* vin) {
+  const VinIdentity* id = vinIdentify(vin);
+  return id ? id->profileKey : nullptr;
 }
 
 const char* vinAutoTarget(const char* vin, bool vehicleAuto, const char* currentKey) {

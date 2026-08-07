@@ -243,7 +243,7 @@ void setup() {
 #endif
   theme = settings.night ? Theme::Night : Theme::Day;
   display::setBacklight(settings.brightnessPct);
-  ui::begin();
+  ui::begin(settings);
   buttonInput::begin();  // bring up the Modulino encoder on I2C; no-op if absent
 #if HAS_SD_LOG
   sdBegin();             // init microSD (HSPI) for CSV logging
@@ -686,6 +686,28 @@ void loop() {
     const bool overlayOpen = snap.view == View::VehiclePick ||
                              snap.view == View::Menu ||
                              snap.view == View::TimeSet;
+    // Remember what the vehicle IS, separately from which profile it gets. For a
+    // truck we can name but have no profile for, this is the only thing that
+    // makes the boot splash say "Ford F-250" instead of the Generic caption --
+    // the identity has to be on flash before the OBD link exists at boot.
+    // Deliberately NOT gated on vehicleAuto: that flag governs profile
+    // SWITCHING, and a user who manually locked a profile still benefits from
+    // the dash naming the truck correctly. Writes only on change, so this is
+    // one NVS write per vehicle swap, not one per frame.
+    if (readings.vin[0] && !overlayOpen) {
+      const VinIdentity* det = vinDisplayIdentity(readings.vin);
+      const char* dn = det ? det->name   : "";
+      const char* de = det ? det->engine : "";
+      if (strcmp(settings.detectedName, dn) != 0) {
+        strncpy(settings.detectedName, dn, sizeof settings.detectedName - 1);
+        settings.detectedName[sizeof settings.detectedName - 1] = '\0';
+        strncpy(settings.detectedEngine, de, sizeof settings.detectedEngine - 1);
+        settings.detectedEngine[sizeof settings.detectedEngine - 1] = '\0';
+        saveSettings(settings);
+        Serial.printf("[VIN] identified %s %s\n", dn[0] ? dn : "(none)", de);
+      }
+    }
+
     if (settings.vehicleAuto && readings.vin[0] && !overlayOpen) {
       const char* target = vinAutoTarget(readings.vin, settings.vehicleAuto, settings.vehicleKey);
       if (target) {
