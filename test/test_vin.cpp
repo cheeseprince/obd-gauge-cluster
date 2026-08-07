@@ -71,13 +71,33 @@ int main() {
   // EVERY VIN BELOW IS SYNTHETIC (…012345678 / …0123456789ABCD tails, no relation
   // to any real vehicle). Never commit a real VIN -- scripts/check_no_pii.py
   // allowlists these exact tokens and fails CI on any other VIN-shaped string.
-  check(strcmp(vinToProfileKey("3GTUUEE8012345678"),"gm_sierra_lz0")==0, "3GT LZ0 diesel -> gm");
-  check(strcmp(vinToProfileKey("1GTUUEE8012345678"),"gm_sierra_lz0")==0, "1GT LZ0 diesel -> gm");
-  check(strcmp(vinToProfileKey("3gtuuee8012345678"),"gm_sierra_lz0")==0, "LZ0 -> gm (case)");
-  check(vinToProfileKey("3GTUUEED012345678")==nullptr, "L84 5.3 gas, same WMI -> null");
-  check(vinToProfileKey("3GTUUEEL012345678")==nullptr, "L87 6.2 gas, same WMI -> null");
-  check(vinToProfileKey("3GTUUEEK012345678")==nullptr, "L3B 2.7 gas, same WMI -> null");
-  check(vinToProfileKey("3GTU8EEE012345678")==nullptr, "Sierra HD (vin[4] not H/U) -> null");
+  // MODEL YEAR IS PART OF THE PATTERN. vin[9] is VIN position 10, the model-year
+  // code (P=2023, R=2024, S=2025, T=2026 — verified against NHTSA vPIC, which
+  // resolves the year from that position when given no hint).
+  //
+  // Without it the positional rule alone is NOT unique across 20 model years.
+  // Found 2026-08-05 by sweeping vPIC over every year code: a 2011-12 Chevrolet
+  // EXPRESS VAN with the 6.6L Duramax satisfies WMI 1GC + vin[3] in [NPRUV] +
+  // vin[4]='H' + vin[7]='8' exactly, and would have been handed the Sierra LZ0
+  // profile. A working van is far likelier to meet an OBD dongle than most
+  // false positives, so this is not theoretical.
+  //
+  // A year outside the verified range fails CLOSED. A 2027 truck gets Generic
+  // until someone confirms the profile still fits it — which is the same rule
+  // the engine discriminator follows.
+  check(strcmp(vinToProfileKey("3GTUUEE80S2345678"),"gm_sierra_lz0")==0, "LZ0 MY2025 (S) -> gm");
+  check(strcmp(vinToProfileKey("3GTUUEE80P2345678"),"gm_sierra_lz0")==0, "LZ0 MY2023 (P) -> gm");
+  check(strcmp(vinToProfileKey("3GTUUEE80T2345678"),"gm_sierra_lz0")==0, "LZ0 MY2026 (T) -> gm");
+  check(vinToProfileKey("1GCNHEE80B2345678")==nullptr, "2011 Express van 6.6 Duramax -> null");
+  check(vinToProfileKey("3GTUUEE80V2345678")==nullptr, "MY2027 (V), unverified year -> null");
+  check(vinToProfileKey("3GTUUEE80")==nullptr, "too short to read vin[9] -> null");
+  check(strcmp(vinToProfileKey("3GTUUEE80S2345678"),"gm_sierra_lz0")==0, "3GT LZ0 diesel -> gm");
+  check(strcmp(vinToProfileKey("1GTUUEE80S2345678"),"gm_sierra_lz0")==0, "1GT LZ0 diesel -> gm");
+  check(strcmp(vinToProfileKey("3gtuuee80s2345678"),"gm_sierra_lz0")==0, "LZ0 -> gm (case)");
+  check(vinToProfileKey("3GTUUEED0S2345678")==nullptr, "L84 5.3 gas, same WMI -> null");
+  check(vinToProfileKey("3GTUUEEL0S2345678")==nullptr, "L87 6.2 gas, same WMI -> null");
+  check(vinToProfileKey("3GTUUEEK0S2345678")==nullptr, "L3B 2.7 gas, same WMI -> null");
+  check(vinToProfileKey("3GTU8EEE0S2345678")==nullptr, "Sierra HD (vin[4] not H/U) -> null");
   check(vinToProfileKey("1GT0123456789ABCD")==nullptr, "GM WMI but non-1500 pattern -> null");
   check(vinToProfileKey("1GTUUEE")==nullptr, "GM WMI but too short to read vin[7] -> null");
   // BMW: the profile was scanned on an F10 535i (N55 3.0 turbo I6). vPIC frame,
@@ -109,27 +129,37 @@ int main() {
   // ProMaster vans (vin[4] F and R) -- all of which previously got the Wagoneer's
   // 29-bit addressing. vin[7] is the engine: T=5.7 V8, P=3.0 I6 Hurricane,
   // J=6.4 V8, G=3.6 V6. The 5.7 is 2022-23 only; 2024 Wagoneers are 3.0 I6.
-  check(strcmp(vinToProfileKey("1C4SJVBT012345678"),"jeep_ws")==0, "Wagoneer 5.7 -> jeep_ws");
-  check(strcmp(vinToProfileKey("1c4sjvbt012345678"),"jeep_ws")==0, "Wagoneer 5.7 -> jeep_ws (case)");
-  check(vinToProfileKey("1C4SJVBP012345678")==nullptr, "Wagoneer 3.0 Hurricane -> null");
-  check(vinToProfileKey("1C4SJVBJ012345678")==nullptr, "Wagoneer 6.4 V8 -> null");
-  check(vinToProfileKey("1C4SJVET012345678")==nullptr, "Grand Wagoneer -> null");
-  check(vinToProfileKey("1C4SJXBT012345678")==nullptr, "Wrangler -> null");
-  check(vinToProfileKey("1C4SFVBT012345678")==nullptr, "Ducato van (vin[4]='F') -> null");
+  // Same cross-year problem, same fix. The Wagoneer 5.7 positional rule also
+  // matched a Chrysler Voyager (2001-03) and a Jeep Cherokee (1992-96).
+  // N=2022, P=2023 — the years the profile was scanned on.
+  check(strcmp(vinToProfileKey("1C4SJVBT0N2345678"),"jeep_ws")==0, "Wagoneer MY2022 (N) -> jeep_ws");
+  check(strcmp(vinToProfileKey("1C4SJVBT0P2345678"),"jeep_ws")==0, "Wagoneer MY2023 (P) -> jeep_ws");
+  // 1J4 is removed from the table entirely: at the Wagoneer year codes vPIC
+  // resolves it to a 1992-96 Cherokee, and year codes repeat every 30 years so
+  // the gate cannot disambiguate. The WMI list is the discriminator here.
+  check(vinToProfileKey("1J4SJVBT0N2345678")==nullptr, "1J4 is not a Wagoneer WMI -> null");
+  check(vinToProfileKey("1C4SJVBT0T2345678")==nullptr, "MY2026 (T) is Grand Wagoneer -> null");
+  check(strcmp(vinToProfileKey("1C4SJVBT0N2345678"),"jeep_ws")==0, "Wagoneer 5.7 -> jeep_ws");
+  check(strcmp(vinToProfileKey("1c4sjvbt0n2345678"),"jeep_ws")==0, "Wagoneer 5.7 -> jeep_ws (case)");
+  check(vinToProfileKey("1C4SJVBP0N2345678")==nullptr, "Wagoneer 3.0 Hurricane -> null");
+  check(vinToProfileKey("1C4SJVBJ0N2345678")==nullptr, "Wagoneer 6.4 V8 -> null");
+  check(vinToProfileKey("1C4SJVET0N2345678")==nullptr, "Grand Wagoneer -> null");
+  check(vinToProfileKey("1C4SJXBT0N2345678")==nullptr, "Wrangler -> null");
+  check(vinToProfileKey("1C4SFVBT0N2345678")==nullptr, "Ducato van (vin[4]='F') -> null");
   check(vinToProfileKey("1C40123456789ABCD")==nullptr, "Jeep WMI, non-Wagoneer pattern -> null");
   check(vinToProfileKey("JHM0123456789ABCD")==nullptr, "unknown WMI -> null");
   check(vinToProfileKey("WA")==nullptr, "short -> null");
 
   // vinAutoTarget: the decision.
-  check(strcmp(vinAutoTarget("3GTUUEE8012345678", true, ""),"gm_sierra_lz0")==0, "auto+changed -> key");
-  check(vinAutoTarget("3GTUUEE8012345678", true, "gm_sierra_lz0")==nullptr, "already current -> null");
-  check(vinAutoTarget("3GTUUEE8012345678", false, "")==nullptr, "auto off -> null");
+  check(strcmp(vinAutoTarget("3GTUUEE80S2345678", true, ""),"gm_sierra_lz0")==0, "auto+changed -> key");
+  check(vinAutoTarget("3GTUUEE80S2345678", true, "gm_sierra_lz0")==nullptr, "already current -> null");
+  check(vinAutoTarget("3GTUUEE80S2345678", false, "")==nullptr, "auto off -> null");
   // Fail CLOSED, and fail QUIETLY: a VIN whose key is now nullptr (a gas 1500 on
   // a GM truck WMI) must leave the active profile exactly as it was, not reset it
   // to generic and not swap it. vinAutoTarget returning nullptr is what the caller
   // reads as "leave the current profile alone".
-  check(vinAutoTarget("3GTUUEED012345678", true, "gm_sierra_lz0")==nullptr, "gas GM VIN -> leave current profile alone");
-  check(vinAutoTarget("3GTUUEED012345678", true, "audi_q5")==nullptr, "gas GM VIN -> no change even from a foreign current");
+  check(vinAutoTarget("3GTUUEED0S2345678", true, "gm_sierra_lz0")==nullptr, "gas GM VIN -> leave current profile alone");
+  check(vinAutoTarget("3GTUUEED0S2345678", true, "audi_q5")==nullptr, "gas GM VIN -> no change even from a foreign current");
   check(vinAutoTarget("JHM0123456789ABCD", true, "")==nullptr, "unmapped -> null");
   check(vinAutoTarget("", true, "gm_sierra_lz0")==nullptr, "empty vin -> null");
   check(strcmp(vinAutoTarget("WA1ANAFY012345678", true, "gm_sierra_lz0"),"audi_q5")==0, "audi VIN + auto + different current -> key");
