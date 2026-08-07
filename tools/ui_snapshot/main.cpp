@@ -50,7 +50,11 @@ int main() {
   lv_disp_drv_register(&drv);
 
   g_activeProfile = &GM_SIERRA_LZ0_PROFILE;   // render the GM Duramax profile
-  ui::begin();
+  // Default Settings: detectedName is empty, so the splash captions itself from
+  // the active profile above -- which is what these previews are meant to show.
+  // A detected identity would override it (see vinDisplayIdentity).
+  static const Settings snapshotCfg{};
+  ui::begin(snapshotCfg);
   ui::suppressAlarms(true);        // no alarm overlay in these previews
   // (BT icon starts gray; showStatus(nullptr) below links it blue after the
   //  gray-state capture.)
