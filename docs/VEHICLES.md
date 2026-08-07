@@ -12,6 +12,14 @@ On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** 
 `1C4`/`1J4`/`3C4` → `jeep_ws`. An unrecognized WMI returns no match
 (`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic profile.
 
+**Identity and profile selection are separate.** `vinIdentify()` answers "what is this
+vehicle", `vinToProfileKey()` answers "which gauge profile does it get", and a vehicle can be
+the first without being the second. That is the case for the Ford Super Duty below: the dash
+names the truck on its boot splash while still running Generic gauges, instead of showing
+nothing merely because no profile exists. The detected name is persisted so it survives a
+power cycle — the splash is drawn before the OBD link is up. The **strings** are stored, not
+the VIN.
+
 **A WMI alone is often not enough.** A WMI identifies a manufacturer and a broad vehicle class,
 not an engine — so a row may carry an **optional extra predicate** over the full VIN. If that
 predicate fails, the row fails *closed* (`nullptr`) rather than falling through to another row:
@@ -155,11 +163,30 @@ Silverado.
 
 ## Ford
 
-**No profile ships yet.** Ford has no WMI entry in `vinToProfileKey` — the comment at
-the `MAP` table in `vinToProfileKey` notes a Ford row (e.g. `1FT`) returns no match "until that profile is
-registered." A Ford vehicle currently lands on the Generic profile below: standard Mode-01
-parameters populate, and the enhanced Power Stroke parameters (transmission temp, EGT, DPF,
-fuel rail pressure, DEF, NOx) do not exist in this firmware yet. See
+**Identified, but no profile ships yet — those are two different things.**
+
+A Super Duty 6.7L is recognized by VIN and the dash captions itself **"Ford F-250"** or
+**"Ford F-350" / "6.7L Power Stroke"** on the boot splash. It still runs the **Generic**
+profile: standard Mode-01 parameters populate, and the enhanced Power Stroke parameters
+(transmission temp, EGT, DPF, fuel rail pressure, DEF, NOx) do not exist in this firmware
+yet. Naming the truck is not the same as reading it — nothing here has been measured on a
+Power Stroke.
+
+| Positions | Meaning |
+| :--- | :--- |
+| `1FT` / `3FT` | Ford truck, US- or Mexico-built |
+| `vin[3]` = `7` / `8` | F-250 / F-350 |
+| `vin[4]` = `W` | Super Duty 4x4 |
+| `vin[6]` = `B`, `vin[7]` = `T` | 6.7L Power Stroke diesel |
+
+**No model-year gate.** Unlike the GM and Jeep rows, this pattern was verified stable across
+every year code from `B` (2011) through `W` (2028) — it has always meant an F-250/F-350 6.7,
+so gating on year would only reject valid trucks. Any other `1FT` — an F-150, a gas Super
+Duty, a Transit — stays unidentified and lands on Generic with no caption, rather than being
+guessed at.
+
+Once a profile is written, the identity row gains a registry key and nothing else changes.
+See
 [`FORD-STATUS.md`](FORD-STATUS.md) for the research and what a truck scan session would need to
 establish before that profile can be written.
 

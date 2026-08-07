@@ -19,8 +19,10 @@ only age badly. Vehicle support moves when a car is available to scan.
   remaining stack is now a measured number rather than an estimate.
 
 ### Now
-- **Ford 6.7L Power Stroke (2017–22 Super Duty)** — researched, awaiting an
-  on-car scan. See [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md).
+- **Ford 6.7L Power Stroke (F-250/F-350)** — the dash now *identifies* these
+  trucks by VIN and names them on the boot splash, but still runs the Generic
+  profile. The enhanced PID map awaits an on-car scan. See
+  [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md).
 
 ### Next
 - **Promote the Audi Q5 and Jeep Wagoneer skeletons** to validated profiles.

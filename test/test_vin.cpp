@@ -164,6 +164,49 @@ int main() {
   check(vinAutoTarget("", true, "gm_sierra_lz0")==nullptr, "empty vin -> null");
   check(strcmp(vinAutoTarget("WA1ANAFY012345678", true, "gm_sierra_lz0"),"audi_q5")==0, "audi VIN + auto + different current -> key");
 
+  // ---- vinIdentify: naming a vehicle we cannot profile --------------------
+  // The point of separating identity from profile selection: the dash should
+  // say "Ford F-250 / 6.7L Power Stroke" while still running Generic gauges,
+  // rather than showing nothing because no profile exists.
+  const VinIdentity* id = vinIdentify("1FT7W2BT0N2345678");
+  check(id != nullptr, "F-250 VIN identifies");
+  check(id && id->profileKey == nullptr, "F-250 has NO profile key (identify-only)");
+  check(id && strcmp(id->name, "Ford F-250")==0, "F-250 name");
+  check(id && strcmp(id->engine, "6.7L Power Stroke")==0, "F-250 engine");
+  check(vinToProfileKey("1FT7W2BT0N2345678")==nullptr, "F-250 still selects no profile");
+
+  const VinIdentity* id350 = vinIdentify("1FT8W3BT0N2345678");
+  check(id350 && strcmp(id350->name, "Ford F-350")==0, "vin[3]=8 -> F-350, not F-250");
+  const VinIdentity* idmx = vinIdentify("3FT7W2BT0N2345678");
+  check(idmx && strcmp(idmx->name, "Ford F-250")==0, "3FT (Mexico-built) also identifies");
+
+  // Fail closed: the Super Duty predicate must not swallow the whole 1FT WMI.
+  check(vinIdentify("1FT7X2BT0N2345678")==nullptr, "1FT, vin[4]!='W' -> unidentified");
+  check(vinIdentify("1FT7W2B90N2345678")==nullptr, "1FT Super Duty frame, non-6.7 engine -> unidentified");
+  check(vinIdentify("1FT9W2BT0N2345678")==nullptr, "1FT, vin[3] not 7/8 -> unidentified");
+
+  // A profiled vehicle carries its key and needs no display name -- the
+  // profile itself supplies one.
+  const VinIdentity* gm = vinIdentify("3GTUUEE80S2345678");
+  check(gm && gm->profileKey && strcmp(gm->profileKey,"gm_sierra_lz0")==0, "GM identity carries the profile key");
+
+  // Two rows share the 1FT WMI and differ only in their predicate. A WMI match
+  // with a failing predicate must fall through to the next row, not stop the
+  // search -- otherwise whichever row is listed first wins for both trucks.
+  check(vinIdentify("1FT8W3BT0N2345678")!=nullptr, "second row under a shared WMI is reachable");
+
+  // ---- vinDisplayIdentity: what the splash should remember ----------------
+  // Only identify-only vehicles get a stored name. A PROFILED vehicle must
+  // return null so the caller CLEARS the stored strings -- otherwise moving the
+  // dash from a Ford to the Sierra would leave "Ford F-250" on the splash of a
+  // truck running the GM profile.
+  check(vinDisplayIdentity("1FT7W2BT0N2345678")!=nullptr, "unprofiled Ford -> store its name");
+  check(vinDisplayIdentity("3GTUUEE80S2345678")==nullptr, "profiled GM -> store nothing");
+  check(vinDisplayIdentity("JHM0123456789ABCD")==nullptr, "unknown VIN -> store nothing");
+  check(vinDisplayIdentity("")==nullptr, "empty VIN -> store nothing");
+  const VinIdentity* d = vinDisplayIdentity("1FT8W3BT0N2345678");
+  check(d && strcmp(d->name,"Ford F-350")==0, "stored name is the identified one");
+
   if (failures) { printf("%d FAILED\n", failures); return 1; }
   printf("test_vin: ALL PASS\n"); return 0;
 }

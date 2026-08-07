@@ -20,6 +20,12 @@ import pathlib
 # Synthetic test VINs — the ONLY VIN-shaped 17-char tokens allowed in the tree.
 ALLOWED_VINS = {
     "1GT0123456789ABCD",   # GM (test_vin, framework)
+    "1FT7W2BT0N2345678",   # Ford F-250 6.7 (test_vin)
+    "1FT8W3BT0N2345678",   # Ford F-350 6.7 (test_vin)
+    "3FT7W2BT0N2345678",   # Ford F-250 6.7, 3FT WMI (test_vin)
+    "1FT7X2BT0N2345678",   # Ford non-Super-Duty negative (test_vin)
+    "1FT7W2B90N2345678",   # Ford non-6.7 negative (test_vin)
+    "1FT9W2BT0N2345678",   # Ford bad vin[3] negative (test_vin)
     "WAU0123456789ABCD",   # Audi
     "WAU0123456789ABCE",   # Audi (variant)
     "WA10123456789ABCD",   # Audi (WA1 WMI-case test)
