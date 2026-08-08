@@ -23,3 +23,14 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci"
+
+  # The ClusterFuzzLite base image. This entry is what makes pinning that image
+  # by digest safe: without it a pinned FROM would freeze the fuzzing toolchain
+  # against an OSS-Fuzz platform that keeps moving. See the comment in
+  # .clusterfuzzlite/Dockerfile -- the two changes only make sense together.
+  - package-ecosystem: docker
+    directory: /.clusterfuzzlite
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
