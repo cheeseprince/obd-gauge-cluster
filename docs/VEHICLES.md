@@ -12,6 +12,23 @@ On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** 
 `1C4`/`1J4`/`3C4` → `jeep_ws`. An unrecognized WMI returns no match
 (`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic profile.
 
+### What a recognized-but-unprofiled vehicle actually shows
+
+Being identified adds **a caption, not a reading**. Concretely, a recognized Ford, Ram or GM
+pickup gets:
+
+| | |
+| :--- | :--- |
+| **Boot splash** | Make and model (e.g. "Ford F-250"), plus the engine where the code is unambiguous ("6.7L Power Stroke") |
+| **Gauges** | The **Generic** profile — 2 pages, 8 tiles: Rpm · Speed · Coolant · Load · Intake · Pedal · Maf · Volts |
+| **Alarm thresholds** | Generic defaults — **not** tuned for that vehicle |
+| **Enhanced parameters** | **None.** No transmission temp, EGT, DPF, regeneration, oil pressure, DEF or NOx |
+
+That is the whole difference. Enhanced parameters are manufacturer-specific and undocumented,
+so they can only be added by scanning the actual vehicle — see
+[`FORD-STATUS.md`](FORD-STATUS.md) for what such a session has to establish. Recognizing a truck
+from its VIN is offline work; reading its enhanced data is not.
+
 **Identity and profile selection are separate.** `vinIdentify()` answers "what is this
 vehicle", `vinToProfileKey()` answers "which gauge profile does it get", and a vehicle can be
 the first without being the second. That is the case for the Ford Super Duty below: the dash

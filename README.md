@@ -18,7 +18,9 @@ DEF level — over a cheap Bluetooth adapter on a small dashboard screen.
 One firmware image holds **every vehicle profile** and picks the right one automatically from the
 car's **VIN** on connect (with a **Pick Vehicle** menu override). It's **validated on a 2025 GM
 Sierra 1500 3.0L Duramax** (LZ0, Global B); a BMW 535i (F10), an Audi Q5 (2.0T) and a Jeep
-Wagoneer (5.7L Hemi) are skeleton profiles, and a Ford 6.7L Power Stroke is researched (see
+Wagoneer (5.7L Hemi) are skeleton profiles. The major US pickups — **Ford F-150 and Super Duty,
+Ram 1500/2500/3500, and Chevrolet/GMC 1500 and HD** — are **recognized by VIN and named on the
+boot splash**, but run the standard Mode-01 gauges rather than an enhanced profile (see
 [Vehicles it works on](#vehicles-it-works-on)).
 The enhanced parameters above are not standardized and no manufacturer publishes them, so adding
 a vehicle means discovering its PID map on the vehicle itself — the tooling for that is included
@@ -86,14 +88,33 @@ All profiles ship in one image; the firmware **auto-selects by VIN** on connect.
 VIN falls back to a generic Mode-01 profile, and **Settings → Pick Vehicle** overrides and locks
 the choice.
 
+There are **three tiers**, and the difference between the first two is worth being clear about:
+
+| Tier | What the dash does | What you see |
+| :--- | :--- | :--- |
+| ✅🟢🟡 **Profiled** | Reads manufacturer-specific (Mode 22 / UDS) parameters | 3–7 pages of enhanced stats — trans temp, DPF, EGT, regen… |
+| 🔵 **Recognized** | Names the vehicle on the boot splash | The **same 2 Generic pages** as any other vehicle |
+| ⚪ **Unknown** | Nothing vehicle-specific | 2 Generic pages, no caption |
+
+**Being recognized does not add any readings.** A recognized truck shows its make, model and
+engine on the boot splash and then runs the standard Mode-01 gauges — identifying a vehicle and
+knowing how to read its enhanced data are separate problems, and only the second one needs a
+scan on the actual vehicle.
+
 | Manufacturer | Model | Engine | Years | Pages | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPERATURES · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
 | BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟢 In use — scanned on-car, no reported errors; not tested as exhaustively as the Sierra — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
-| Ford | F-250/350 Super Duty | 6.7L Power Stroke | 2017–22 | — none yet | 🔬 Researched, needs a scan |
+| Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
+| Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | 2 — ENGINE · AIR | 🔵 Recognized — 2500/3500 not distinguished |
+| Ford | F-150 | *(engine not identified)* | 2010–23 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
+| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke · 6.2L · 7.3L V8 | 2011–26 | 2 — ENGINE · AIR | 🔵 Recognized · 🔬 Power Stroke profile researched, needs a scan — [details](docs/FORD-STATUS.md) |
+| GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
+| GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | 2 — ENGINE · AIR | 🔵 Recognized — 2500/3500 not distinguished |
 | GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real truck** |
 | Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–23 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
+| Ram | 1500 · 2500 · 3500 | 5.7L · 6.4L · 6.2L HEMI · 6.7L Cummins · 3.6L V6 · 3.0L EcoDiesel | 2013–24 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
 Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW
