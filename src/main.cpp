@@ -695,9 +695,10 @@ void loop() {
     // the dash naming the truck correctly. Writes only on change, so this is
     // one NVS write per vehicle swap, not one per frame.
     if (readings.vin[0] && !overlayOpen) {
-      const VinIdentity* det = vinDisplayIdentity(readings.vin);
-      const char* dn = det ? det->name   : "";
-      const char* de = det ? det->engine : "";
+      VinIdentity det{};
+      const bool named = vinDisplayIdentity(readings.vin, &det);
+      const char* dn = named ? det.name   : "";
+      const char* de = named ? det.engine : "";
       if (strcmp(settings.detectedName, dn) != 0) {
         strncpy(settings.detectedName, dn, sizeof settings.detectedName - 1);
         settings.detectedName[sizeof settings.detectedName - 1] = '\0';

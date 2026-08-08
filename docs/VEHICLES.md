@@ -20,6 +20,28 @@ nothing merely because no profile exists. The detected name is persisted so it s
 power cycle — the splash is drawn before the OBD link is up. The **strings** are stored, not
 the VIN.
 
+### How these patterns were verified
+
+Every pattern was derived from **NHTSA vPIC** (US Government, public domain) by decoding
+partial VINs — never guessed from a VIN-decoder blog. The method is a sweep: hold a known-good
+seed VIN, vary one position across the whole 33-character VIN alphabet, and record what Model,
+Series, Displacement and Fuel come back. A position whose value never changes the answer is
+noise and **must not** become a gate, because a needless gate silently rejects valid trucks.
+
+Two things that sweep caught, both of which had already shipped or nearly shipped:
+
+- **Reading the series from the wrong position.** The first Ford table used `vin[3]`, which
+  does not encode the series at all — `7`, `8`, `B` and `R` all decode as F-250. It appeared
+  to work only because real VINs happen to correlate `vin[3]` with the true series digit at
+  `vin[5]`.
+- **Trusting a one-position sweep.** Varying a single position gives an answer valid only for
+  that seed's other positions. "`vin[5]` is the series" holds for a Super Duty seed but breaks
+  against an F-150 seed, because positions 3–5 interact.
+
+vPIC also returns **self-contradictory results for under-specified partial VINs** (a `Model`
+of F-150 alongside a `Series` of "Super Duty — Dual Rear Wheel"). Model and Series agreeing is
+used as a validity check; where they disagree the combination is treated as unverified.
+
 **A WMI alone is often not enough.** A WMI identifies a manufacturer and a broad vehicle class,
 not an engine — so a row may carry an **optional extra predicate** over the full VIN. If that
 predicate fails, the row fails *closed* (`nullptr`) rather than falling through to another row:
@@ -165,32 +187,58 @@ Silverado.
 
 **Identified, but no profile ships yet — those are two different things.**
 
-A Super Duty 6.7L is recognized by VIN and the dash captions itself **"Ford F-250"** or
-**"Ford F-350" / "6.7L Power Stroke"** on the boot splash. It still runs the **Generic**
-profile: standard Mode-01 parameters populate, and the enhanced Power Stroke parameters
-(transmission temp, EGT, DPF, fuel rail pressure, DEF, NOx) do not exist in this firmware
-yet. Naming the truck is not the same as reading it — nothing here has been measured on a
-Power Stroke.
+A Super Duty or F-150 is recognized by VIN and the dash captions itself on the boot splash.
+It still runs the **Generic** profile: standard Mode-01 parameters populate, and the enhanced
+Power Stroke parameters (transmission temp, EGT, DPF, fuel rail pressure, DEF, NOx) do not
+exist in this firmware yet. Naming the truck is not the same as reading it — nothing here has
+been measured on a Power Stroke.
 
 | Positions | Meaning |
 | :--- | :--- |
 | `1FT` / `3FT` | Ford truck, US- or Mexico-built |
-| `vin[3]` = `7` / `8` | F-250 / F-350 |
-| `vin[4]` = `W` | Super Duty 4x4 |
-| `vin[6]` = `B`, `vin[7]` = `T` | 6.7L Power Stroke diesel |
+| `vin[5]` | **series** — `1`=F-150, `2`=F-250, `3`=F-350, `4`=F-450, `5`=F-550 |
+| `vin[7]` | engine (Super Duty only) — `T`=6.7L Power Stroke, `6`=6.2L V8, `N`=7.3L V8 |
 
-**No model-year gate.** Unlike the GM and Jeep rows, this pattern was verified stable across
-every year code from `B` (2011) through `W` (2028) — it has always meant an F-250/F-350 6.7,
-so gating on year would only reject valid trucks. Any other `1FT` — an F-150, a gas Super
-Duty, a Transit — stays unidentified and lands on Generic with no caption, rather than being
-guessed at.
+`vin[5]` is the series digit — position 6 in Ford's 1-indexed VDS layout. **`vin[3]`, `vin[4]`
+and `vin[6]` are deliberately not gated:** they encode a class code, the cab/body style and
+the drive type. An earlier version of this table read the series from `vin[3]` and required
+`vin[4]='W'` and `vin[6]='B'`, which rejected every 4x2 Super Duty and every cab style but
+one. See the note on verification below — that bug is why the method changed.
 
-Once a profile is written, the identity row gains a registry key and nothing else changes.
-See
-[`FORD-STATUS.md`](FORD-STATUS.md) for the research and what a truck scan session would need to
-establish before that profile can be written.
+**Engine codes are per line, not per make.** `vin[7]='T'` is a 6.7L Power Stroke on a Super
+Duty and a **3.5L EcoBoost** on an F-150. The F-150 therefore ships with **no engine string**:
+its codes are year-dependent and only sparsely confirmed, so the dash names the truck and says
+nothing about what is under the hood.
 
-## Jeep
+Verified spans: **Super Duty 2011–2026**, **F-150 2010–2023**. Outside those, unidentified.
+
+## Ram
+
+**Identified, no profile.** `1C6` / `3C6`, with `vin[4]='R'` as a **brand gate — the `1C6` WMI
+is shared with Jeep**, so without it a Grand Cherokee would be captioned as a pickup.
+
+| Positions | Meaning |
+| :--- | :--- |
+| `vin[5]` | series — `6`,`7`,`B`,`E`,`F`=1500 · `4`,`5`=2500 · `2`,`3`=3500 |
+| `vin[7]` | engine — `T`=5.7L HEMI · `L`=6.7L Cummins · `G`=3.6L V6 · `J`=6.4L HEMI · `9`=6.2L HEMI · `M`=3.0L EcoDiesel |
+
+The 1500 is a **set** of series codes, not one. Verified span: **2013–2024**.
+
+## Chevrolet / GMC (beyond the profiled Sierra)
+
+The Sierra 1500 3.0L Duramax has a full profile (above). Every other GM pickup in the verified
+span is **identified only** — named on the splash, running Generic gauges.
+
+| Line | Gate | Engine `vin[7]` | Verified |
+| :--- | :--- | :--- | :--- |
+| Sierra / Silverado **1500** | `vin[3]∈NPRUV`, `vin[4]∈HU` | `8`=3.0L Duramax · `D`=5.3L V8 · `K`=2.7L I4 Turbo · `L`=6.2L V8 | 2022–2026 |
+| Sierra / Silverado **HD** | `vin[3]∈0–5`, `vin[4]∈{8,9}` | `Y`=6.6L Duramax · `7`=6.6L V8 | 2020–2024 |
+
+**HD is not split into 2500 and 3500.** That distinction is a joint function of `vin[4]`+`vin[5]`
+which vPIC resolves for only 16 of 1,089 combinations — not enough to be confident, so the dash
+says "Sierra HD" and stops rather than guessing the tonnage.
+
+## Jeep## Jeep
 
 Ships as a skeleton profile (`src/vehicles/jeep_ws.cpp`), auto-detected by VIN (WMI
 `1C4`/`1J4`/`3C4`). Mapped from a **real on-car scan** of a **2022 Jeep Wagoneer (WS platform,

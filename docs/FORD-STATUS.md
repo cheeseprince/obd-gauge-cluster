@@ -8,9 +8,10 @@ date: "2026-07-21"
 
 **Ford is not supported yet. No Power Stroke has ever run this firmware.**
 
-Since 2026-08-06 the firmware does *recognize* an F-250/F-350 6.7 by VIN and names it on the
-boot splash — but it still runs the Generic profile. Recognition is not support: no enhanced
-PID in this document has been confirmed against a real truck.
+The firmware *recognizes* F-150 / F-250 / F-350 / F-450 / F-550 by VIN and names them on the
+boot splash — but they all still run the Generic profile. Recognition is not support: no
+enhanced PID in this document has been confirmed against a real truck. See
+[`VEHICLES.md`](VEHICLES.md) for the VIN pattern and the years it was verified over.
 
 Everything in the screenshots is a 2025 GMC Sierra 1500 3.0L Duramax (LZ0, Global B).
 The architecture is ready for a second vehicle — the PID table, decoders, thresholds,
