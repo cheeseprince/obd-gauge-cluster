@@ -93,28 +93,34 @@ There are **three tiers**, and the difference between the first two is worth bei
 | Tier | What the dash does | What you see |
 | :--- | :--- | :--- |
 | ✅🟢🟡 **Profiled** | Reads manufacturer-specific (Mode 22 / UDS) parameters | 3–7 pages of enhanced stats — trans temp, DPF, EGT, regen… |
-| 🔵 **Recognized** | Names the vehicle on the boot splash | The **same 2 Generic pages** as any other vehicle |
+| 🔵 **Recognized** | Names the vehicle, and picks a **Standard+** layout from the engine in its VIN | **3–4 pages** of legislated SAE J1979 parameters |
 | ⚪ **Unknown** | Nothing vehicle-specific | 2 Generic pages, no caption |
 
-**Being recognized does not add any readings.** A recognized truck shows its make, model and
-engine on the boot splash and then runs the standard Mode-01 gauges — identifying a vehicle and
-knowing how to read its enhanced data are separate problems, and only the second one needs a
-scan on the actual vehicle.
+**Recognized is not the same as profiled.** A recognized truck has never been scanned, so it gets
+**Standard+** — every parameter that SAE J1979 legislates (oil temp, EGT, fuel rate, torque,
+barometric, ambient, EGR, NOx…), laid out for the diesel or gas engine its VIN identifies. What
+it does *not* get is manufacturer-specific data — transmission temp, DPF differential pressure,
+regeneration state, DEF level — because those are undocumented and can only be discovered by
+scanning the vehicle itself.
+
+**Standard+ cannot show a wrong number.** A truck that doesn't support one of these PIDs answers
+NO DATA and the tile stays blank. Alarms are off on every Standard+ tile except coolant and
+volts, since no thresholds have been sourced for any of these vehicles.
 
 | Manufacturer | Model | Engine | Years | Pages | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPERATURES · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
 | BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟢 In use — scanned on-car, no reported errors; not tested as exhaustively as the Sierra — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
-| Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
-| Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | 2 — ENGINE · AIR | 🔵 Recognized — 2500/3500 not distinguished |
-| Ford | F-150 | *(engine not identified)* | 2010–23 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
-| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke · 6.2L · 7.3L V8 | 2011–26 | 2 — ENGINE · AIR | 🔵 Recognized · 🔬 Power Stroke profile researched, needs a scan — [details](docs/FORD-STATUS.md) |
-| GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
-| GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | 2 — ENGINE · AIR | 🔵 Recognized — 2500/3500 not distinguished |
+| Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
+| Ford | F-150 | *(engine not identified)* | 2010–23 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke · 6.2L · 7.3L V8 | 2011–26 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized · 🔬 enhanced Power Stroke profile still needs a scan — [details](docs/FORD-STATUS.md) |
+| GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
 | GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real truck** |
 | Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–23 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
-| Ram | 1500 · 2500 · 3500 | 5.7L · 6.4L · 6.2L HEMI · 6.7L Cummins · 3.6L V6 · 3.0L EcoDiesel | 2013–24 | 2 — ENGINE · AIR | 🔵 Recognized — named on the splash, Generic gauges |
+| Ram | 1500 · 2500 · 3500 | 5.7L · 6.4L · 6.2L HEMI · 6.7L Cummins · 3.6L V6 · 3.0L EcoDiesel | 2013–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
 Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW

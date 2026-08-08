@@ -337,7 +337,9 @@ static const char* profileKeyFor(const char* vin) {
 // EcoBoost on different lines).
 // ---------------------------------------------------------------------------
 struct SeriesRow { const char* codes; const char* name; };
-struct EngineRow { char code; const char* engine; };
+// `diesel` picks the Standard+ layout: EGT and NOx tiles only make sense on a
+// compression-ignition engine, and a gas truck would show them blank forever.
+struct EngineRow { char code; const char* engine; bool diesel; };
 
 static const SeriesRow FORD_SD_SERIES[] = {
   {"2","Ford F-250"}, {"3","Ford F-350"}, {"4","Ford F-450"}, {"5","Ford F-550"},
@@ -345,7 +347,7 @@ static const SeriesRow FORD_SD_SERIES[] = {
 // Engine codes are per LINE, not per make: 'T' is a 6.7L Power Stroke on a
 // Super Duty and a 3.5L EcoBoost on an F-150.
 static const EngineRow FORD_SD_ENGINES[] = {
-  {'T',"6.7L Power Stroke"}, {'6',"6.2L V8"}, {'N',"7.3L V8"},
+  {'T',"6.7L Power Stroke",true}, {'6',"6.2L V8",false}, {'N',"7.3L V8",false},
 };
 static const SeriesRow FORD_F150_SERIES[] = { {"1","Ford F-150"} };
 
@@ -355,14 +357,14 @@ static const SeriesRow RAM_SERIES[] = {
   {"67BEF","Ram 1500"}, {"45","Ram 2500"}, {"23","Ram 3500"},
 };
 static const EngineRow RAM_ENGINES[] = {
-  {'T',"5.7L HEMI V8"}, {'L',"6.7L Cummins I6"}, {'G',"3.6L V6"},
-  {'J',"6.4L HEMI V8"}, {'9',"6.2L HEMI V8"},   {'M',"3.0L EcoDiesel V6"},
+  {'T',"5.7L HEMI V8",false}, {'L',"6.7L Cummins I6",true}, {'G',"3.6L V6",false},
+  {'J',"6.4L HEMI V8",false}, {'9',"6.2L HEMI V8",false}, {'M',"3.0L EcoDiesel V6",true},
 };
 static const EngineRow GM_LD_ENGINES[] = {
-  {'8',"3.0L Duramax I6"}, {'D',"5.3L V8"}, {'K',"2.7L I4 Turbo"}, {'L',"6.2L V8"},
+  {'8',"3.0L Duramax I6",true}, {'D',"5.3L V8",false}, {'K',"2.7L I4 Turbo",false}, {'L',"6.2L V8",false},
 };
 static const EngineRow GM_HD_ENGINES[] = {
-  {'Y',"6.6L Duramax V8"}, {'7',"6.6L V8"},
+  {'Y',"6.6L Duramax V8",true}, {'7',"6.6L V8",false},
 };
 
 // Brand/platform gates. These sit at the LINE level so the series and engine
@@ -439,10 +441,20 @@ bool vinIdentify(const char* vin, VinIdentity* out) {
     // Engine is optional. An unrecognised code is "" (say nothing) rather than
     // a guess -- a wrong engine on the splash is worse than a missing one.
     const char* engine = "";
+    bool diesel = false;
     for (int i = 0; i < L.nEngines; ++i)
-      if (L.engines[i].code == vinAt(vin,7)) { engine = L.engines[i].engine; break; }
+      if (L.engines[i].code == vinAt(vin,7)) {
+        engine = L.engines[i].engine; diesel = L.engines[i].diesel; break;
+      }
 
-    out->profileKey = profileKeyFor(vin);
+    // A SCANNED profile always wins: it reads real enhanced parameters, and
+    // dropping such a truck to the legislated set would lose data we measured.
+    // Everything else gets Standard+ rather than bare Generic -- same legislated
+    // PIDs either way, but laid out for the engine we know it has. An engine we
+    // could not name falls back to the gas layout, because diesel-only tiles on
+    // a gas truck look broken while the reverse merely omits data.
+    const char* scanned = profileKeyFor(vin);
+    out->profileKey = scanned ? scanned : (diesel ? "std_diesel" : "std_gas");
     out->name = name;
     out->engine = engine;
     return true;
@@ -459,13 +471,21 @@ bool vinIdentify(const char* vin, VinIdentity* out) {
 }
 
 const char* vinToProfileKey(const char* vin) {
-  return profileKeyFor(vin);
+  // Goes through vinIdentify() rather than profileKeyFor() directly, because a
+  // recognized-but-unscanned truck resolves to Standard+ and that decision
+  // needs the engine code the identity lookup reads.
+  VinIdentity id{};
+  return vinIdentify(vin, &id) ? id.profileKey : nullptr;
 }
 
 bool vinDisplayIdentity(const char* vin, VinIdentity* out) {
   VinIdentity id{};
   if (!vinIdentify(vin, &id)) return false;
-  if (id.profileKey) return false;             // profiled -> its profile carries the name
+  // Standard+ is a LEGISLATED-PID profile, not a vehicle profile: its label is
+  // "Standard+ Diesel", so it cannot name the truck and the splash still needs
+  // the stored identity. Only a scanned, vehicle-specific profile carries a
+  // name of its own.
+  if (id.profileKey && std::strncmp(id.profileKey, "std_", 4) != 0) return false;
   if (!id.name || !id.name[0]) return false;   // identified but nothing worth showing
   *out = id;
   return true;

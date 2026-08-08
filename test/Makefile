@@ -50,16 +50,16 @@ BIN_PROFA = test_profile_audi
 SRC_PROFA = test_profile_audi.cpp ../src/readouts.cpp ../src/vehicles/audi_q5.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 BIN_PROFJ = test_profile_jeep
-SRC_PROFJ = test_profile_jeep.cpp ../src/readouts.cpp ../src/vehicles/jeep_ws.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
+SRC_PROFJ = test_profile_jeep.cpp ../src/readouts.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 BIN_VREG  = test_vehicle_registry
-SRC_VREG  = test_vehicle_registry.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
+SRC_VREG  = test_vehicle_registry.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
 
 BIN_WDTHB = test_wdt_heartbeat
 SRC_WDTHB = test_wdt_heartbeat.cpp
 
 BIN_VIN   = test_vin
-SRC_VIN   = test_vin.cpp ../src/vin.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
+SRC_VIN   = test_vin.cpp ../src/vin.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
 
 BIN_LAYOUT = test_layout
 SRC_LAYOUT = test_layout.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
