@@ -1,18 +1,18 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:0f3377bc-41cb-5199-bbdc-5743f72db804",
+  "serialNumber": "urn:uuid:93dfa1ad-b5d9-5053-be88-adaed84f31e3",
   "version": 1,
   "metadata": {
     "component": {
       "type": "firmware",
       "name": "crowpanel_obd",
-      "version": "v0.3.0",
+      "version": "v0.4.0",
       "description": "ESP32-S3 OBD-II gauge cluster firmware",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "7dc341149bc26b75f41f019d5596b80009619ec7f799f2c1b7d072a2e0299dc5"
+          "content": "3c803fa4a54a60a8f5af157a31c0c851935ab6240126890ec6f8053aec4ef3c3"
         }
       ],
       "externalReferences": [
@@ -500,7 +500,7 @@
     {
       "type": "library",
       "name": "NimBLE-Arduino",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "scope": "required",
       "properties": [
         {
@@ -513,7 +513,7 @@
         },
         {
           "name": "platformio:required-spec",
-          "value": "h2zero/NimBLE-Arduino @ 2.5.0"
+          "value": "h2zero/NimBLE-Arduino @ 2.5.1"
         }
       ],
       "licenses": [
