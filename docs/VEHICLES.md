@@ -12,6 +12,67 @@ On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** 
 `1C4`/`1J4`/`3C4` → `jeep_ws`. An unrecognized WMI returns no match
 (`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic profile.
 
+### What a recognized-but-unprofiled vehicle actually shows
+
+Being identified adds **a caption, not a reading**. Concretely, a recognized Ford, Ram or GM
+pickup gets:
+
+| | |
+| :--- | :--- |
+| **Boot splash** | Make and model (e.g. "Ford F-250"), plus the engine where the code is unambiguous ("6.7L Power Stroke") |
+| **Gauges** | **Standard+** — every parameter SAE J1979 legislates, in a diesel or gas layout chosen from the VIN's engine code |
+| **Alarm thresholds** | Off on every tile except coolant and volts — no thresholds have been sourced for these vehicles |
+| **Manufacturer-specific data** | **None.** No transmission temp, DPF differential pressure, regeneration state or DEF level |
+
+## Standard+
+
+`src/vehicles/standard_plus.cpp`. Two profiles (`std_diesel`, `std_gas`) sharing one readout
+table — the PID set is identical, only the pages differ.
+
+| Page | Diesel | Gas |
+| :--- | :--- | :--- |
+| ENGINE | Rpm · Speed · Coolant · Load | Rpm · Speed · Coolant · Load |
+| THERMAL | Oil · EGT · Intake · Ambient | Oil · Intake · Ambient · Baro |
+| POWER | ActTq · RefTq · FuelRate · Rail | ActTq · FuelRate · Maf · Volts |
+| AIR | Baro · EGR · NOx · Volts | — |
+
+| PID | Parameter | Scaling (from the standard) |
+| :--- | :--- | :--- |
+| `015C` | Engine oil temperature | `A − 40` °C |
+| `0178` | Exhaust gas temperature | `(A·256+B)/10 − 40` °C per sensor |
+| `015E` | Engine fuel rate | `(A·256+B)/20` L/h |
+| `0123` | Fuel rail gauge pressure | `(A·256+B)·10` kPa |
+| `0162` | Actual engine percent torque | `A − 125` % |
+| `0163` | Engine reference torque | `A·256+B` N·m |
+| `0133` | Absolute barometric pressure | `A` kPa |
+| `0146` | Ambient air temperature | `A − 40` °C |
+| `012C` | Commanded EGR | `A·100/255` % |
+| `0183` | NOx sensor | `(B·256+C)` ppm |
+
+**Why this is allowed to exist without a scan.** Every other profile in `src/vehicles/` was
+built from a real vehicle — see the header of `jeep_ws.cpp`. Standard+ is different in kind:
+these are *legislated* PIDs whose scaling is defined by SAE J1979, not manufacturer-specific
+DIDs and not guesses. The decoders are the same ones already proven against the Sierra.
+
+**It cannot show a wrong number.** A vehicle that does not support a PID answers NO DATA and the
+tile stays blank. Blank is honest; a wrong reading is not. So listing a PID a given truck lacks
+costs an empty tile, never a misleading one — which is exactly why an unscanned vehicle may
+safely be given this profile and may not be given an invented one.
+
+**Diesel vs gas comes from `vin[7]`**, the engine code the identity lookup already reads. An
+engine we could not name falls back to the gas layout: diesel-only tiles on a gas truck look
+broken, while the reverse merely omits data the truck does not have.
+
+**A scanned profile always wins.** A Sierra 1500 3.0L Duramax keeps `gm_sierra_lz0`; only
+vehicles with no scanned profile fall through to Standard+. One consequence worth noting: a
+**gas** Sierra now moves *off* the Duramax profile onto Standard+ gas, where previously it was
+left alone. That is a deliberate improvement — the Duramax profile's enhanced tiles can never
+populate on a gas engine.
+
+⚠️ **Not hardware-validated.** Standard+ is verified by host tests and builds, but no Ford, Ram
+or gas/HD GM truck has yet run it. Which of these PIDs a given truck actually answers is
+unknown until someone plugs one in — the tiles that go blank are the ones to report.
+
 **Identity and profile selection are separate.** `vinIdentify()` answers "what is this
 vehicle", `vinToProfileKey()` answers "which gauge profile does it get", and a vehicle can be
 the first without being the second. That is the case for the Ford Super Duty below: the dash

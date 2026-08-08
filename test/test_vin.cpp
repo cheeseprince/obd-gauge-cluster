@@ -94,9 +94,9 @@ int main() {
   check(strcmp(vinToProfileKey("3GTUUEE80S2345678"),"gm_sierra_lz0")==0, "3GT LZ0 diesel -> gm");
   check(strcmp(vinToProfileKey("1GTUUEE80S2345678"),"gm_sierra_lz0")==0, "1GT LZ0 diesel -> gm");
   check(strcmp(vinToProfileKey("3gtuuee80s2345678"),"gm_sierra_lz0")==0, "LZ0 -> gm (case)");
-  check(vinToProfileKey("3GTUUEED0S2345678")==nullptr, "L84 5.3 gas, same WMI -> null");
-  check(vinToProfileKey("3GTUUEEL0S2345678")==nullptr, "L87 6.2 gas, same WMI -> null");
-  check(vinToProfileKey("3GTUUEEK0S2345678")==nullptr, "L3B 2.7 gas, same WMI -> null");
+  check(strcmp(vinToProfileKey("3GTUUEED0S2345678"),"std_gas")==0, "L84 5.3 gas -> Standard+ gas, NOT the Duramax profile");
+  check(strcmp(vinToProfileKey("3GTUUEEL0S2345678"),"std_gas")==0, "L87 6.2 gas -> Standard+ gas");
+  check(strcmp(vinToProfileKey("3GTUUEEK0S2345678"),"std_gas")==0, "L3B 2.7 gas -> Standard+ gas");
   check(vinToProfileKey("3GTU8EEE0S2345678")==nullptr, "Sierra HD (vin[4] not H/U) -> null");
   check(vinToProfileKey("1GT0123456789ABCD")==nullptr, "GM WMI but non-1500 pattern -> null");
   check(vinToProfileKey("1GTUUEE")==nullptr, "GM WMI but too short to read vin[7] -> null");
@@ -154,12 +154,18 @@ int main() {
   check(strcmp(vinAutoTarget("3GTUUEE80S2345678", true, ""),"gm_sierra_lz0")==0, "auto+changed -> key");
   check(vinAutoTarget("3GTUUEE80S2345678", true, "gm_sierra_lz0")==nullptr, "already current -> null");
   check(vinAutoTarget("3GTUUEE80S2345678", false, "")==nullptr, "auto off -> null");
-  // Fail CLOSED, and fail QUIETLY: a VIN whose key is now nullptr (a gas 1500 on
-  // a GM truck WMI) must leave the active profile exactly as it was, not reset it
-  // to generic and not swap it. vinAutoTarget returning nullptr is what the caller
-  // reads as "leave the current profile alone".
-  check(vinAutoTarget("3GTUUEED0S2345678", true, "gm_sierra_lz0")==nullptr, "gas GM VIN -> leave current profile alone");
-  check(vinAutoTarget("3GTUUEED0S2345678", true, "audi_q5")==nullptr, "gas GM VIN -> no change even from a foreign current");
+  // A gas 1500 on a GM truck WMI USED to return nullptr -- "we cannot tell what
+  // this is, so leave the active profile alone". That rationale is gone: we can
+  // now tell exactly what it is, and Standard+ gas is the right home for it. So
+  // the correct behaviour flipped from "leave alone" to "switch", and switching
+  // is the safer of the two -- it takes a gas truck OFF a Duramax profile whose
+  // enhanced tiles it can never populate.
+  check(strcmp(vinAutoTarget("3GTUUEED0S2345678", true, "gm_sierra_lz0"),"std_gas")==0,
+        "gas GM VIN moves OFF the Duramax profile to Standard+ gas");
+  check(strcmp(vinAutoTarget("3GTUUEED0S2345678", true, "audi_q5"),"std_gas")==0,
+        "gas GM VIN switches even from a foreign current profile");
+  check(vinAutoTarget("3GTUUEED0S2345678", true, "std_gas")==nullptr,
+        "already on Standard+ gas -> no reboot loop");
   check(vinAutoTarget("JHM0123456789ABCD", true, "")==nullptr, "unmapped -> null");
   check(vinAutoTarget("", true, "gm_sierra_lz0")==nullptr, "empty vin -> null");
   check(strcmp(vinAutoTarget("WA1ANAFY012345678", true, "gm_sierra_lz0"),"audi_q5")==0, "audi VIN + auto + different current -> key");
@@ -170,10 +176,13 @@ int main() {
   // rather than showing nothing because no profile exists.
   VinIdentity id{};
   check(vinIdentify("1FT7W2BT0N2345678", &id), "F-250 VIN identifies");
-  check(id.profileKey == nullptr, "F-250 has NO profile key (identify-only)");
+  // Not nullptr any more: an unscanned truck now gets Standard+ (the legislated
+  // Mode-01 set) rather than bare Generic. What it still does NOT get is a
+  // scanned, vehicle-specific profile.
+  check(id.profileKey && strcmp(id.profileKey,"std_diesel")==0, "F-250 -> Standard+ diesel");
   check(strcmp(id.name, "Ford F-250")==0, "F-250 name");
   check(strcmp(id.engine, "6.7L Power Stroke")==0, "F-250 engine");
-  check(vinToProfileKey("1FT7W2BT0N2345678")==nullptr, "F-250 still selects no profile");
+  check(strcmp(vinToProfileKey("1FT7W2BT0N2345678"),"std_diesel")==0, "F-250 selects Standard+");
 
   // A failed identify must not scribble on the caller's struct -- callers copy
   // out of it and a partial write would leak the previous vehicle's name.
@@ -273,6 +282,45 @@ int main() {
   check(!vinDisplayIdentity("", &d), "empty VIN -> store nothing");
   check(vinDisplayIdentity("1FT8W3BT0N2345678", &d) && strcmp(d.name,"Ford F-350")==0,
         "stored name is the identified one");
+
+  // ---- Standard+ selection: a richer profile for unscanned trucks ---------
+  // Recognized-but-unscanned trucks get the legislated Mode-01 set instead of
+  // bare Generic, chosen by the ENGINE code -- the same vin[7] the identity
+  // lookup already reads. Diesel-only tiles on a gas truck would sit blank
+  // forever, so the two layouts are separate.
+  struct StdCase { const char* vin; const char* key; const char* why; };
+  static const StdCase STD[] = {
+    {"1FT7W2BT0N2345678", "std_diesel", "F-250 6.7 Power Stroke -> diesel"},
+    {"1FT7A2A60N2345678", "std_gas",    "F-250 6.2 V8 -> gas"},
+    {"1FT7A2AN0N2345678", "std_gas",    "F-250 7.3 V8 -> gas"},
+    {"1FTFW1ET0L2345678", "std_gas",    "F-150 unknown engine -> gas fallback"},
+    {"1C6SR4FL0L2345678", "std_diesel", "Ram 2500 Cummins -> diesel"},
+    {"1C6SR6FT0L2345678", "std_gas",    "Ram 1500 HEMI -> gas"},
+    {"1GTUUEED0S2345678", "std_gas",    "Sierra 1500 5.3 V8 -> gas"},
+    {"1GT49PEY0N2345678", "std_diesel", "Sierra HD 6.6 Duramax -> diesel"},
+    {"1GC49PE70N2345678", "std_gas",    "Silverado HD 6.6 gas -> gas"},
+  };
+  for (const auto& c : STD) {
+    VinIdentity v{};
+    check(vinIdentify(c.vin, &v) && v.profileKey && strcmp(v.profileKey, c.key)==0, c.why);
+    const char* k = vinToProfileKey(c.vin);   // may be null -- guard, do not strcmp it
+    check(k && strcmp(k, c.key)==0, "vinToProfileKey agrees");
+  }
+
+  // A SCANNED profile always wins over Standard+ -- the Sierra 3.0 Duramax has
+  // real enhanced parameters and must not be downgraded to the legislated set.
+  check(strcmp(vinToProfileKey("3GTUUEE80S2345678"),"gm_sierra_lz0")==0,
+        "scanned profile beats Standard+");
+
+  // Standard+ does NOT name the vehicle (its label is "Standard+ Diesel"), so
+  // the splash still needs the stored identity -- unlike a scanned profile,
+  // which carries its own name.
+  VinIdentity sp{};
+  check(vinDisplayIdentity("1FT7W2BT0N2345678", &sp) && strcmp(sp.name,"Ford F-250")==0,
+        "Standard+ truck still stores its name for the splash");
+  check(!vinDisplayIdentity("3GTUUEE80S2345678", &sp),
+        "scanned profile still stores nothing");
+
 
   if (failures) { printf("%d FAILED\n", failures); return 1; }
   printf("test_vin: ALL PASS\n"); return 0;
