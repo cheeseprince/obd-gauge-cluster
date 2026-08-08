@@ -70,6 +70,28 @@ ALLOWED_VINS = {
     "1C4SJVBT0P2345678",   # Wagoneer 5.7 MY2023          -> jeep_ws
     "1C4SJVBT0T2345678",   # MY2026 is Grand Wagoneer     -> nullptr
     "1J4SJVBT0N2345678",   # 1J4 is not a Wagoneer WMI    -> nullptr
+    "1C40123456789ABCD",   # synthetic (test_vin)
+    "1C6SJ6FT0L2345678",   # synthetic (test_vin)
+    "1C6SR2FL0L2345678",   # synthetic (test_vin)
+    "1C6SR4FL0L2345678",   # synthetic (test_vin)
+    "1C6SR6FJ0L2345678",   # synthetic (test_vin)
+    "1C6SR6FT0C2345678",   # synthetic (test_vin)
+    "1C6SR6FT0L2345678",   # synthetic (test_vin)
+    "1FT7A2A60N2345678",   # synthetic (test_vin)
+    "1FT7A2AN0N2345678",   # synthetic (test_vin)
+    "1FT7W2BT0A2345678",   # synthetic (test_vin)
+    "1FT7W2BT0T2345678",   # synthetic (test_vin)
+    "1FTAA2AT0N2345678",   # synthetic (test_vin)
+    "1FTAA4AT0N2345678",   # synthetic (test_vin)
+    "1FTAA5AT0N2345678",   # synthetic (test_vin)
+    "1FTFW1ET0L2345678",   # synthetic (test_vin)
+    "1FTZZ3ZT0N2345678",   # synthetic (test_vin)
+    "1GC49PE70N2345678",   # synthetic (test_vin)
+    "1GCUUEEK0S2345678",   # synthetic (test_vin)
+    "1GT49PEY0N2345678",   # synthetic (test_vin)
+    "1GT49PEY0S2345678",   # synthetic (test_vin)
+    "1GTUUEED0S2345678",   # synthetic (test_vin)
+    "3C6SR6FG0L2345678",   # synthetic (test_vin)
 }
 
 # A VIN token excludes I/O/Q; a hex hash never has a letter past A-F, so requiring

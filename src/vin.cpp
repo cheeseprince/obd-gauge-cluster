@@ -273,49 +273,39 @@ static bool fordSuperDuty67(const char* vin) {
 static bool fordF250(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '7'; }
 static bool fordF350(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '8'; }
 
-const VinIdentity* vinIdentify(const char* vin) {
+// ---------------------------------------------------------------------------
+// PROFILE lookup: which gauge profile, if any, this VIN gets. Unchanged in
+// spirit from the original table -- a strict, fail-closed match, because
+// handing the wrong profile to a truck shows wrong numbers on real gauges.
+// ---------------------------------------------------------------------------
+static const char* profileKeyFor(const char* vin) {
   if (!vin || std::strlen(vin) < 3) return nullptr;
   char w[4] = { (char)std::toupper((unsigned char)vin[0]),
                 (char)std::toupper((unsigned char)vin[1]),
                 (char)std::toupper((unsigned char)vin[2]), '\0' };
-  // `extra` is optional: nullptr means the row matches on WMI alone. The
-  // BMW/Audi/Jeep rows are still WMI-only and can be tightened the same way when
-  // someone works out their discriminators.
-  // A row is (WMI, optional predicate) -> identity. `key` may be nullptr: that
-  // is a vehicle we can NAME but have no profile for, which is the whole reason
-  // identity and profile selection are separate.
-  // The identity is stored IN the row, and callers get a pointer to that const
-  // row. An earlier draft filled a function-local `static VinIdentity` and
-  // returned its address -- a shared mutable static, which is the exact pattern
-  // ObdSource::latest() documents avoiding. Two callers would have shared one
-  // object.
-  struct M { const char* wmi; bool (*extra)(const char* vin); VinIdentity id; };
+  struct M { const char* wmi; bool (*extra)(const char* vin); const char* key; };
   static const M MAP[] = {
-    {"1GT",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},{"3GT",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},
-    {"1GC",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},{"3GC",gmSierra1500Diesel,{"gm_sierra_lz0",nullptr,nullptr}},
+    {"1GT",gmSierra1500Diesel,"gm_sierra_lz0"},{"3GT",gmSierra1500Diesel,"gm_sierra_lz0"},
+    {"1GC",gmSierra1500Diesel,"gm_sierra_lz0"},{"3GC",gmSierra1500Diesel,"gm_sierra_lz0"},
     // BMW. The predicate is the F10 535i frame, so the other WMIs (M cars, the
     // X-series SAVs) fail closed rather than being handed an N55 sedan profile.
-    {"WBA",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}}, {"WBS",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}},
-    {"5UX",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}}, {"4US",bmwF10535i,{"bmw_f10_535i",nullptr,nullptr}},
-    {"WAU",audiQ5_20T,{"audi_q5",nullptr,nullptr}}, {"WA1",audiQ5_20T,{"audi_q5",nullptr,nullptr}},
-    {"WUA",audiQ5_20T,{"audi_q5",nullptr,nullptr}}, {"TRU",audiQ5_20T,{"audi_q5",nullptr,nullptr}},
+    {"WBA",bmwF10535i,"bmw_f10_535i"}, {"WBS",bmwF10535i,"bmw_f10_535i"},
+    {"5UX",bmwF10535i,"bmw_f10_535i"}, {"4US",bmwF10535i,"bmw_f10_535i"},
+    {"WAU",audiQ5_20T,"audi_q5"}, {"WA1",audiQ5_20T,"audi_q5"},
+    {"WUA",audiQ5_20T,"audi_q5"}, {"TRU",audiQ5_20T,"audi_q5"},
     // Stellantis — see jeepWagoneer57() for why the WMI alone was dangerous here.
     // 1C4 ONLY. 1J4 and 3C4 were here and are removed: vPIC resolves 1J4 at the
     // Wagoneer-era year codes to a 1992-96 Cherokee (year codes repeat every 30
     // years, so the gate above cannot separate them), and 3C4 produces no
     // vehicle at all at those codes. Both offered false positives and matched
     // nothing real.
-    {"1C4",jeepWagoneer57,{"jeep_ws",nullptr,nullptr}},
+    {"1C4",jeepWagoneer57,"jeep_ws"},
     // FORD SUPER DUTY 6.7L POWER STROKE — IDENTIFIED, NOT PROFILED.
     // key is nullptr on purpose: docs/FORD-STATUS.md has the research but no
     // scan, so the dash stays on Generic and simply says what the truck is
     // instead of pretending it does not know. Fill in the key when a profile
     // lands; nothing else here changes.
-    {"1FT", fordF250, {nullptr, "Ford F-250", "6.7L Power Stroke"}},
-    {"1FT", fordF350, {nullptr, "Ford F-350", "6.7L Power Stroke"}},
-    {"3FT", fordF250, {nullptr, "Ford F-250", "6.7L Power Stroke"}},
-    {"3FT", fordF350, {nullptr, "Ford F-350", "6.7L Power Stroke"}},
-  };
+                  };
   // First matching row wins. Two rows may share a WMI (the F-250 and F-350
   // predicates both live under 1FT and differ only at vin[3]), so the predicate
   // — not the WMI — decides, and a row whose predicate fails must fall through
@@ -323,20 +313,162 @@ const VinIdentity* vinIdentify(const char* vin) {
   for (const M& m : MAP) {
     if (std::strcmp(w, m.wmi) != 0) continue;
     if (m.extra && !m.extra(vin)) continue;
-    return &m.id;
+    return m.key;
   }
   return nullptr;
 }
 
-const VinIdentity* vinDisplayIdentity(const char* vin) {
-  const VinIdentity* id = vinIdentify(vin);
-  if (!id || id->profileKey) return nullptr;   // unknown, or profiled -> nothing to store
-  return id;
+// ---------------------------------------------------------------------------
+// IDENTIFICATION layer: what the truck IS, which is a broader question than
+// which profile it gets. Naming a truck wrongly costs a wrong caption; giving
+// it the wrong profile costs wrong gauge readings. So this table is allowed to
+// cover vehicles the profile table refuses.
+//
+// Structure, derived from NHTSA vPIC by decoding partial VINs (see
+// docs/VEHICLES.md): every make encodes its model line and its engine at
+// DIFFERENT VIN positions, so they get separate lookups rather than one row per
+// (model, engine) pair -- which would have meant ~40 rows of duplicated engine
+// strings.
+//
+// Each line is bounded to the model years vPIC actually confirmed. Outside that
+// span we return nothing rather than assume the pattern held: positional rules
+// are not unique across 20 years (the GM rule once also matched an Express van,
+// and Ford reused engine code 'T' for both a 6.7L Power Stroke and a 3.5L
+// EcoBoost on different lines).
+// ---------------------------------------------------------------------------
+struct SeriesRow { const char* codes; const char* name; };
+struct EngineRow { char code; const char* engine; };
+
+static const SeriesRow FORD_SD_SERIES[] = {
+  {"2","Ford F-250"}, {"3","Ford F-350"}, {"4","Ford F-450"}, {"5","Ford F-550"},
+};
+// Engine codes are per LINE, not per make: 'T' is a 6.7L Power Stroke on a
+// Super Duty and a 3.5L EcoBoost on an F-150.
+static const EngineRow FORD_SD_ENGINES[] = {
+  {'T',"6.7L Power Stroke"}, {'6',"6.2L V8"}, {'N',"7.3L V8"},
+};
+static const SeriesRow FORD_F150_SERIES[] = { {"1","Ford F-150"} };
+
+// Ram 1500 uses a SET of series codes, not one -- vPIC decodes 6,7,B,E and F
+// all as 1500.
+static const SeriesRow RAM_SERIES[] = {
+  {"67BEF","Ram 1500"}, {"45","Ram 2500"}, {"23","Ram 3500"},
+};
+static const EngineRow RAM_ENGINES[] = {
+  {'T',"5.7L HEMI V8"}, {'L',"6.7L Cummins I6"}, {'G',"3.6L V6"},
+  {'J',"6.4L HEMI V8"}, {'9',"6.2L HEMI V8"},   {'M',"3.0L EcoDiesel V6"},
+};
+static const EngineRow GM_LD_ENGINES[] = {
+  {'8',"3.0L Duramax I6"}, {'D',"5.3L V8"}, {'K',"2.7L I4 Turbo"}, {'L',"6.2L V8"},
+};
+static const EngineRow GM_HD_ENGINES[] = {
+  {'Y',"6.6L Duramax V8"}, {'7',"6.6L V8"},
+};
+
+// Brand/platform gates. These sit at the LINE level so the series and engine
+// lookups below can stay dumb table scans.
+static bool ramBrand(const char* vin)  { return vinAt(vin,4) == 'R'; }   // 1C6 is shared with Jeep
+static bool gmLightDuty(const char* vin) {
+  return vinIs("NPRUV", vinAt(vin,3)) && vinIs("HU", vinAt(vin,4));
+}
+static bool gmHeavyDuty(const char* vin) {
+  // vin[4] 8/9 and vin[3] 0-5 mark the HD chassis. The 2500-vs-3500 split is a
+  // JOINT function of vin[4]+vin[5] that vPIC only resolves for 16 of 1089
+  // combinations, so we name the line and stop rather than guess the tonnage.
+  return vinIs("012345", vinAt(vin,3)) && vinIs("89", vinAt(vin,4));
+}
+
+struct LineRow {
+  const char* wmi;
+  const char* yearCodes;          // vin[9], the VERIFIED span only
+  bool (*guard)(const char* vin); // brand/platform gate, or nullptr
+  int seriesIdx;                  // VIN index holding the series code; -1 = fixed name
+  const SeriesRow* series; int nSeries;
+  const char* fixedName;          // used when seriesIdx < 0
+  const EngineRow* engines; int nEngines;
+};
+
+#define ARR(x) x, (int)(sizeof(x)/sizeof((x)[0]))
+
+static const LineRow LINES[] = {
+  // Ford Super Duty -- verified 2011-2026.
+  {"1FT","BCDEFGHJKLMNPRST",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES)},
+  {"3FT","BCDEFGHJKLMNPRST",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES)},
+  // Ford F-150 -- verified 2010-2023. No engine table on purpose: the codes are
+  // year-dependent on this line and only sparsely confirmed, so we name the
+  // truck and say nothing about what is under the hood.
+  {"1FT","ABCDEFGHJKLMNP",nullptr,5,ARR(FORD_F150_SERIES),nullptr,nullptr,0},
+  {"3FT","ABCDEFGHJKLMNP",nullptr,5,ARR(FORD_F150_SERIES),nullptr,nullptr,0},
+  // Ram -- verified 2013-2024.
+  {"1C6","DEFGHJKLMNPR",ramBrand,5,ARR(RAM_SERIES),nullptr,ARR(RAM_ENGINES)},
+  {"3C6","DEFGHJKLMNPR",ramBrand,5,ARR(RAM_SERIES),nullptr,ARR(RAM_ENGINES)},
+  // GM light duty -- verified 2022-2026.
+  {"1GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},
+  {"3GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},
+  {"1GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
+  {"3GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
+  // GM heavy duty -- verified 2020-2024.
+  {"1GT","LMNPR",gmHeavyDuty,-1,nullptr,0,"GMC Sierra HD",ARR(GM_HD_ENGINES)},
+  {"3GT","LMNPR",gmHeavyDuty,-1,nullptr,0,"GMC Sierra HD",ARR(GM_HD_ENGINES)},
+  {"1GC","LMNPR",gmHeavyDuty,-1,nullptr,0,"Chevrolet Silverado HD",ARR(GM_HD_ENGINES)},
+  {"3GC","LMNPR",gmHeavyDuty,-1,nullptr,0,"Chevrolet Silverado HD",ARR(GM_HD_ENGINES)},
+};
+
+#undef ARR
+
+bool vinIdentify(const char* vin, VinIdentity* out) {
+  if (!vin || !out || std::strlen(vin) < 10) return false;
+  char w[4] = { (char)std::toupper((unsigned char)vin[0]),
+                (char)std::toupper((unsigned char)vin[1]),
+                (char)std::toupper((unsigned char)vin[2]), '\0' };
+
+  for (const LineRow& L : LINES) {
+    if (std::strcmp(w, L.wmi) != 0) continue;
+    if (!vinIs(L.yearCodes, vinAt(vin,9))) continue;   // outside the verified span
+    if (L.guard && !L.guard(vin)) continue;
+
+    const char* name = L.fixedName;
+    if (L.seriesIdx >= 0) {
+      name = nullptr;
+      const char code = vinAt(vin, L.seriesIdx);
+      for (int i = 0; i < L.nSeries; ++i)
+        if (vinIs(L.series[i].codes, code)) { name = L.series[i].name; break; }
+      if (!name) continue;        // a series we do not recognise: try the next line
+    }
+
+    // Engine is optional. An unrecognised code is "" (say nothing) rather than
+    // a guess -- a wrong engine on the splash is worse than a missing one.
+    const char* engine = "";
+    for (int i = 0; i < L.nEngines; ++i)
+      if (L.engines[i].code == vinAt(vin,7)) { engine = L.engines[i].engine; break; }
+
+    out->profileKey = profileKeyFor(vin);
+    out->name = name;
+    out->engine = engine;
+    return true;
+  }
+
+  // Not in the identification table, but the profile table may still know it
+  // (BMW, Audi, Jeep). Those carry no display name -- their profile supplies
+  // one -- so name and engine are empty and only the key is meaningful.
+  if (const char* key = profileKeyFor(vin)) {
+    out->profileKey = key; out->name = ""; out->engine = "";
+    return true;
+  }
+  return false;
 }
 
 const char* vinToProfileKey(const char* vin) {
-  const VinIdentity* id = vinIdentify(vin);
-  return id ? id->profileKey : nullptr;
+  return profileKeyFor(vin);
+}
+
+bool vinDisplayIdentity(const char* vin, VinIdentity* out) {
+  VinIdentity id{};
+  if (!vinIdentify(vin, &id)) return false;
+  if (id.profileKey) return false;             // profiled -> its profile carries the name
+  if (!id.name || !id.name[0]) return false;   // identified but nothing worth showing
+  *out = id;
+  return true;
 }
 
 const char* vinAutoTarget(const char* vin, bool vehicleAuto, const char* currentKey) {

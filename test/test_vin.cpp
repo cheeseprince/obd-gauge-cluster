@@ -168,44 +168,111 @@ int main() {
   // The point of separating identity from profile selection: the dash should
   // say "Ford F-250 / 6.7L Power Stroke" while still running Generic gauges,
   // rather than showing nothing because no profile exists.
-  const VinIdentity* id = vinIdentify("1FT7W2BT0N2345678");
-  check(id != nullptr, "F-250 VIN identifies");
-  check(id && id->profileKey == nullptr, "F-250 has NO profile key (identify-only)");
-  check(id && strcmp(id->name, "Ford F-250")==0, "F-250 name");
-  check(id && strcmp(id->engine, "6.7L Power Stroke")==0, "F-250 engine");
+  VinIdentity id{};
+  check(vinIdentify("1FT7W2BT0N2345678", &id), "F-250 VIN identifies");
+  check(id.profileKey == nullptr, "F-250 has NO profile key (identify-only)");
+  check(strcmp(id.name, "Ford F-250")==0, "F-250 name");
+  check(strcmp(id.engine, "6.7L Power Stroke")==0, "F-250 engine");
   check(vinToProfileKey("1FT7W2BT0N2345678")==nullptr, "F-250 still selects no profile");
 
-  const VinIdentity* id350 = vinIdentify("1FT8W3BT0N2345678");
-  check(id350 && strcmp(id350->name, "Ford F-350")==0, "vin[3]=8 -> F-350, not F-250");
-  const VinIdentity* idmx = vinIdentify("3FT7W2BT0N2345678");
-  check(idmx && strcmp(idmx->name, "Ford F-250")==0, "3FT (Mexico-built) also identifies");
+  // A failed identify must not scribble on the caller's struct -- callers copy
+  // out of it and a partial write would leak the previous vehicle's name.
+  VinIdentity keep{ (const char*)1, "PREV", "PREVENG" };
+  check(!vinIdentify("JHM0123456789ABCD", &keep), "unknown WMI -> false");
+  check(strcmp(keep.name,"PREV")==0 && strcmp(keep.engine,"PREVENG")==0,
+        "failed identify leaves *out untouched");
 
-  // Fail closed: the Super Duty predicate must not swallow the whole 1FT WMI.
-  check(vinIdentify("1FT7X2BT0N2345678")==nullptr, "1FT, vin[4]!='W' -> unidentified");
-  check(vinIdentify("1FT7W2B90N2345678")==nullptr, "1FT Super Duty frame, non-6.7 engine -> unidentified");
-  check(vinIdentify("1FT9W2BT0N2345678")==nullptr, "1FT, vin[3] not 7/8 -> unidentified");
+  // ---- Ford: series at vin[5], engine at vin[7] ---------------------------
+  // vin[5] is the series digit (Ford's published VDS layout, position 6
+  // 1-indexed) and vin[3] is NOT -- an earlier version of this table read the
+  // series from vin[3] and gated on vin[4]/vin[6], which encode cab and drive
+  // type, so it rejected every 4x2 Super Duty and every other cab style.
+  struct FordCase { const char* vin; const char* name; const char* engine; };
+  static const FordCase FORD[] = {
+    {"1FT7W2BT0N2345678", "Ford F-250", "6.7L Power Stroke"},
+    {"1FT8W3BT0N2345678", "Ford F-350", "6.7L Power Stroke"},
+    {"1FTAA4AT0N2345678", "Ford F-450", "6.7L Power Stroke"},   // vin[5]='4'
+    {"1FTAA5AT0N2345678", "Ford F-550", "6.7L Power Stroke"},   // vin[5]='5'
+    {"3FT7W2BT0N2345678", "Ford F-250", "6.7L Power Stroke"},   // Mexico-built
+    {"1FT7A2A60N2345678", "Ford F-250", "6.2L V8"},             // vin[7]='6'
+    {"1FT7A2AN0N2345678", "Ford F-250", "7.3L V8"},             // vin[7]='N'
+    // Cab and drive must NOT be gated: 4x2 and every cab style are real trucks.
+    {"1FTAA2AT0N2345678", "Ford F-250", "6.7L Power Stroke"},   // vin[4],vin[6] arbitrary
+    {"1FTZZ3ZT0N2345678", "Ford F-350", "6.7L Power Stroke"},
+  };
+  for (const auto& c : FORD) {
+    VinIdentity f{};
+    check(vinIdentify(c.vin, &f) && strcmp(f.name, c.name)==0, c.name);
+    check(strcmp(f.engine, c.engine)==0, c.engine);
+  }
 
-  // A profiled vehicle carries its key and needs no display name -- the
-  // profile itself supplies one.
-  const VinIdentity* gm = vinIdentify("3GTUUEE80S2345678");
-  check(gm && gm->profileKey && strcmp(gm->profileKey,"gm_sierra_lz0")==0, "GM identity carries the profile key");
+  // F-150 is named but its ENGINE is deliberately left blank: vin[7]='T' is a
+  // 3.5L EcoBoost on an F-150 and a 6.7L Power Stroke on a Super Duty, so the
+  // engine codes are not shared between the two lines and only the Super Duty
+  // set was verified across its whole span.
+  VinIdentity f150{};
+  check(vinIdentify("1FTFW1ET0L2345678", &f150), "F-150 identifies");
+  check(strcmp(f150.name, "Ford F-150")==0, "F-150 name");
+  check(f150.engine[0] == '\0', "F-150 engine deliberately blank");
 
-  // Two rows share the 1FT WMI and differ only in their predicate. A WMI match
-  // with a failing predicate must fall through to the next row, not stop the
-  // search -- otherwise whichever row is listed first wins for both trucks.
-  check(vinIdentify("1FT8W3BT0N2345678")!=nullptr, "second row under a shared WMI is reachable");
+  // ---- Ram: brand at vin[4], series at vin[5] -----------------------------
+  // 1C6 is shared with Jeep, so vin[4]='R' is the brand gate; without it a
+  // Grand Cherokee would be captioned as a pickup.
+  struct RamCase { const char* vin; const char* name; const char* engine; };
+  static const RamCase RAM[] = {
+    {"1C6SR6FT0L2345678", "Ram 1500", "5.7L HEMI V8"},
+    {"1C6SR4FL0L2345678", "Ram 2500", "6.7L Cummins I6"},
+    {"1C6SR2FL0L2345678", "Ram 3500", "6.7L Cummins I6"},
+    {"3C6SR6FG0L2345678", "Ram 1500", "3.6L V6"},
+    {"1C6SR6FJ0L2345678", "Ram 1500", "6.4L HEMI V8"},
+  };
+  for (const auto& c : RAM) {
+    VinIdentity r{};
+    check(vinIdentify(c.vin, &r) && strcmp(r.name, c.name)==0, c.name);
+    check(strcmp(r.engine, c.engine)==0, c.engine);
+  }
+  check(!vinIdentify("1C6SJ6FT0L2345678", &id), "1C6 with vin[4]!='R' (Jeep) -> not a Ram");
+
+  // ---- GM: series from vin[3]+vin[4], engine at vin[7] --------------------
+  struct GmCase { const char* vin; const char* name; const char* engine; };
+  static const GmCase GM[] = {
+    {"1GTUUEED0S2345678", "GMC Sierra 1500",        "5.3L V8"},
+    {"1GCUUEEK0S2345678", "Chevrolet Silverado 1500","2.7L I4 Turbo"},
+    {"3GTUUEEL0S2345678", "GMC Sierra 1500",        "6.2L V8"},
+    {"1GT49PEY0N2345678", "GMC Sierra HD",          "6.6L Duramax V8"},
+    {"1GC49PE70N2345678", "Chevrolet Silverado HD", "6.6L V8"},
+  };
+  for (const auto& c : GM) {
+    VinIdentity g{};
+    check(vinIdentify(c.vin, &g) && strcmp(g.name, c.name)==0, c.name);
+    check(strcmp(g.engine, c.engine)==0, c.engine);
+  }
+
+  // The profiled truck keeps its profile key AND gets named by the same call.
+  VinIdentity gm{};
+  check(vinIdentify("3GTUUEE80S2345678", &gm), "profiled GM identifies");
+  check(gm.profileKey && strcmp(gm.profileKey,"gm_sierra_lz0")==0, "GM identity carries the profile key");
+
+  // ---- Year gates: fail closed outside the VERIFIED span ------------------
+  // Every span here is what vPIC actually confirmed, not what the truck was
+  // sold in -- an unverified year is treated as unknown rather than assumed.
+  check(!vinIdentify("1FT7W2BT0A2345678", &id), "Super Duty 2010 (code A) outside verified span");
+  check(!vinIdentify("1C6SR6FT0C2345678", &id), "Ram 2012 (code C) outside verified span");
+  check(!vinIdentify("1GT49PEY0S2345678", &id), "GM HD 2025 (code S) outside verified span");
+  check( vinIdentify("1FT7W2BT0T2345678", &id), "Super Duty 2026 (code T) inside span");
 
   // ---- vinDisplayIdentity: what the splash should remember ----------------
   // Only identify-only vehicles get a stored name. A PROFILED vehicle must
-  // return null so the caller CLEARS the stored strings -- otherwise moving the
-  // dash from a Ford to the Sierra would leave "Ford F-250" on the splash of a
-  // truck running the GM profile.
-  check(vinDisplayIdentity("1FT7W2BT0N2345678")!=nullptr, "unprofiled Ford -> store its name");
-  check(vinDisplayIdentity("3GTUUEE80S2345678")==nullptr, "profiled GM -> store nothing");
-  check(vinDisplayIdentity("JHM0123456789ABCD")==nullptr, "unknown VIN -> store nothing");
-  check(vinDisplayIdentity("")==nullptr, "empty VIN -> store nothing");
-  const VinIdentity* d = vinDisplayIdentity("1FT8W3BT0N2345678");
-  check(d && strcmp(d->name,"Ford F-350")==0, "stored name is the identified one");
+  // return false so the caller CLEARS the stored strings -- otherwise moving
+  // the dash from a Ford to the Sierra would leave "Ford F-250" on the splash
+  // of a truck running the GM profile.
+  VinIdentity d{};
+  check(vinDisplayIdentity("1FT7W2BT0N2345678", &d), "unprofiled Ford -> store its name");
+  check(!vinDisplayIdentity("3GTUUEE80S2345678", &d), "profiled GM -> store nothing");
+  check(!vinDisplayIdentity("JHM0123456789ABCD", &d), "unknown VIN -> store nothing");
+  check(!vinDisplayIdentity("", &d), "empty VIN -> store nothing");
+  check(vinDisplayIdentity("1FT8W3BT0N2345678", &d) && strcmp(d.name,"Ford F-350")==0,
+        "stored name is the identified one");
 
   if (failures) { printf("%d FAILED\n", failures); return 1; }
   printf("test_vin: ALL PASS\n"); return 0;

@@ -19,9 +19,11 @@ only age badly. Vehicle support moves when a car is available to scan.
   remaining stack is now a measured number rather than an estimate.
 
 ### Now
-- **Ford 6.7L Power Stroke (F-250/F-350)** — the dash now *identifies* these
-  trucks by VIN and names them on the boot splash, but still runs the Generic
-  profile. The enhanced PID map awaits an on-car scan. See
+- **Major US pickups are now identified by VIN** — Ford F-150/F-250/F-350,
+  Ram 1500/2500/3500, and Chevrolet/GMC 1500 and HD are named on the boot
+  splash. They run the Generic profile: identifying a truck and knowing how to
+  read its enhanced parameters are different problems.
+- **Ford 6.7L Power Stroke** — the enhanced PID map awaits an on-car scan. See
   [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md).
 
 ### Next
