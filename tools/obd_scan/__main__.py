@@ -273,9 +273,18 @@ def cmd_correlate(args):
     cov = anchor_coverage(df, anchors)
     write_report(cands, args.out, pdf=args.pdf, meta={"vehicle": args.csv}, anchor_coverage=cov)
     print(f"wrote {args.out}")
-    for c in cands[:10]:
+    # Console preview mirrors the report's split. Printing the flat top-10 put
+    # nine J1979 mirror columns on screen and the first genuinely enhanced
+    # find at the very bottom -- and the console is what gets read first.
+    enhanced = [c for c in cands if not c.mirror_of]
+    mirror = [c for c in cands if c.mirror_of]
+    print(f"\ntop enhanced candidates ({len(enhanced)} of {len(cands)} columns):")
+    for c in enhanced[:10]:
         label = c.best_interp.label if c.best_interp else "—"
         print(f"  {c.column:<18} {label:<8} {c.best_anchor:<8} r={c.r:+.2f}  {c.verdict}")
+    if mirror:
+        print(f"\n{len(mirror)} J1979 F4xx mirror column(s) — the standard PID set "
+              f"re-served over Mode 22, not enhanced finds. See the report.")
 
 
 def main(argv=None):

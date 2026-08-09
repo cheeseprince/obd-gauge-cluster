@@ -289,3 +289,99 @@ def test_report_shows_anchor_coverage_and_pairs_searched(tmp_path):
     assert "ambient 0/1200 (UNUSABLE)" in text
     assert "weak" in text.lower()
     assert "too-few-samples" in text
+
+
+# --- J1979 F4xx mirror vs enhanced ------------------------------------------
+# 2021 F-350: 9 of the top 10 ranked rows were F4xx mirror columns correlating
+# against anchors that ARE those same sensors, while the two parameters later
+# confirmed (221E60 gear, 221E1C ATF temp) sat at ranks 10 and 28.
+
+def test_mirrored_pid_recognises_the_f4xx_block():
+    from obd_scan.correlate import mirrored_pid
+    assert mirrored_pid("22F405@7E0") == "0105"     # coolant, re-served
+    assert mirrored_pid("22f446@7DF") == "0146"     # case-insensitive
+    # Enhanced PIDs are NOT mirrors -- this is the distinction the split relies on.
+    assert mirrored_pid("221E1C@7E1") is None
+    assert mirrored_pid("2204AA@7E0") is None
+    assert mirrored_pid("0105") is None
+    # 22F4 with a wrong-length request must not be mistaken for a mirror.
+    assert mirrored_pid("22F4@7E0") is None
+
+
+def test_self_comparison_is_called_a_tautology_not_a_correlation():
+    # A mirror column scored against the anchor it mirrors is the same sensor
+    # on both axes. It will score ~1.0 and must not read as a finding.
+    coolant = np.linspace(30, 90, 120)
+    df = pd.DataFrame({
+        "coolant": coolant,
+        # Deliberately NOT a ramp: a second monotonic anchor is collinear with
+        # coolant and would tie against it for no physical reason.
+        "rpm": np.random.default_rng(0).uniform(700, 2500, 120),
+        # 22F405 IS PID 0105 -- byte 0 carries the same raw coolant value.
+        "22F405@7E0": [f"{int(c) + 40:02X}" for c in coolant],
+        # An enhanced PID tracking the same ramp is a genuine lead, not a tautology.
+        "221E1C@7E1": [f"{int(c * 16):04X}" for c in coolant],
+    })
+    got = {c.column: c for c in analyze(df, ["22F405@7E0", "221E1C@7E1"],
+                                        ["coolant", "rpm"], workers=1)}
+
+    mirror = got["22F405@7E0"]
+    assert mirror.mirror_of == "0105"
+    assert mirror.best_anchor == "coolant"
+    assert abs(mirror.r) > 0.99                      # it does correlate -- with itself
+    assert mirror.verdict == "mirror-tautology"
+
+    enhanced = got["221E1C@7E1"]
+    assert enhanced.mirror_of is None
+    assert enhanced.verdict == "correlated"          # a real lead, kept as one
+
+
+def test_mirror_against_a_different_anchor_is_not_a_tautology():
+    # 22F45C is engine oil temp. Correlating it against COOLANT is a real
+    # (if unsurprising) association between two different sensors -- only a
+    # self-comparison earns the tautology label.
+    coolant = np.linspace(30, 90, 120)
+    df = pd.DataFrame({
+        "coolant": coolant,
+        "22F45C@7E0": [f"{int(c * 0.9) + 40:02X}" for c in coolant],
+    })
+    c = analyze(df, ["22F45C@7E0"], ["coolant"], workers=1)[0]
+    assert c.mirror_of == "015C"
+    assert c.verdict == "correlated"
+
+
+def test_report_puts_enhanced_pids_ahead_of_the_mirror_block(tmp_path):
+    from obd_scan.correlate import Candidate, Interp
+    from obd_scan.report import write_report
+    cands = [
+        # Ordered as analyze() would: the tautology outranks the real find.
+        Candidate("22F405@7E0", Interp(0, 1, False, "u8@0"), "coolant", 0.999,
+                  69, 121, "mirror-tautology", n=64, pairs_searched=7, mirror_of="0105"),
+        Candidate("221E1C@7E1", Interp(0, 2, False, "u16@0"), "coolant", 0.851,
+                  429, 1450, "weak", n=64, pairs_searched=28),
+    ]
+    out = tmp_path / "report.md"
+    write_report(cands, str(out), pdf=False, meta={"vehicle": "ford"})
+    text = out.read_text()
+
+    # Both still reported -- nothing is hidden.
+    assert "221E1C@7E1" in text and "22F405@7E0" in text
+    # But the enhanced find now appears BEFORE the mirror block.
+    assert text.index("221E1C@7E1") < text.index("22F405@7E0")
+    assert text.index("# Ranked candidates — enhanced") < text.index("# Standard J1979 mirror")
+    assert "Standard J1979 mirror (1 columns)" in text
+    # The lag caveat that would have rescued this find is stated.
+    assert "A lagging signal is not a weak one" in text
+    assert "mirror-tautology" in text
+
+
+def test_report_omits_the_mirror_section_when_there_is_none(tmp_path):
+    from obd_scan.correlate import Candidate, Interp
+    from obd_scan.report import write_report
+    cands = [Candidate("221E60@7E1", Interp(0, 1, False, "u8@0"), "speed", 0.967,
+                       1, 10, "correlated", n=64, pairs_searched=7)]
+    out = tmp_path / "report.md"
+    write_report(cands, str(out), pdf=False, meta={"vehicle": "ford"})
+    text = out.read_text()
+    assert "Standard J1979 mirror" not in text
+    assert "221E60@7E1" in text
