@@ -9,7 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from fake_elm import FakeElm, WedgedElm
 from obd_scan import catalog as cat
-from obd_scan.elm import ElmSession
+from obd_scan.elm import AdapterUnreachable, ElmSession, diagnose_connect_error
 from obd_scan.reply import Cls
 
 
@@ -171,6 +171,55 @@ def test_wedged_link_is_reported_as_error_not_a_clean_no_data():
     assert r.cls is Cls.ELM_ERROR
     s.close()
     fake.stop()
+
+
+def test_connect_failure_raises_adapter_unreachable_not_a_bare_oserror():
+    # The whole point of AdapterUnreachable: an unreachable adapter used to
+    # escape main() as a raw ConnectionRefusedError and print a Python
+    # traceback, which says nothing about WiFi, SoftAPs or ports. Bind a
+    # socket, close it, and connect to that now-dead port.
+    probe = socket.socket(); probe.bind(("127.0.0.1", 0))
+    host, port = probe.getsockname()
+    probe.close()
+    s = ElmSession(host, port, timeout=1.0)
+    with pytest.raises(AdapterUnreachable) as e:
+        s.connect()
+    # The message must name the endpoint tried and stay actionable.
+    assert f"{host}:{port}" in str(e.value)
+    assert "--port" in str(e.value)
+
+
+def test_silent_adapter_is_diagnosed_at_init_not_scanned_as_a_dead_vehicle():
+    # The nastiest failure mode, because it does NOT crash: a peer that
+    # accepts TCP and never speaks ELM327 (wedged adapter, or a phone app
+    # holding the adapter's single client slot) let init() return "" and the
+    # census then ran to completion reporting every header undetermined --
+    # a link fault dressed up as a finding about the vehicle. Fail loudly at
+    # the point the adapter first fails to answer instead.
+    fake = WedgedElm()
+    host, port = fake.start()
+    s = ElmSession(host, port, probe_timeout=0.05, reset_timeout=0.05)
+    s.connect()
+    with pytest.raises(AdapterUnreachable) as e:
+        s.init()
+    assert "never answered" in str(e.value)
+    s.close()
+    fake.stop()
+
+
+def test_diagnosis_distinguishes_the_three_connect_failure_modes():
+    # Each failure has a DIFFERENT field fix, so a generic "cannot connect"
+    # would be useless: timeout => wrong WiFi, refused => wrong port,
+    # gaierror => --host isn't an IP. Pure function, no socket needed.
+    timed_out = diagnose_connect_error(TimeoutError("timed out"), "192.168.0.10", 35000, 5.0)
+    refused = diagnose_connect_error(ConnectionRefusedError(111, "refused"), "192.168.0.10", 35000, 5.0)
+    dns = diagnose_connect_error(socket.gaierror(-2, "Name or service not known"), "v-link", 35000, 5.0)
+
+    assert "WiFi" in timed_out and "V-LINK" in timed_out
+    assert "refused" in refused.lower() and "--port" in refused
+    assert "resolve" in dns and "IP address" in dns
+    # No two diagnoses may collapse into the same text.
+    assert len({timed_out, refused, dns}) == 3
 
 
 def test_cmd_itself_validates_before_transmitting(server):
