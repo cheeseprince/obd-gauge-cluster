@@ -9,7 +9,7 @@ import pandas as pd
 
 from . import catalog as cat
 from .correlate import analyze, anchor_coverage
-from .elm import ElmSession
+from .elm import AdapterUnreachable, ElmSession
 from .report import write_report
 from .stages import (
     Hit,
@@ -314,6 +314,19 @@ def main(argv=None):
     except cat.UnsafeRequest as e:
         print(f"REFUSED: {e}", file=sys.stderr)
         return 2
+    except AdapterUnreachable as e:
+        # Distinct exit code from REFUSED (2): a link problem is a "try again
+        # once the adapter is up", not a safety refusal. The diagnosis is
+        # pre-formatted and multi-line -- print it verbatim, no traceback.
+        print(f"\nADAPTER NOT REACHED\n\n{e}", file=sys.stderr)
+        return 3
+    except KeyboardInterrupt:
+        # Backstop for census/sweep. cmd_log handles its own Ctrl-C (that is
+        # the documented way to end a drive log, and it keeps the CSV); these
+        # two just abandon the stage, and a traceback makes a deliberate Ctrl-C
+        # in a parking lot look like a crash.
+        print("\ninterrupted — stage abandoned, no output file written.", file=sys.stderr)
+        return 130
     return 0
 
 

@@ -18,6 +18,7 @@ ATAT2 adaptive timing lets a NO DATA return in ~60-100 ms instead of a fixed
 700 ms. That is the difference between a practical multi-block sweep and one
 that does not fit in a stationary session.
 """
+import errno
 import socket
 import time
 
@@ -27,12 +28,91 @@ from .reply import Cls, Reply, classify
 PROMPT = ">"
 
 
+class AdapterUnreachable(Exception):
+    """The ELM327 adapter could not be reached, or was reached but is silent.
+
+    Raised instead of letting a bare OSError escape to a Python traceback.
+    `str(e)` is a complete, parking-lot-readable diagnosis: what was tried,
+    what happened, and a numbered checklist of what to do about it. The CLI
+    prints it verbatim, so keep the text self-contained.
+    """
+
+
+def diagnose_connect_error(err: BaseException, host: str, port: int, timeout: float) -> str:
+    """Turn a socket-level connect failure into a field diagnosis.
+
+    Pure and socket-free so it can be tested without a network. The three
+    common failures each have a DIFFERENT fix, which is the entire reason
+    this exists -- a generic "cannot connect to adapter" would send you
+    checking the wrong thing:
+
+      timed out  -> the laptop is on the wrong WiFi (by far the most common)
+      refused    -> right host, wrong port (or the adapter is still booting)
+      gaierror   -> --host was given a name, not an IP
+
+    Ordering matters: gaierror and ConnectionRefusedError are both OSError
+    subclasses, and TimeoutError IS socket.timeout on Python 3.10+, so the
+    specific types must be tested before the errno fallback.
+    """
+    where = f"{host}:{port}"
+    if isinstance(err, socket.gaierror):
+        return (
+            f"Cannot reach the OBD adapter: the host name '{host}' could not be resolved.\n"
+            f"\n"
+            f"  1. --host takes an IP address, not a name.\n"
+            f"     The Vgate iCar Pro WiFi is 192.168.0.10 (the default).\n"
+        )
+    if isinstance(err, ConnectionRefusedError):
+        return (
+            f"Cannot reach the OBD adapter at {where}: the host answered but REFUSED the\n"
+            f"connection -- something is at {host}, but nothing is listening on port {port}.\n"
+            f"\n"
+            f"  1. Check --port. The iCar Pro WiFi serves ELM327 on 35000 (the default).\n"
+            f"  2. The adapter may still be booting. Give it ~10 s after plugging it into\n"
+            f"     the OBD-II port, then re-run.\n"
+            f"  3. If {host} is your own machine or a router, --host is pointing at the\n"
+            f"     wrong device.\n"
+        )
+    if isinstance(err, (TimeoutError, socket.timeout)):
+        return (
+            f"Cannot reach the OBD adapter at {where}: timed out after {timeout:.0f} s with no\n"
+            f"reply to the TCP handshake.\n"
+            f"\n"
+            f"This almost always means the laptop is not joined to the adapter's WiFi.\n"
+            f"\n"
+            f"  1. Plug the adapter into the OBD-II port and wait for its LED.\n"
+            f"  2. Turn the ignition on -- the port is unpowered on some vehicles otherwise.\n"
+            f"  3. Join the adapter's SoftAP in WiFi settings (normally named V-LINK).\n"
+            f"     It has no internet, so macOS may auto-switch back to a known network --\n"
+            f"     re-check that you are still on it right before re-running.\n"
+            f"  4. If your adapter uses a different address, pass --host / --port.\n"
+        )
+    if getattr(err, "errno", None) in (errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN):
+        return (
+            f"Cannot reach the OBD adapter at {where}: no route to that address from this\n"
+            f"machine ({err}).\n"
+            f"\n"
+            f"  1. Join the adapter's SoftAP in WiFi settings (normally named V-LINK).\n"
+            f"  2. Confirm WiFi is on and the adapter is powered.\n"
+        )
+    return (
+        f"Cannot reach the OBD adapter at {where}: {type(err).__name__}: {err}\n"
+        f"\n"
+        f"  1. Confirm you are joined to the adapter's WiFi (normally V-LINK).\n"
+        f"  2. Confirm --host / --port match the adapter (iCar Pro: 192.168.0.10:35000).\n"
+    )
+
+
 class ElmSession:
     def __init__(self, host: str = "192.168.0.10", port: int = 35000,
-                 timeout: float = 5.0, probe_timeout: float = 1.0):
+                 timeout: float = 5.0, probe_timeout: float = 1.0,
+                 reset_timeout: float = 3.0):
         self.host, self.port = host, port
         self.timeout = timeout
         self.probe_timeout = probe_timeout
+        # Ceiling for the ATZ reset in init(). Broken out of the hard-coded
+        # 3.0 so the silent-adapter test can run fast; the default is unchanged.
+        self.reset_timeout = reset_timeout
         self.sock: socket.socket | None = None
         self.cur_header: str | None = None
         # True once a header has turned BMW extended addressing on (at_cea or
@@ -57,7 +137,18 @@ class ElmSession:
 
     # --- transport ---------------------------------------------------------
     def connect(self) -> None:
-        self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        """Open the TCP link, or raise AdapterUnreachable with a diagnosis.
+
+        Every socket failure here (refused / timed out / unresolvable / no
+        route) is an OSError subclass, and letting any of them escape prints
+        a traceback whose top frame is `sock.connect(sa)` -- true, and
+        useless to someone sitting in a truck wondering which WiFi they are
+        on. Translate once, at the boundary."""
+        try:
+            self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except OSError as e:
+            raise AdapterUnreachable(
+                diagnose_connect_error(e, self.host, self.port, self.timeout)) from e
         self.sock.settimeout(self.timeout)
 
     def close(self) -> None:
@@ -108,8 +199,37 @@ class ElmSession:
     # --- session -----------------------------------------------------------
     def init(self) -> str:
         """Reset and configure: echo off, linefeeds off, spaces off, adaptive
-        timing on with a short ceiling. Returns the adapter identity string."""
-        ident = self.cmd("ATZ", timeout=3.0)
+        timing on with a short ceiling. Returns the adapter identity string.
+
+        Raises AdapterUnreachable if ATZ draws no ELM327 prompt. This is the
+        failure mode that does NOT crash and is therefore the most dangerous:
+        an open socket that never speaks ELM327 let init() return "" and the
+        scan run to completion with every header `evidence="error"` -- a link
+        fault presented as a finding about the vehicle. Fail at the first
+        unanswered command instead of producing an empty census."""
+        ident = self.cmd("ATZ", timeout=self.reset_timeout)
+        if not self.last_saw_prompt:
+            # Retry once before condemning the link, mirroring probe()'s
+            # retry-then-report: a clone that is merely slow to come out of
+            # reset used to proceed with a blank identity, and turning that
+            # into a hard abort would be a regression on working hardware.
+            # Two consecutive unanswered ATZs is the link, not slowness.
+            ident = self.cmd("ATZ", timeout=self.reset_timeout)
+        if not self.last_saw_prompt:
+            raise AdapterUnreachable(
+                f"Connected to {self.host}:{self.port}, but the adapter never answered ATZ\n"
+                f"(no ELM327 '>' prompt within {self.reset_timeout:.0f} s).\n"
+                f"\n"
+                f"The TCP socket opened, so something is listening -- it just is not\n"
+                f"speaking ELM327. Nothing was learned about the vehicle.\n"
+                f"\n"
+                f"  1. Power-cycle the adapter: unplug it from the OBD-II port, replug,\n"
+                f"     wait ~10 s.\n"
+                f"  2. Close any other app holding the adapter. Most WiFi ELM327s accept\n"
+                f"     ONE client at a time, so a phone still connected in Car Scanner or\n"
+                f"     Torque will keep this session silent.\n"
+                f"  3. Confirm --port points at the ELM327 socket (iCar Pro: 35000) and\n"
+                f"     not at the adapter's web/config port.\n")
         for c in ("ATE0", "ATL0", "ATS0"):
             self.cmd(c)
         for c in ("ATAT2", "ATST19"):      # adaptive timing, ~100ms ceiling

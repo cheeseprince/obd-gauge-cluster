@@ -136,6 +136,30 @@ python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
 6. **Run `correlate`** back at a desk (no adapter required) to get the
    ranked report.
 
+## When the adapter can't be reached
+
+A link that never comes up is reported as a diagnosis, not a Python
+traceback. `ElmSession.connect` and `ElmSession.init` raise
+`AdapterUnreachable`, the CLI prints it verbatim under an
+`ADAPTER NOT REACHED` banner and **exits 3** (distinct from `2`, which is a
+read-only safety refusal — see `catalog.UnsafeRequest`).
+
+The four cases are distinguished because each has a different fix, and
+`elm.diagnose_connect_error` names the one that applies:
+
+| Symptom | Almost always means |
+| :--- | :--- |
+| **timed out** after 5 s | The laptop is not joined to the adapter's SoftAP. macOS will silently roam back to a known network because `V-LINK` has no internet — re-check the WiFi menu immediately before re-running. |
+| **connection refused** | Right host, wrong port — or the adapter is still booting. |
+| **could not be resolved** | `--host` was given a name; it takes an IP. |
+| **never answered ATZ** | TCP is open but nothing is speaking ELM327: a wedged adapter, or another client (phone in Car Scanner / Torque) holding the adapter's single connection slot. |
+
+That last one is the case worth understanding, because it is the only one
+that does not look like a failure. Before this check existed, a silent peer
+let `init()` return an empty string and the census ran to completion with
+every header marked `evidence="error"` — a link fault presented as a finding
+about the vehicle. It now fails at the first unanswered command instead.
+
 ## What `aborted` means
 
 `census`, `sweep`, and `log` can each be cut short mid-session by a dropped
