@@ -586,14 +586,30 @@ _ANCHORS_OK = {"010C": "410C1AF8", "010D": "410D3C", "0104": "410478",
                "0146": "414628"}
 
 
-def _log_once(responses, tmp_path, name="drive.csv", duration_s=0.1):
+def _log_once(responses, tmp_path, name="drive.csv", cycles=4):
+    """Run exactly `cycles` poll cycles.
+
+    Counted, not timed: a wall-clock `duration_s` makes the row count a
+    property of the runner's speed, and "one-shot resolution" is only
+    meaningful over several cycles — a slow CI box that fits fewer cycles
+    than expected fails a test about behaviour, not timing.
+    """
     fake = FakeElm(responses)
     host, port = fake.start()
     s = ElmSession(host, port); s.connect(); s.init()
     s.set_header(next(x for x in cat.HEADERS_11BIT if x.name == "7E0"))
     out = tmp_path / name
     hits = [Hit("7E0", "220041", "620041DEAD", "DEAD", 2)]
-    res = run_log(s, hits, str(out), hz=50.0, duration_s=duration_s)
+    seen_cycles = 0
+
+    def stop():
+        nonlocal seen_cycles
+        if seen_cycles >= cycles:
+            return True
+        seen_cycles += 1
+        return False
+
+    res = run_log(s, hits, str(out), hz=1000.0, stop=stop)
     rows = list(csv.DictReader(out.open()))
     s.close(); fake.stop()
     return res, rows, fake.requests_seen
@@ -635,9 +651,9 @@ def test_dead_anchor_probes_its_mirror_only_once(tmp_path):
     # not coming back, so resolution is one-shot.
     responses = {**BASE, "ATSH7E0": "OK", "220041": "620041DEAD",
                  **{k: v for k, v in _ANCHORS_OK.items() if k != "0146"}}
-    res, rows, seen = _log_once(responses, tmp_path, duration_s=0.3)
+    res, rows, seen = _log_once(responses, tmp_path, cycles=6)
 
-    assert len(rows) > 3, "need several cycles for this to mean anything"
+    assert len(rows) == 6, "the mirror must be re-probed across MANY cycles to matter"
     assert res["anchor_fallbacks"] == []
     assert res["anchor_requests"]["ambient"] == "0146"   # unchanged
     assert seen.count("22F446") == 1
