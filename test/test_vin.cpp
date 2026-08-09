@@ -176,13 +176,13 @@ int main() {
   // rather than showing nothing because no profile exists.
   VinIdentity id{};
   check(vinIdentify("1FT7W2BT0N2345678", &id), "F-250 VIN identifies");
-  // Not nullptr any more: an unscanned truck now gets Standard+ (the legislated
-  // Mode-01 set) rather than bare Generic. What it still does NOT get is a
-  // scanned, vehicle-specific profile.
-  check(id.profileKey && strcmp(id.profileKey,"std_diesel")==0, "F-250 -> Standard+ diesel");
+  // SCANNED 2026-08-09 (a 2021 F-350): the 6.7 Power Stroke now gets a real
+  // vehicle profile, not Standard+. The identity fields are unchanged -- the
+  // identification table still resolves series and engine independently.
+  check(id.profileKey && strcmp(id.profileKey,"ford_sd_67")==0, "F-250 6.7 -> Ford profile");
   check(strcmp(id.name, "Ford F-250")==0, "F-250 name");
   check(strcmp(id.engine, "6.7L Power Stroke")==0, "F-250 engine");
-  check(strcmp(vinToProfileKey("1FT7W2BT0N2345678"),"std_diesel")==0, "F-250 selects Standard+");
+  check(strcmp(vinToProfileKey("1FT7W2BT0N2345678"),"ford_sd_67")==0, "F-250 selects the Ford profile");
 
   // A failed identify must not scribble on the caller's struct -- callers copy
   // out of it and a partial write would leak the previous vehicle's name.
@@ -276,12 +276,15 @@ int main() {
   // the dash from a Ford to the Sierra would leave "Ford F-250" on the splash
   // of a truck running the GM profile.
   VinIdentity d{};
-  check(vinDisplayIdentity("1FT7W2BT0N2345678", &d), "unprofiled Ford -> store its name");
+  // The 6.7 Power Stroke is PROFILED now, so it must store nothing and let the
+  // profile name the truck -- the same rule the GM already followed. A GAS
+  // Super Duty is still identify-only and keeps its stored name.
+  check(!vinDisplayIdentity("1FT7W2BT0N2345678", &d), "profiled Ford 6.7 -> store nothing");
   check(!vinDisplayIdentity("3GTUUEE80S2345678", &d), "profiled GM -> store nothing");
   check(!vinDisplayIdentity("JHM0123456789ABCD", &d), "unknown VIN -> store nothing");
   check(!vinDisplayIdentity("", &d), "empty VIN -> store nothing");
-  check(vinDisplayIdentity("1FT8W3BT0N2345678", &d) && strcmp(d.name,"Ford F-350")==0,
-        "stored name is the identified one");
+  check(vinDisplayIdentity("1FT7A2A60N2345678", &d) && strcmp(d.name,"Ford F-250")==0,
+        "unprofiled gas Super Duty still stores its name");
 
   // ---- Standard+ selection: a richer profile for unscanned trucks ---------
   // Recognized-but-unscanned trucks get the legislated Mode-01 set instead of
@@ -290,7 +293,10 @@ int main() {
   // forever, so the two layouts are separate.
   struct StdCase { const char* vin; const char* key; const char* why; };
   static const StdCase STD[] = {
-    {"1FT7W2BT0N2345678", "std_diesel", "F-250 6.7 Power Stroke -> diesel"},
+    // NOTE: the 6.7 Power Stroke is no longer here -- it was SCANNED on
+    // 2026-08-09 and now selects ford_sd_67. Its cases live in the Ford
+    // profile-gate block below. A GAS Super Duty still lands on Standard+,
+    // which is what the next two rows pin.
     {"1FT7A2A60N2345678", "std_gas",    "F-250 6.2 V8 -> gas"},
     {"1FT7A2AN0N2345678", "std_gas",    "F-250 7.3 V8 -> gas"},
     {"1FTFW1ET0L2345678", "std_gas",    "F-150 unknown engine -> gas fallback"},
@@ -307,6 +313,38 @@ int main() {
     check(k && strcmp(k, c.key)==0, "vinToProfileKey agrees");
   }
 
+  // ---- Ford profile gate: the 10R140 years ONLY ---------------------------
+  // ford_sd_67 decodes 221E60 as a TEN-position gear. The transmission
+  // generation break is 2019->2020 (6R140 -> 10R140), so a pre-2020 Super Duty
+  // must NOT get this profile even though the identity frame matches it at
+  // every year code. Without the gate, profileKeyFor() is reached independently
+  // of the identification table's year list and a 2010 truck was handed a
+  // ten-speed decode for its six-speed.
+  struct FordGateCase { const char* vin; const char* key; const char* why; };
+  static const FordGateCase FORDS[] = {
+    {"1FT7W2BT0L2345678", "ford_sd_67", "2020 (L) first 10R140 year -> Ford profile"},
+    {"1FT8W3BT0M2345678", "ford_sd_67", "2021 (M) the scanned truck -> Ford profile"},
+    {"1FT7W2BT0T2345678", "ford_sd_67", "2026 (T) end of verified span -> Ford profile"},
+    // Below the span: a 2019 truck is a 6R140. It still IDENTIFIES (K is in the
+    // identity table's year list) and is a diesel, so it lands on Standard+
+    // Diesel -- the legislated set, no ten-speed gear decode. That is the
+    // desired outcome, not a bare null.
+    {"1FT7W2BT0K2345678", "std_diesel", "2019 (K) is a 6R140 -> Standard+, not the Ford profile"},
+    // Outside the IDENTITY year list entirely -> nothing at all, both sides.
+    {"1FT7W2BT0A2345678", nullptr,      "2010 (A) -> no profile"},
+    {"1FT7W2BT0V2345678", nullptr,      "2027 (V) unverified -> fails closed"},
+  };
+  for (const auto& c : FORDS) {
+    const char* k = vinToProfileKey(c.vin);
+    if (c.key) check(k && strcmp(k, c.key)==0, c.why);
+    else       check(k == nullptr, c.why);
+  }
+  // The F-450/F-550 share the platform and transmission, so one row covers the
+  // whole line -- the predicate is deliberately silent on the series digit.
+  check(vinToProfileKey("1FT9W4BT0M2345678") &&
+        strcmp(vinToProfileKey("1FT9W4BT0M2345678"),"ford_sd_67")==0,
+        "F-450 6.7 also gets the Ford profile");
+
   // A SCANNED profile always wins over Standard+ -- the Sierra 3.0 Duramax has
   // real enhanced parameters and must not be downgraded to the legislated set.
   check(strcmp(vinToProfileKey("3GTUUEE80S2345678"),"gm_sierra_lz0")==0,
@@ -315,8 +353,9 @@ int main() {
   // Standard+ does NOT name the vehicle (its label is "Standard+ Diesel"), so
   // the splash still needs the stored identity -- unlike a scanned profile,
   // which carries its own name.
+  // (Uses a GAS Super Duty: the 6.7 diesel is profiled now and names itself.)
   VinIdentity sp{};
-  check(vinDisplayIdentity("1FT7W2BT0N2345678", &sp) && strcmp(sp.name,"Ford F-250")==0,
+  check(vinDisplayIdentity("1FT7A2A60N2345678", &sp) && strcmp(sp.name,"Ford F-250")==0,
         "Standard+ truck still stores its name for the splash");
   check(!vinDisplayIdentity("3GTUUEE80S2345678", &sp),
         "scanned profile still stores nothing");

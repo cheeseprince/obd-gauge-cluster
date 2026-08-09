@@ -50,16 +50,18 @@ BIN_PROFA = test_profile_audi
 SRC_PROFA = test_profile_audi.cpp ../src/readouts.cpp ../src/vehicles/audi_q5.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 BIN_PROFJ = test_profile_jeep
-SRC_PROFJ = test_profile_jeep.cpp ../src/readouts.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
+SRC_PROFJ = test_profile_jeep.cpp ../src/readouts.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/ford_sd_67.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
+BIN_PROFF = test_profile_ford
+SRC_PROFF = test_profile_ford.cpp ../src/readouts.cpp ../src/vehicles/ford_sd_67.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 BIN_VREG  = test_vehicle_registry
-SRC_VREG  = test_vehicle_registry.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
+SRC_VREG  = test_vehicle_registry.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/ford_sd_67.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
 
 BIN_WDTHB = test_wdt_heartbeat
 SRC_WDTHB = test_wdt_heartbeat.cpp
 
 BIN_VIN   = test_vin
-SRC_VIN   = test_vin.cpp ../src/vin.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
+SRC_VIN   = test_vin.cpp ../src/vin.cpp ../src/vehicle_registry.cpp ../src/vehicle_active.cpp ../src/vehicles/generic_obd.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/vehicles/bmw_f10_535i.cpp ../src/vehicles/audi_q5.cpp ../src/vehicles/jeep_ws.cpp ../src/vehicles/ford_sd_67.cpp ../src/vehicles/standard_plus.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp
 
 BIN_LAYOUT = test_layout
 SRC_LAYOUT = test_layout.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
@@ -129,7 +131,7 @@ BIN_LFUZZ = fuzz_obd_harness
 SRC_LFUZZ = fuzz_obd_libfuzzer.cpp fuzz_obd_driver.cpp ../src/obd_parse.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 .PHONY: test clean fuzz test-ota-sign
-test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH) $(BIN_WDTHB)
+test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_PROFF) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH) $(BIN_WDTHB)
 	./$(BIN_PID)
 	./$(BIN_PARSE)
 	./$(BIN_GAUGE)
@@ -160,6 +162,7 @@ test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(B
 	./$(BIN_PROFG)
 	./$(BIN_PROFA)
 	./$(BIN_PROFJ)
+	./$(BIN_PROFF)
 	./$(BIN_VREG)
 	./$(BIN_NTP)
 	./$(BIN_BRANK)
@@ -243,6 +246,9 @@ $(BIN_PROFA): $(SRC_PROFA) ../src/readouts.h ../src/app_types.h ../src/vehicle_p
 $(BIN_PROFJ): $(SRC_PROFJ) ../src/readouts.h ../src/app_types.h ../src/vehicle_profile.h
 	$(CXX) $(CXXFLAGS) $(SRC_PROFJ) -o $(BIN_PROFJ)
 
+$(BIN_PROFF): $(SRC_PROFF) ../src/readouts.h ../src/app_types.h ../src/vehicle_profile.h
+	$(CXX) $(CXXFLAGS) $(SRC_PROFF) -o $(BIN_PROFF)
+
 $(BIN_VREG): $(SRC_VREG) ../src/vehicle_registry.h ../src/vehicle_profile.h ../src/readouts.h ../src/app_types.h
 	$(CXX) $(CXXFLAGS) $(SRC_VREG) -o $(BIN_VREG)
 
@@ -298,4 +304,4 @@ $(BIN_BOOT): $(SRC_BOOT) ../src/boot_banner.h
 	$(CXX) $(CXXFLAGS) $(SRC_BOOT) -o $(BIN_BOOT)
 
 clean:
-	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH)
+	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_PROFF) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH)

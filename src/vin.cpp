@@ -258,8 +258,11 @@ static bool jeepWagoneer57(const char* vin) {
 // the whole range -- it reports F-250/F-350 6.7L at every year and nothing else
 // -- so unlike the GM and Jeep rules it needs no model-year gate.
 //
-// We have NO profile for it (docs/FORD-STATUS.md: researched, needs a scan), so
-// it identifies only. That is the point of VinIdentity.
+// SCANNED 2026-08-09 (a 2021 F-350), so this now selects a real profile as well
+// as identifying -- see profileKeyFor's Ford row and src/vehicles/ford_sd_67.cpp.
+// The predicate already pins the ENGINE at vin[7]='T', so a 6.2L/7.3L gas Super
+// Duty fails it and falls through to Standard+ Gas rather than being handed a
+// profile that reads 10R140 transmission DIDs it does not have.
 static bool fordSuperDuty67(const char* vin) {
   if (std::strlen(vin) < 8) return false;
   // Deliberately silent on vin[3] (the series digit): fordF250/fordF350 each
@@ -272,6 +275,24 @@ static bool fordSuperDuty67(const char* vin) {
 }
 static bool fordF250(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '7'; }
 static bool fordF350(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '8'; }
+
+// The PROFILE gate, distinct from the identity gate above and deliberately
+// narrower.
+//
+// fordSuperDuty67 needs no model-year rule because the vPIC frame identifies a
+// 6.7L Super Duty at every year code -- true, and fine for putting a NAME on
+// the splash. It is NOT fine for selecting this profile, because the profile
+// reads 10R140 transmission DIDs and the transmission generation break is
+// 2019->2020 (6R140 -> 10R140). Without this gate, profileKeyFor() is reached
+// even for VINs the identification table's own year list rejects, so a 2010
+// truck would have been handed a ten-speed gear decode for its six-speed.
+//
+// L..T = 2020-2026: from the 10R140's introduction to the end of the span the
+// identity table verifies. Later years fail CLOSED, per the doctrine above --
+// a 2027 truck gets Standard+ until someone confirms the profile still fits.
+static bool fordSuperDuty67_10R140(const char* vin) {
+  return fordSuperDuty67(vin) && vinModelYearIn(vin, "LMNPRST");
+}
 
 // ---------------------------------------------------------------------------
 // PROFILE lookup: which gauge profile, if any, this VIN gets. Unchanged in
@@ -300,11 +321,19 @@ static const char* profileKeyFor(const char* vin) {
     // vehicle at all at those codes. Both offered false positives and matched
     // nothing real.
     {"1C4",jeepWagoneer57,"jeep_ws"},
-    // FORD SUPER DUTY 6.7L POWER STROKE — IDENTIFIED, NOT PROFILED.
-    // key is nullptr on purpose: docs/FORD-STATUS.md has the research but no
-    // scan, so the dash stays on Generic and simply says what the truck is
-    // instead of pretending it does not know. Fill in the key when a profile
-    // lands; nothing else here changes.
+    // FORD SUPER DUTY 6.7L POWER STROKE — SCANNED 2026-08-09, now profiled.
+    // fordSuperDuty67 pins the PLATFORM and ENGINE (vin[4]='W', vin[6]='B',
+    // vin[7]='T') and is deliberately silent on the series digit, so this one
+    // row covers F-250 through F-550 — every Super Duty carrying the 6.7L and
+    // the 10R140 the enhanced DIDs below belong to. A gas Super Duty fails on
+    // vin[7] and falls through to Standard+ Gas.
+    //
+    // Scanned on a 2021 F-350. The _10R140 suffix is load-bearing: MY2019 and
+    // earlier are the 6R140, so the gear DID this profile decodes as ten
+    // positions would be wrong there. See the predicate for why the identity
+    // gate alone is not enough.
+    {"1FT",fordSuperDuty67_10R140,"ford_sd_67"},
+    {"3FT",fordSuperDuty67_10R140,"ford_sd_67"},
                   };
   // First matching row wins. Two rows may share a WMI (the F-250 and F-350
   // predicates both live under 1FT and differ only at vin[3]), so the predicate

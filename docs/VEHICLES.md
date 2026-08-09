@@ -75,11 +75,16 @@ unknown until someone plugs one in — the tiles that go blank are the ones to r
 
 **Identity and profile selection are separate.** `vinIdentify()` answers "what is this
 vehicle", `vinToProfileKey()` answers "which gauge profile does it get", and a vehicle can be
-the first without being the second. That is the case for the Ford Super Duty below: the dash
-names the truck on its boot splash while still running Generic gauges, instead of showing
-nothing merely because no profile exists. The detected name is persisted so it survives a
-power cycle — the splash is drawn before the OBD link is up. The **strings** are stored, not
-the VIN.
+the first without being the second — the dash names the truck on its boot splash while still
+running Generic or Standard+ gauges, instead of showing nothing merely because no profile
+exists. The detected name is persisted so it survives a power cycle — the splash is drawn
+before the OBD link is up. The **strings** are stored, not the VIN.
+
+The Ford Super Duty is now an example of the two coming apart in the other direction: the
+**2020–26 6.7L Power Stroke** was scanned on 2026-08-09 and has its own profile, while the gas
+Super Dutys and the **pre-2020 diesels** remain identify-only on Standard+. The year split is
+deliberate and load-bearing — the transmission generation break is 2019→2020 (6R140 → 10R140),
+and the profile decodes gear as ten positions.
 
 ### How these patterns were verified
 
