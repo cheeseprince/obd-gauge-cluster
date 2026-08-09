@@ -16,7 +16,27 @@ from multiprocessing import Pool
 import numpy as np
 import pandas as pd
 
+from . import catalog as cat
+
 SENTINELS = {"FF", "00", "FFFF", "0000", "FFFFFF", "FFFFFFFF"}
+
+
+def mirrored_pid(column: str) -> str | None:
+    """The generic Mode-01 request a `22F4xx` column re-serves, else None.
+
+    SAE J1979 reserves DIDs F400-F4FF for the Mode-01 PIDs served over
+    Mode 22, so `22F405` carries the same bytes as `0105`. A sweep of the
+    F4xx block therefore rediscovers the STANDARD PID set -- those hits are
+    real data, but they are not enhanced-diagnostics finds, and on the 2021
+    F-350 they occupied 9 of the top 10 rows of the ranking while the two
+    parameters that were actually confirmed sat at ranks 10 and 28.
+
+    Column names are "<request>@<header>", e.g. "22F405@7E0".
+    """
+    req = column.split("@", 1)[0].upper()
+    if len(req) == 6 and req.startswith("22F4"):
+        return "01" + req[4:6]
+    return None
 
 # A drive log at ~1 Hz yields hundreds to thousands of rows per column, so a
 # correlation with fewer than this many overlapping (both-valid) samples is
@@ -100,7 +120,8 @@ class Candidate:
     r: float
     vmin: float
     vmax: float
-    # "correlated" | "weak" | "no-signal" | "too-few-samples" | "constant" | "sentinel"
+    # "correlated" | "weak" | "no-signal" | "too-few-samples" | "constant"
+    # | "sentinel" | "mirror-tautology"
     verdict: str
     n: int = 0               # overlapping (both-valid) samples the winning r was computed over
     # How many (interpretation, anchor) pairs this column's search actually
@@ -109,6 +130,10 @@ class Candidate:
     # biased (CRITICAL 2). 0 for verdicts decided before any search ran
     # (constant/sentinel/no-data).
     pairs_searched: int = 0
+    # The generic Mode-01 request this column re-serves, if it is a J1979
+    # F4xx mirror (see mirrored_pid). None for enhanced/proprietary PIDs --
+    # which is what a sweep of an unmapped vehicle is actually looking for.
+    mirror_of: str | None = None
 
 
 def _verdict_static(series: pd.Series) -> str | None:
@@ -150,10 +175,12 @@ def analyze(df: pd.DataFrame, hit_cols: list[str], anchor_cols: list[str],
 def _analyze_column(job: tuple[str, list, dict]) -> Candidate:
     """Score one candidate column. Module-level so it is picklable for Pool."""
     col, values, anchors = job
+    mirror_of = mirrored_pid(col)
     series = pd.Series(values)
     static = _verdict_static(series)
     if static:
-        return Candidate(col, None, "", 0.0, float("nan"), float("nan"), static)
+        return Candidate(col, None, "", 0.0, float("nan"), float("nan"), static,
+                         mirror_of=mirror_of)
 
     nbytes = max((len(v) // 2 for v in values if isinstance(v, str) and v), default=0)
     interps = interpretations(nbytes)
@@ -202,9 +229,10 @@ def _analyze_column(job: tuple[str, list, dict]) -> Candidate:
         # and carry the best n actually observed, even though it fell short.
         if max_n_seen > 0:
             return Candidate(col, None, "", 0.0, float("nan"), float("nan"),
-                             "too-few-samples", n=max_n_seen, pairs_searched=pairs_searched)
+                             "too-few-samples", n=max_n_seen, pairs_searched=pairs_searched,
+                             mirror_of=mirror_of)
         return Candidate(col, None, "", 0.0, float("nan"), float("nan"), "no-signal",
-                         pairs_searched=pairs_searched)
+                         pairs_searched=pairs_searched, mirror_of=mirror_of)
 
     r, interp, anchor = best
     if abs(r) >= MIN_R_STRONG:
@@ -213,9 +241,16 @@ def _analyze_column(job: tuple[str, list, dict]) -> Candidate:
         verdict = "weak"
     else:
         verdict = "no-signal"
+    # A mirror column whose winning anchor IS the PID it mirrors was compared
+    # against itself: `22F405` vs the coolant anchor `0105` is the same
+    # sensor on both axes, and its r=0.999 says nothing whatsoever about the
+    # vehicle. Naming it is strictly better than letting it top the ranking
+    # as "correlated".
+    if mirror_of and cat.ANCHORS.get(anchor) == mirror_of:
+        verdict = "mirror-tautology"
     return Candidate(col, interp, anchor, r,
                      float(np.min(best_vals)), float(np.max(best_vals)), verdict,
-                     n=best_n, pairs_searched=pairs_searched)
+                     n=best_n, pairs_searched=pairs_searched, mirror_of=mirror_of)
 
 
 def anchor_coverage(df: pd.DataFrame, anchor_cols: list[str]) -> dict[str, tuple[int, int]]:
