@@ -26,6 +26,14 @@ ALLOWED_VINS = {
     "1FT7X2BT0N2345678",   # Ford non-Super-Duty negative (test_vin)
     "1FT7W2B90N2345678",   # Ford non-6.7 negative (test_vin)
     "1FT9W2BT0N2345678",   # Ford bad vin[3] negative (test_vin)
+    # Ford Super Duty 6.7 model-year gate (test_vin). Same synthetic ...2345678
+    # tail as the rows above; only vin[9], the model-year code, varies, because
+    # the ford_sd_67 profile is gated on the 10R140 years (L..T = 2020-2026).
+    "1FT7W2BT0L2345678",   # 2020 (L) — first 10R140 year, inside the gate
+    "1FT8W3BT0M2345678",   # 2021 (M) — the model year actually scanned
+    "1FT7W2BT0K2345678",   # 2019 (K) — 6R140, must fall to Standard+
+    "1FT7W2BT0V2345678",   # 2027 (V) — unverified year, must fail closed
+    "1FT9W4BT0M2345678",   # F-450 2021 — the series digit is not gated
     "WAU0123456789ABCD",   # Audi
     "WAU0123456789ABCE",   # Audi (variant)
     "WA10123456789ABCD",   # Audi (WA1 WMI-case test)
