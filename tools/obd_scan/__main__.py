@@ -248,6 +248,12 @@ def cmd_log(args):
     if res.get("dropped_headers"):
         print(f"*** skipped {len(res['dropped_headers'])} hit(s) with unresolvable header(s): "
               f"{', '.join(res['dropped_headers'])} — not logged. ***")
+    # An anchor that fell back is still a fully usable anchor, but the reader
+    # should know the column came from the Mode-22 mirror rather than the
+    # generic PID -- otherwise a later "why does this vehicle answer 22F410
+    # but not 0110?" has no record to answer it.
+    for line in res.get("anchor_fallbacks", []):
+        print(f"anchor fallback -- {line}")
     print(f"\nwrote {args.out} ({res['rows']} rows)")
     # IMPORTANT 1: surfaced the same way as sweep's transport-error count --
     # a blank cell from an ELM_ERROR must not be mistaken for "unsupported".

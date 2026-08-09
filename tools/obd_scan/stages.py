@@ -330,6 +330,13 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
     anchor_cols = list(cat.ANCHORS.keys())
     header = ["iso_time", "uptime_ms"] + hit_cols + anchor_cols
 
+    # Request actually used for each anchor. Starts as the generic Mode-01
+    # PID and may be swapped for its Mode-22 mirror on the first cycle -- see
+    # cat.ANCHOR_MIRRORS and the resolution block in the loop below.
+    anchor_req = dict(cat.ANCHORS)
+    anchor_fallbacks: list[str] = []
+    anchors_resolved = False
+
     t0 = _time.monotonic()
     period = 1.0 / hz if hz > 0 else 0.0
     rows = 0
@@ -362,11 +369,36 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
                         # from the vehicle not supporting the PID.
                         error_polls += 1
                     row.append(r.payload.hex().upper() if r.cls is Cls.POSITIVE else "")
-                for name, req in cat.ANCHORS.items():
-                    r = sess.probe(req)
+                for name in cat.ANCHORS:
+                    r = sess.probe(anchor_req[name])
+                    # Anchor resolution, first cycle only. A silent generic
+                    # PID does not mean the vehicle lacks the parameter --
+                    # it may only serve it as the J1979 Mode-22 mirror. Try
+                    # the mirror once and, if it answers, use it for the
+                    # rest of the drive.
+                    #
+                    # Resolved HERE rather than before the loop so the probe
+                    # runs under the same ELM header state the real polls
+                    # will use (the last hit's header is still set), instead
+                    # of whatever the session happened to default to.
+                    #
+                    # One-shot by design: paying a second probe every cycle
+                    # for a permanently-dead anchor would cost sample density
+                    # on every column, which matters far more than recovering
+                    # an intermittent anchor.
+                    if r.cls is not Cls.POSITIVE and not anchors_resolved:
+                        mirror = cat.ANCHOR_MIRRORS.get(name)
+                        if mirror and mirror != anchor_req[name]:
+                            rm = sess.probe(mirror)
+                            if rm.cls is Cls.POSITIVE:
+                                anchor_fallbacks.append(
+                                    f"{name}: {anchor_req[name]} silent -> {mirror}")
+                                anchor_req[name] = mirror
+                                r = rm
                     if r.cls is Cls.ELM_ERROR:
                         error_polls += 1
                     row.append(_decode_anchor(name, r.payload) if r.cls is Cls.POSITIVE else "")
+                anchors_resolved = True
             except OSError as exc:
                 # The row under construction is incomplete -- never written,
                 # never flushed -- and is dropped here. Every prior row is
@@ -386,4 +418,6 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
 
     return {"rows": rows, "columns": header, "path": path,
             "error_polls": error_polls, "aborted": aborted, "error": error,
-            "dropped_headers": sorted(set(dropped))}
+            "dropped_headers": sorted(set(dropped)),
+            "anchor_requests": dict(anchor_req),
+            "anchor_fallbacks": anchor_fallbacks}

@@ -573,3 +573,72 @@ def test_go_no_go_negative_is_session_gated():
         assert default_session_gate(s, hdr) == "negative"
     finally:
         s.close(); fake.stop()
+
+
+# --- anchor Mode-22 mirror fallback -----------------------------------------
+# Real case, 2021 F-350: 0110 (maf) and 0146 (ambient) were silent for the
+# whole drive while 22F410 and 22F446 answered fine. `correlate` reported both
+# anchors UNUSABLE and scored every candidate with 5 of 7 anchors.
+
+# Every generic anchor answering EXCEPT maf/ambient, whose mirrors answer.
+_ANCHORS_OK = {"010C": "410C1AF8", "010D": "410D3C", "0104": "410478",
+               "0105": "4105A0", "0110": "41100123", "0133": "413365",
+               "0146": "414628"}
+
+
+def _log_once(responses, tmp_path, name="drive.csv", duration_s=0.1):
+    fake = FakeElm(responses)
+    host, port = fake.start()
+    s = ElmSession(host, port); s.connect(); s.init()
+    s.set_header(next(x for x in cat.HEADERS_11BIT if x.name == "7E0"))
+    out = tmp_path / name
+    hits = [Hit("7E0", "220041", "620041DEAD", "DEAD", 2)]
+    res = run_log(s, hits, str(out), hz=50.0, duration_s=duration_s)
+    rows = list(csv.DictReader(out.open()))
+    s.close(); fake.stop()
+    return res, rows, fake.requests_seen
+
+
+def test_anchor_falls_back_to_mode22_mirror(tmp_path):
+    responses = {**BASE, "ATSH7E0": "OK", "220041": "620041DEAD",
+                 **{k: v for k, v in _ANCHORS_OK.items() if k not in ("0110", "0146")},
+                 # J1979 F4xx mirror returns the SAME data bytes as PID xx.
+                 "22F410": "62F4100123", "22F446": "62F44628"}
+    res, rows, _ = _log_once(responses, tmp_path)
+
+    assert res["anchor_requests"]["maf"] == "22F410"
+    assert res["anchor_requests"]["ambient"] == "22F446"
+    # untouched anchors keep their generic request
+    assert res["anchor_requests"]["coolant"] == "0105"
+    assert len(res["anchor_fallbacks"]) == 2
+
+    # The whole point: the columns carry DATA instead of being UNUSABLE, and
+    # they decode identically to the generic path (0x0123/100, 0x28-40).
+    assert float(rows[0]["maf"]) == 0x0123 / 100.0
+    assert float(rows[0]["ambient"]) == 0x28 - 40
+    assert all(r["maf"] and r["ambient"] for r in rows)
+
+
+def test_no_mirror_probe_when_generic_anchor_answers(tmp_path):
+    responses = {**BASE, "ATSH7E0": "OK", "220041": "620041DEAD", **_ANCHORS_OK}
+    res, rows, seen = _log_once(responses, tmp_path)
+
+    assert res["anchor_fallbacks"] == []
+    assert res["anchor_requests"] == dict(cat.ANCHORS)
+    # No mirror is ever sent -- a working generic anchor must cost nothing.
+    assert not [q for q in seen if q.startswith("22F4")]
+
+
+def test_dead_anchor_probes_its_mirror_only_once(tmp_path):
+    # Both forms dead. Retrying the mirror every cycle would spend sample
+    # density on every column for the whole drive to chase an anchor that is
+    # not coming back, so resolution is one-shot.
+    responses = {**BASE, "ATSH7E0": "OK", "220041": "620041DEAD",
+                 **{k: v for k, v in _ANCHORS_OK.items() if k != "0146"}}
+    res, rows, seen = _log_once(responses, tmp_path, duration_s=0.3)
+
+    assert len(rows) > 3, "need several cycles for this to mean anything"
+    assert res["anchor_fallbacks"] == []
+    assert res["anchor_requests"]["ambient"] == "0146"   # unchanged
+    assert seen.count("22F446") == 1
+    assert all(r["ambient"] == "" for r in rows)

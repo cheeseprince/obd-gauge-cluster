@@ -299,3 +299,15 @@ def test_jeep_note_does_not_resurrect_the_disproven_oil_temp_claim():
 
 def test_jeep_wmi_resolves_for_auto_detect():
     assert cat.preset_for_vin("1C40123456789ABCD") == "jeep"
+
+
+def test_anchor_mirrors_are_the_j1979_f4xx_form():
+    # J1979 reserves DIDs F400-F4FF for the Mode-01 PIDs re-served over
+    # Mode 22, so the mirror of PID xx is DID F4xx.
+    assert cat.ANCHOR_MIRRORS["coolant"] == "22F405"     # 0105 -> 22F405
+    assert cat.ANCHOR_MIRRORS["maf"] == "22F410"         # 0110 -> 22F410
+    assert cat.ANCHOR_MIRRORS["ambient"] == "22F446"     # 0146 -> 22F446
+    assert set(cat.ANCHOR_MIRRORS) == set(cat.ANCHORS)
+    # Mirrors must pass the read-only gate like any other request the tool sends.
+    for req in cat.ANCHOR_MIRRORS.values():
+        cat.validate_request(req)
