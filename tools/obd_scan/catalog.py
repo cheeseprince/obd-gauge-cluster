@@ -221,16 +221,35 @@ ANCHORS = {
 FORD_67 = VehiclePreset(
     name="ford",
     note="Ford 6.7L Power Stroke Super Duty. Every block is an UNVERIFIED sweep "
-         "target from 2013-era community data — nothing here is a claim.",
+         "target from 2013-era community data — nothing here is a claim. That "
+         "data's provenance is unusually weak even by community standards: a "
+         "July 2026 research pass put 25 claims through three-vote adversarial "
+         "verification and REFUTED 19, and the most-cited list (a 2014 forum "
+         "post about a 2013 truck) contains no rail pressure, DEF, NOx, turbo "
+         "vane or oil pressure entries at all, with a BLANK equation for DPF "
+         "differential pressure. See docs/FORD-STATUS.md. Treat every hit as "
+         "an address that answered, never as an identified parameter, until "
+         "correlation says otherwise.",
     blocks=[
         Block("22F4xx", 0x22F4,
               note="densest known: ambient F446, EGT F478, oil temp F45C, regen F48B, fuel level F42F"),
         Block("2204xx", 0x2204, note="distance since regen 0434, soot 042C"),
-        Block("2211xx", 0x2211, note="DPF differential pressure 116C"),
-        Block("221Exx", 0x221E, note="transmission fluid temp 1E1C"),
+        Block("2211xx", 0x2211, note="DPF differential pressure 116C (source equation was BLANK)"),
+        Block("221Exx", 0x221E,
+              note="transmission fluid temp 1E1C — the ONE claim that survived verification "
+                   "(Medium: three independent formula families agree). 16-bit, degC = raw/16, "
+                   "and it must decode as INT16: the common unsigned form reads ~4096 degC on a "
+                   "sub-zero cold start. MY2020+ is a 10R140, MY2019 and earlier a 6R140 — the "
+                   "generation break is 2019->2020, NOT the 2023 facelift."),
         Block("2200xx", 0x2200, note="does Ford mirror generic PIDs the way GM does?"),
     ],
-    probes=["0100", "22F446"],
+    # Two enhanced go/no-go probes, not one. 22F446 comes from the 2013 list
+    # whose claims mostly did not survive verification, so a silent F446 is
+    # weak evidence that Mode-22 is dead -- it may only mean that PID is not
+    # on this truck. 221E1C is the best-sourced Ford DID we have, so pairing
+    # them means enhanced support gets its strongest available test at census
+    # time rather than after a multi-block sweep has already been spent.
+    probes=["0100", "22F446", "221E1C"],
 )
 
 GM_LZ0 = VehiclePreset(
