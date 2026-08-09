@@ -217,6 +217,23 @@ ANCHORS = {
     "ambient": "0146",
 }
 
+# Mode-22 fallback for each anchor.
+#
+# SAE J1979 reserves DIDs F400-F4FF for "the Mode-01 PIDs, re-served over
+# Mode 22": DID F4xx returns the same data bytes as PID xx. A vehicle can
+# therefore answer 22F410 while ignoring 0110 -- and the 2021 F-350 does
+# exactly that, for BOTH maf (0110) and ambient (0146).
+#
+# That cost real evidence. Those two anchors logged 0/64 rows and `correlate`
+# declared them UNUSABLE, so 2 of 7 anchors were silently thrown away for the
+# whole drive even though the data was sitting one DID away. Every candidate
+# that would have correlated against airflow or ambient temperature was
+# scored without them.
+#
+# Because the payloads are identical, _decode_anchor needs no mirror-specific
+# branch -- the fallback is purely a change of request.
+ANCHOR_MIRRORS = {name: "22F4" + req[2:] for name, req in ANCHORS.items()}
+
 # --- Vehicle presets --------------------------------------------------------
 FORD_67 = VehiclePreset(
     name="ford",
