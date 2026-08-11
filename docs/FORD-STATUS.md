@@ -4,6 +4,29 @@ subtitle: "Where the port actually stands, and what would move it forward"
 date: "2026-07-21"
 ---
 
+> ## ⚠️ This document predates the scan — read this box first
+>
+> **Everything below was written on 2026-07-21, BEFORE a truck was available.** It is kept
+> because its reasoning about method and pitfalls still holds, but its status claims are
+> superseded:
+>
+> - A **2021 F-350 was scanned on 2026-08-09** (census + 187-PID sweep + a 29-minute
+>   cold-start drive). The data IS on HS-CAN — no MS-CAN adapter needed.
+> - `src/vehicles/ford_sd_67.cpp` now ships **seven pages**. Transmission fluid temperature
+>   (`221E1C`, signed int16 ÷ 16) and current gear (`221E60`) are confirmed enhanced DIDs on
+>   the TCM at `7E1`.
+> - Addressing is **11-bit only** — all fifteen 29-bit headers were silent, the exact inverse
+>   of the Sierra.
+> - Most of the remaining parameters turned out to be **standard SAE J1979 PIDs the ECM's own
+>   supported-PID bitmap already advertised** — boost `0187`, rail `016D`, fuel rate `019D`,
+>   DEF `019B`, DPF `017A`, pedal `0149`, CAC `0177`, EGR `0169`. An earlier draft looked for
+>   `0111`/`0123`/`012C`/`015E`, found them absent, and wrongly concluded the parameters were
+>   unavailable. **"PID X is not in the bitmap" does not mean "the parameter is unavailable".**
+>
+> **Still open:** engine oil pressure is the one parameter with no standard PID and no
+> enhanced DID found, and **no dash has yet been plugged into a Super Duty** — the profile is
+> validated against a replay of the capture, not against a moving truck.
+
 # Short version
 
 **Ford is not supported yet. No Power Stroke has ever run this firmware.**
