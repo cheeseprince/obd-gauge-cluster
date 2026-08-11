@@ -97,21 +97,39 @@ int main() {
   assert(std::strcmp(READOUTS[(int)StatId::Intake].cmd, "010F") == 0);
   assert(READOUTS[(int)StatId::Intake].header == 1);
 
-  // MEASURED NEGATIVES. The census bitmap positively showed these absent on the
-  // ECM, so wiring a command would poll something the truck does not answer.
-  //   PEDAL 0111, RAIL 0123, EGR 012C, FUEL RATE 015E
-  for (StatId s : {StatId::Pedal, StatId::Rail, StatId::Egr, StatId::FuelRate})
-    assert(READOUTS[(int)s].cmd == nullptr);
+  // 2026-08-09 CORRECTION: the original pass checked the WRONG generic-mode
+  // PID numbers for these four (PEDAL 0111, RAIL 0123, EGR 012C, FUEL RATE
+  // 015E) and, finding them absent from the ECM bitmap, wrongly concluded the
+  // parameters themselves were unavailable. A re-check against the same
+  // bitmap found the ECM answers a DIFFERENT standard PID for each. All four
+  // are now live; their decoders are covered in detail, with real captured
+  // payloads, in test_profile_ford_expanded.cpp -- this file only pins the
+  // cmd string and header here, alongside every other legislated row.
+  for (StatId s : {StatId::Pedal, StatId::Rail, StatId::Egr, StatId::FuelRate}) {
+    assert(READOUTS[(int)s].cmd != nullptr);
+    assert(READOUTS[(int)s].header == 0);
+  }
+  assert(std::strcmp(READOUTS[(int)StatId::Pedal].cmd,    "0149") == 0);
+  assert(std::strcmp(READOUTS[(int)StatId::Rail].cmd,     "016D") == 0);
+  assert(std::strcmp(READOUTS[(int)StatId::Egr].cmd,      "0169") == 0);
+  assert(std::strcmp(READOUTS[(int)StatId::FuelRate].cmd, "019D") == 0);
 
-  // DEF stays dark on purpose: 22F485 answered but returned a CONSTANT 10-byte
-  // payload across all 64 samples, which is expected over 29 minutes and is
-  // therefore not enough to say which byte carries level. The Sierra's byte[1]
-  // is concentration and reads stuck while byte[3] is the real level -- a wrong
-  // guess here would drive a low-DEF alarm.
-  assert(READOUTS[(int)StatId::Def].cmd == nullptr);
-  // DPF differential pressure: 22116C is ABSENT from the sweep entirely. The
-  // community source for it published a blank equation.
-  assert(READOUTS[(int)StatId::DpfDp].cmd == nullptr);
+  // 2026-08-09 CORRECTION: DEF no longer stays dark. The enhanced DID 22F485
+  // finding below still stands (it answered but returned a CONSTANT 10-byte
+  // payload across all 64 samples, so no byte could be attributed to level)
+  // -- 22F485 is still not used. DEF is instead read from the standard SAE
+  // PID 019B, a different signal path the census separately confirmed.
+  // 22F485's stuck-payload finding is unrelated to 019B and does not apply.
+  assert(READOUTS[(int)StatId::Def].cmd != nullptr);
+  assert(std::strcmp(READOUTS[(int)StatId::Def].cmd, "019B") == 0);
+  assert(READOUTS[(int)StatId::Def].header == 0);
+  // 2026-08-09 CORRECTION: DPF differential pressure no longer stays dark.
+  // 22116C is still ABSENT from the sweep (that community source published a
+  // blank equation and remains unused) -- but the standard SAE PID 017A,
+  // checked separately, IS present on this ECM and is now used instead.
+  assert(READOUTS[(int)StatId::DpfDp].cmd != nullptr);
+  assert(std::strcmp(READOUTS[(int)StatId::DpfDp].cmd, "017A") == 0);
+  assert(READOUTS[(int)StatId::DpfDp].header == 0);
   // Oil pressure was swept for and never identified on this truck.
   assert(READOUTS[(int)StatId::OilP].cmd == nullptr);
 
