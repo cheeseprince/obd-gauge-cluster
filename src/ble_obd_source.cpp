@@ -146,6 +146,7 @@ void BleObdSource::poll(uint32_t nowMs) {
     // frozen values as live until the connect-fail escalation reboots the board.
     portENTER_CRITICAL(&mux_); cur_.linkUp = false; portEXIT_CRITICAL(&mux_);
     mirrorAddr(); setPhase(ConnPhase::Idle);
+    bleRejectClear();   // Forget = try every device again, including rejected ones
   }
 
   // Reset trip — marshalled from core 1 (menu); runs on core 0 every poll
@@ -210,13 +211,38 @@ void BleObdSource::poll(uint32_t nowMs) {
     }
   } else {
     // Escalating recovery for "fails forever" (a wedged NimBLE stack). ~3s backoff:
-    // re-init at ~24s of failure, full reboot at ~60s.
+    // re-init every ~24s of failure, full reboot at ~60s -- but ONLY the reboot
+    // is gated on the scan signal now (see below). connFails_ counts EVERY
+    // failed round again: gating the counter itself disabled the stack-recovery
+    // safety net, because a NimBLE stack wedged in its CONNECTION machinery
+    // (stuck HCI command queue, exhausted ACL contexts, leaked GATT client
+    // handles) keeps scanning fine (lastScanCount_ > 0) while every connect
+    // fails. v0.1.0 shipped exactly that shape -- NimBLE 2.x changed
+    // setConnectTimeout from seconds to milliseconds, giving a 4 ms connect
+    // budget, so scanning worked and connecting never did -- and had to be
+    // pulled. Gating the counter on lastScanCount_<=0 meant that class of
+    // failure never incremented connFails_ at all, so neither escalation below
+    // ever fired.
     connFails_++;
-    if (connFails_ == 8) {
-      Serial.println("[BLE] 8 consecutive fails — re-init NimBLE stack");
+    // Re-trigger every 8 consecutive fails rather than only once at exactly 8.
+    // With the reboot below now gated on lastScanCount_, an adapter that is
+    // simply absent (scan keeps finding *something* -- any garage has some BLE
+    // device in range) can push connFails_ well past 8 and never reboot, so a
+    // one-shot "== 8" would recover the stack once and then silently stop
+    // helping for the rest of the session. The alternative -- resetting
+    // connFails_ to 0 after each recovery -- was rejected: it would make the
+    // counter cycle 0..8 forever and the >=20 reboot threshold below would
+    // become unreachable, losing the escalation to a truly wedged stack that
+    // deinit/reinit alone can't fix.
+    if (connFails_ % 8 == 0) {
+      Serial.printf("[BLE] %d consecutive fails — re-init NimBLE stack\n", connFails_);
       recoverBleStack();
-    } else if (connFails_ >= 20) {
-      Serial.println("[BLE] 20 consecutive fails — restarting");
+    } else if (connFails_ >= 20 && lastScanCount_ <= 0) {
+      // A reboot is the ONLY escalation that wipes the session reject ring, so
+      // it is reserved for a radio that cannot even scan. An adapter that is
+      // simply absent must NOT reboot-loop: that is what re-probed the owner's
+      // laptop every minute, since each boot starts with an empty ring.
+      Serial.println("[BLE] 20 consecutive fails and no scan results — restarting");
       delay(50);
       ESP.restart();
     }
@@ -342,6 +368,7 @@ bool BleObdSource::connectAndSetup() {
   NimBLEScanResults res = scan->start(6, false);           // 1.4: seconds
 #endif
   int n = res.getCount();
+  lastScanCount_ = n;   // read by poll()'s connFails_ escalation — see ble_obd_source.h
   { char sb[32]; snprintf(sb, sizeof sb, "scan: %d dev", n); bleStep(sb); }
   Serial.printf("[BLE] scan found %d devices\n", n);
 
@@ -357,14 +384,26 @@ bool BleObdSource::connectAndSetup() {
   // named OBD dongle. The ranking is a pure, host-tested function (ble_rank.cpp).
   int order[64]; int m = n < 64 ? n : 64;
   std::string bleNames[64];   // own the name strings so the c_str()s stay valid
+  // Fixed-size, not std::string: a NimBLE address string is always exactly 17
+  // chars ("aa:bb:cc:dd:ee:ff") + NUL = 18, so this array is exact and
+  // truncation-proof. A std::string here cost 1536 B of task-stack frame
+  // (sizeof(std::string)==24 x 64) AND, because 17 chars exceeds libstdc++'s
+  // 15-char SSO buffer, heap-allocated on EVERY one of the 64 entries, every
+  // scan round, on an 8192 B task (obd_core0). This is smaller (1152 B) and
+  // has zero heap churn, with the same stack-frame lifetime guarantee.
+  char bleAddrs[64][18];
   BleCand cands[64];
   for (int i = 0; i < m; i++) {
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
     bleNames[i] = res.getDevice(i)->getName();
+    snprintf(bleAddrs[i], sizeof bleAddrs[i], "%s",
+             res.getDevice(i)->getAddress().toString().c_str());   // 2.x returns a pointer
 #else
-    { NimBLEAdvertisedDevice d = res.getDevice(i); bleNames[i] = d.getName(); }
+    { NimBLEAdvertisedDevice d = res.getDevice(i); bleNames[i] = d.getName();
+      snprintf(bleAddrs[i], sizeof bleAddrs[i], "%s", d.getAddress().toString().c_str()); }
 #endif
     cands[i].name = bleNames[i].c_str();
+    cands[i].addr = bleAddrs[i];
     cands[i].rssi = RSSI_OF(res, i);
     // Read what the ADVERTISEMENT claims about services, before connecting to
     // anything. This is the whole point of UX-6: the old path connected first
@@ -405,28 +444,39 @@ bool BleObdSource::connectAndSetup() {
   // WATCHDOG: this loop is long synchronous core-0 work inside ONE poll(), which
   // is exactly the shape wdt_kick.h exists for — the heartbeat is stamped once
   // per poll(), so without a kick a slow round looks identical to a hang. The
-  // round is not small: a 6 s scan, then up to twelve iterations of a 4 s connect
-  // plus bindChars()'s secureConnection() bonding, which takes many seconds
-  // against a stranger's device. main.cpp already widened the watchdog window
-  // from 90 s to 240 s because of this, which treated the symptom; kicking here
-  // addresses it directly. Kick per ITERATION, not once before the loop, or a
-  // round that stalls late still trips it.
+  // round is not small: a 6 s scan, then up to twelve REAL connect attempts (see
+  // `tried` below — skips are free and do not count against the twelve) of a 4 s
+  // connect plus bindChars()'s secureConnection() bonding, which takes many
+  // seconds against a stranger's device. main.cpp already widened the watchdog
+  // window from 90 s to 240 s because of this, which treated the symptom;
+  // kicking here addresses it directly. Kick per ITERATION, not once before the
+  // loop, or a round that stalls late still trips it.
   // Bound the round. Even with the skip below, a busy RF environment can offer
   // more silent devices than there is time for, and connectAndSetup() runs
   // inside ONE poll() -- the caller retries every 3 s, so giving up early costs
   // nothing and stops one round monopolising the OBD task.
   const uint32_t roundDeadline = millis() + 45000;
   int skipped = 0;
-  for (int k = 0; k < m && k < 12; k++) {
+  int tried = 0;   // REAL connect attempts made this round — the budget that
+                    // matters. A skip costs no time, so it must not consume one
+                    // of the twelve slots: with the reject ring saturated (8
+                    // entries), counting skips against the cap left as few as 4
+                    // slots for devices never tried before.
+  for (int k = 0; k < m; k++) {
+    if (tried >= 12) break;             // cap on tries, not candidates examined
     obdWatchdogKick();
     if ((int32_t)(millis() - roundDeadline) >= 0) {
-      Serial.printf("[BLE] round budget spent after %d tried — retrying shortly\n", k);
+      Serial.printf("[BLE] round budget spent after %d tried — retrying shortly\n", tried);
       break;
     }
-    // Never connect to something that advertised a service set that is not
-    // ours. Devices advertising NOTHING are still tried: silence is not
-    // evidence, and some adapters do not advertise their service UUID.
+    // Skip a device for either of two reasons: it positively advertised a
+    // service set that is not ours (SvcHint::Other), or it is in the
+    // session-scoped reject ring (connected before and had no known
+    // BLE-ELM327 GATT profile). Devices advertising NOTHING are still tried:
+    // silence is not evidence, and some adapters do not advertise their
+    // service UUID.
     if (bleShouldSkip(cands[order[k]])) { skipped++; continue; }
+    tried++;
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
     const NimBLEAdvertisedDevice* dev = res.getDevice(order[k]);   // 2.x: pointer
 #else
@@ -450,7 +500,7 @@ bool BleObdSource::connectAndSetup() {
     }
     if (client_->isConnected()) client_->disconnect();
   }
-  Serial.printf("[BLE] no OBD adapter found this round (%d skipped: advertised other services)\n",
+  Serial.printf("[BLE] no OBD adapter found this round (%d skipped: other-service adverts + session reject-ring hits)\n",
                 skipped);
   return false;
 }
@@ -488,7 +538,25 @@ bool BleObdSource::bindChars() {
     Serial.printf("   bound GATT profile %s\n", p.tag);
     break;
   }
-  if (!notifyChar_ || !writeChar_) { bleStep("no OBD profile"); Serial.println("   no known BLE-ELM327 profile"); return false; }
+  if (!notifyChar_ || !writeChar_) {
+    bleStep("no OBD profile");
+    Serial.println("   no known BLE-ELM327 profile");
+    // Remember it for this session so the next scan does not probe it again --
+    // but ONLY if the link is still up. isConnected() is the discriminator
+    // between "we enumerated GATT and it genuinely had nothing" (record it) and
+    // "the peer dropped mid-bond/mid-enumeration, so every getService() above
+    // returned nullptr for a reason that has nothing to do with the device's
+    // real profile" (do NOT record it): a failed bond usually drops the link,
+    // so without this check a real adapter having a bond hiccup gets banned
+    // for the session -- directly contradicting the policy in ble_rank.h ("a
+    // connect timeout or a failed ATE0 is not evidence that a device is not an
+    // adapter"). This also fixes the old `if (client_)` guard, which was dead:
+    // client_ is unconditionally dereferenced 25 lines above
+    // (secureConnection()), so by this point it is never null.
+    if (client_ && client_->isConnected())
+      bleRejectRecord(client_->getPeerAddress().toString().c_str());
+    return false;
+  }
   delay(200);
   // ELM init, hand-rolled rather than via a library: reset, echo/linefeed/spaces off.
   // ATE0 (echo off) is CRITICAL: if it never acks, every reply is prefixed with the

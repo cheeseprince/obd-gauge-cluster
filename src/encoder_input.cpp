@@ -85,6 +85,17 @@ void update(NavState& s) {
       if (a == MenuAction::CloseMenu)        s.view = View::Quad;
       else if (a == MenuAction::OpenTimeSet) { s.editDt = s.rtcNow; s.editField = 0; s.view = View::TimeSet; }
       else if (a == MenuAction::OpenVehiclePick) { s.vehSel = g_vehPickSeed; s.view = View::VehiclePick; }  // seed to Auto-detect row or the current lock (pushed by main.cpp; no `settings` access here — see g_vehCommit*/g_vehPickSeed above)
+      // ForgetAdapter/ResetTrip must ALSO close the menu, same as CloseMenu:
+      // their feedback lives OUTSIDE the menu overlay (the status overlay for
+      // Forget; the gauges for Reset trip), and statusLabel/menuLabel are both
+      // full-screen LV_OPA_COVER children of lv_layer_top() with the menu built
+      // after (and therefore drawn on top of) the status overlay — see ui.cpp
+      // buildStatus()/buildMenu(). Leaving the menu open paints the ack
+      // underneath it, invisibly.
+      else if (a == MenuAction::ForgetAdapter || a == MenuAction::ResetTrip) {
+        g_menuAction = a;        // applied by loop()
+        s.view = View::Quad;     // close the menu so the feedback is visible
+      }
       else if (a != MenuAction::None)        g_menuAction = a;   // applied by loop()
     }
     if (ev == EncEvent::PressLong) s.view = View::Quad;        // hold closes

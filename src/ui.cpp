@@ -437,6 +437,19 @@ static void updateSdLabel(lv_obj_t* lbl, Theme theme) {
 #endif
 }
 
+// Name of the bonded adapter for the "Forget adapter?" confirm row. There is
+// NO fallback chain here — adapter identity is not reachable from ui.cpp at
+// all, so this always returns the plain literal "adapter". Investigated
+// 2026-08-11: the obvious source is g_obd.connStatus().addr (and even that is
+// only a MAC — there is no cached adapter *name* anywhere in the firmware),
+// but g_obd is `static` inside main.cpp, i.e. it has internal linkage and is
+// not visible from this translation unit at all. MenuState/Settings (what
+// showMenu() is actually given) carry no adapter identity either. Reaching
+// it would mean adding a new cross-file accessor purely to grow this string,
+// which is a separate change from the confirm dialog itself -- so naming the
+// adapter is deferred until that plumbing is deliberately added.
+static const char* obdAdapterLabel() { return "adapter"; }
+
 namespace ui {
 
 // anyAlarm: returns true if any stat has a hold-off-confirmed alarm this frame.
@@ -500,8 +513,29 @@ void showMenu(const MenuState& m, const Settings& s, Theme t, const DateTime& no
   char nightVal[12];  snprintf(nightVal,  sizeof nightVal,  "[ %s ]", nightModeLabel(s));
   char brightVal[12]; snprintf(brightVal, sizeof brightVal, "[ %u%% ]", (unsigned)s.brightnessPct);
   char unitsVal[16];  snprintf(unitsVal,  sizeof unitsVal,  "[ %s ]", s.metric ? "metric" : "imperial");
-  const char* resetTxt  = (m.armed == MenuItem::ResetTrip)     ? "Reset trip?"     : "Reset trip";
-  const char* forgetTxt = (m.armed == MenuItem::ForgetAdapter) ? "Forget adapter?" : "Forget adapter";
+  // Destructive rows open an inline Yes/No dialog. Naming the adapter matters:
+  // confirming "Forget adapter?" tells you nothing about WHICH adapter you are
+  // about to drop.
+  char resetTxtBuf[40], forgetTxtBuf[48];
+  const char* resetTxt = "Reset trip";
+  if (m.armed == MenuItem::ResetTrip) {
+    snprintf(resetTxtBuf, sizeof resetTxtBuf, "Reset trip?   < %s >",
+             m.confirmYes ? "Yes" : "No");
+    resetTxt = resetTxtBuf;
+  }
+  const char* forgetTxt = "Forget adapter";
+  if (m.armed == MenuItem::ForgetAdapter) {
+    // obdAdapterLabel() only ever returns the 7-char literal "adapter" today
+    // (see its doc comment — there is no name/MAC plumbing to this file yet),
+    // so %.16s is not doing anything for the current caller. It stays as a
+    // defensive bound on forgetTxtBuf (48 B) for whenever that plumbing is
+    // added and `who` becomes a real MAC ("aa:bb:cc:dd:ee:ff", 17 chars) or an
+    // adapter name of unknown length — cheap insurance now, not dead code.
+    const char* who = obdAdapterLabel();
+    snprintf(forgetTxtBuf, sizeof forgetTxtBuf, "Forget %.16s?  < %s >",
+             who, m.confirmYes ? "Yes" : "No");
+    forgetTxt = forgetTxtBuf;
+  }
   char clk[24];
   if (now.y >= 2000) formatDateTime(now, clk, sizeof clk); else snprintf(clk, sizeof clk, "--:--");
   // Show the user's intent (ON/OFF) — the runtime status only overrides for a

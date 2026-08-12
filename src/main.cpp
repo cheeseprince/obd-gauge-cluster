@@ -752,7 +752,15 @@ void loop() {
     ui::render(gauges, snap, theme, history, settings.metric);
 #else
     bool linked = readings.linkUp;   // same snapshot applyReadings consumed
-    if (linked) {
+    if (g_forgetMsgUntil && (int32_t)(g_forgetMsgUntil - now) > 0) {
+      // Unconditional, and deliberately ahead of the link-up branch. This used
+      // to be an `else if` reached only while disconnected -- but forget() is
+      // handled by core 0 on its NEXT poll, so at confirm time the link is still
+      // up and the gauges render instead; by the time it drops, the dash has
+      // already re-bonded. The acknowledgement was therefore almost never shown,
+      // and the button appeared to do nothing.
+      ui::showStatus("Adapter forgotten.\nScanning for a new one...", theme);
+    } else if (linked) {
       // Startup grace: suppress alarms for 10s after the link FIRST comes up, so
       // the key-on/crank voltage dip can't trip a warning. First link-up only;
       // later reconnects rely on the normal 4s hold-off.
@@ -762,10 +770,6 @@ void loop() {
       ui::suppressAlarms(now - linkUpSince < 10000);
       ui::showStatus(nullptr);
       ui::render(gauges, snap, theme, history, settings.metric);
-    } else if (g_forgetMsgUntil && (int32_t)(g_forgetMsgUntil - now) > 0) {
-      // Just did Forget-adapter — a clear on-screen confirmation while it rescans,
-      // so the action is obviously acknowledged (not just a silently-closed menu).
-      ui::showStatus("Adapter forgotten.\nScanning for a new one...", theme);
     } else {
 #if defined(BLE_OBD)
       char status[256];

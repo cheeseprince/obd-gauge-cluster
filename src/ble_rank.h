@@ -27,10 +27,14 @@ struct BleCand {
   const char* name;   // advertised name; nullptr or "" if the device has none
   int         rssi;   // signal strength in dBm (negative; stronger = larger)
   SvcHint     svc = SvcHint::None;   // defaults to "said nothing" -- the safe value
+  const char* addr = nullptr;        // peer address, for the reject ring; may be null
 };
 
-// True when this device positively advertised a service set that is not ours,
-// and can therefore be skipped WITHOUT connecting to it.
+// True when this device should not be tried this round: either it positively
+// advertised a service set that is not ours (never connected to, safe to
+// infer from the advertisement alone), or its address is in the session
+// reject ring (it WAS connected to earlier this session and turned out to
+// expose no known BLE-ELM327 GATT profile — see the reject-ring section below).
 //
 // Why this matters (UX-6): the connect path used to connect-then-inspect, so it
 // GATT-connected to strangers' phones and watches and attempted bonding with
@@ -48,3 +52,22 @@ bool bleNameLooksLikeObd(const char* name);
 // group), then every remaining device (strongest RSSI first). Stable — devices
 // with equal rank keep their input order. order[] must have room for n ints.
 void bleRankCandidates(const BleCand* cands, int n, int* order);
+
+// --- session-scoped reject ring ---------------------------------------------
+// Addresses that CONNECTED but exposed no known BLE-ELM327 GATT profile. The
+// detection already existed at the connect site; it simply had no memory, so
+// every scan re-ranked the same stranger and probed it again -- a laptop in
+// range gets a connection request on a loop.
+//
+// RAM ONLY, cleared on reboot and on Forget-adapter. Persisting this would be
+// per-device learned state, which this project deliberately avoids: two
+// identical dashes must behave identically out of the box. The cost is that a
+// stranger is probed once per boot, which is not the complaint.
+//
+// ONLY the "no OBD profile" outcome belongs here. A connect timeout or a failed
+// ATE0 is not evidence that a device is not an adapter -- it can be the user's
+// real dongle having a bad moment, and skipping it would break the one device
+// they actually want.
+void bleRejectRecord(const char* addr);    // no-op for null/empty; duplicates ignored
+bool bleRejectContains(const char* addr);  // false for null/empty
+void bleRejectClear();                     // reboot / Forget-adapter

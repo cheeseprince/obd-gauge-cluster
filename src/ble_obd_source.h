@@ -117,6 +117,18 @@ class BleObdSource : public ObdSource {
   };
 
   int connFails_ = 0;        // consecutive connectAndSetup failures (core 0); resets on success
+  // Device count from the most recent connectAndSetup() discovery scan. In
+  // poll()'s escalating recovery, connFails_ increments on every failed round
+  // (cheap recoverBleStack() re-init fires every 8 of those, unconditionally)
+  // -- but the full ESP.restart(), which is the only step that wipes the
+  // session-scoped BLE reject ring, additionally requires lastScanCount_<=0.
+  // That is the signal that the whole radio can't even scan, not just that
+  // connecting is failing; a round that scanned successfully and found devices
+  // is proof the stack is alive, regardless of whether any of those devices
+  // was the adapter, so it must never trigger a reboot on its own.
+  // Set every time connectAndSetup() reaches its discovery scan (i.e. on every
+  // failure path -- the fast cached-addr path returns before reaching it).
+  int lastScanCount_ = 0;
 
   // Connection: try cached addr, else scan + identify by the 0x18f0/2af1 profile.
   bool connectAndSetup();

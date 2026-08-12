@@ -1,5 +1,8 @@
 #include "ble_rank.h"
 #include <cctype>
+#include <cstring>
+#include <cstdio>
+#include <strings.h>   // strcasecmp (POSIX; NOT in <cstring>)
 
 // Case-insensitive substring test: true if `needle` occurs anywhere in `hay`.
 static bool ciContains(const char* hay, const char* needle) {
@@ -25,11 +28,44 @@ bool bleNameLooksLikeObd(const char* name) {
   return false;
 }
 
+// 8 slots: a scan tops out around 26 devices and only non-OBD ones land here.
+// Overflow drops the oldest, so that device is probed once more -- degradation,
+// not failure.
+static const int  REJ_CAP = 8;
+static const int  REJ_LEN = 18;            // "aa:bb:cc:dd:ee:ff" + NUL
+static char       s_rej[REJ_CAP][REJ_LEN];
+static int        s_rejCount = 0;          // entries in use, <= REJ_CAP
+static int        s_rejNext  = 0;          // ring write cursor
+
+static bool rejValid(const char* a) { return a && a[0]; }
+
+void bleRejectClear() { s_rejCount = 0; s_rejNext = 0; }
+
+bool bleRejectContains(const char* addr) {
+  if (!rejValid(addr)) return false;       // no address is not a match
+  for (int i = 0; i < s_rejCount; i++)
+    if (strcasecmp(s_rej[i], addr) == 0) return true;   // BlueZ and NimBLE differ on hex case
+  return false;
+}
+
+void bleRejectRecord(const char* addr) {
+  if (!rejValid(addr)) return;
+  // Refuse rather than truncate. A truncated address breaks its own lookup AND can
+  // prefix-collide with a DIFFERENT device, which would skip a peer that was never
+  // rejected -- potentially the user's real adapter. Not storing it merely means that
+  // device is probed again, which is the safe direction to fail.
+  if (strlen(addr) >= REJ_LEN) return;
+  if (bleRejectContains(addr)) return;     // duplicates must not consume slots
+  snprintf(s_rej[s_rejNext], REJ_LEN, "%s", addr);
+  s_rejNext = (s_rejNext + 1) % REJ_CAP;
+  if (s_rejCount < REJ_CAP) s_rejCount++;
+}
+
 // Sort key: OBD-named devices sort ahead of everything else, and within each
 // group stronger RSSI sorts first. RSSI is ~[-100, 0] dBm; bias it positive and
 // keep it well below the OBD flag's weight so the flag always dominates.
 bool bleShouldSkip(const BleCand& c) {
-  return c.svc == SvcHint::Other;
+  return c.svc == SvcHint::Other || bleRejectContains(c.addr);
 }
 
 static long rankKey(const BleCand& c) {

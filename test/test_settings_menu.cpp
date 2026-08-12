@@ -37,21 +37,28 @@ int main() {
   m.sel = (uint8_t)MenuItem::Close;
   check(menuActivate(m) == MenuAction::CloseMenu, "Close -> CloseMenu");
 
-  // Destructive items need two activates (arm then fire).
+  // Destructive items need: first click arms with No selected, toggle Yes, then click fires.
   m.sel = (uint8_t)MenuItem::ResetTrip;
   check(menuActivate(m) == MenuAction::None, "ResetTrip first click arms");
   check(m.armed == MenuItem::ResetTrip, "armed = ResetTrip");
-  check(menuActivate(m) == MenuAction::ResetTrip, "ResetTrip second click fires");
+  check(m.confirmYes == false, "default to No (safe)");
+  menuMove(m, +1);
+  check(m.confirmYes == true, "toggle to Yes");
+  check(menuActivate(m) == MenuAction::ResetTrip, "ResetTrip fires after toggle+click");
   check(m.armed == MenuItem::COUNT, "disarmed after fire");
 
-  // Moving cancels a pending confirm.
+  // Moving no longer cancels: while armed the knob picks Yes/No. Cancelling a
+  // pending confirm silently on any turn is the bug this replaces.
   m.sel = (uint8_t)MenuItem::ForgetAdapter;
   check(menuActivate(m) == MenuAction::None, "ForgetAdapter arms");
   menuMove(m, +1);
-  check(m.armed == MenuItem::COUNT, "move cancels arm");
-  m.sel = (uint8_t)MenuItem::ForgetAdapter;
-  check(menuActivate(m) == MenuAction::None, "re-arm after move");
-  check(menuActivate(m) == MenuAction::ForgetAdapter, "ForgetAdapter fires on 2nd");
+  check(m.armed == MenuItem::ForgetAdapter, "move keeps the dialog open");
+  check(m.confirmYes == true, "move selects Yes");
+  // Absolute mapping, not a toggle: another +1 move must STAY on Yes.
+  menuMove(m, +1);
+  check(m.confirmYes == true, "another +1 move stays on Yes (absolute, not a toggle)");
+  menuMove(m, -1);
+  check(m.confirmYes == false, "-1 move selects No");
 
   // menuReset clears everything.
   menuReset(m);
@@ -95,6 +102,78 @@ int main() {
   MenuState u; u.sel = (uint8_t)MenuItem::Units;
   menuMove(u, +1);
   check(u.sel == (uint8_t)MenuItem::SetTime, "full caps: SetTime reachable again");
+
+  // --- Yes/No confirm dialog on destructive rows ----------------------
+  // Old behaviour was click-to-arm, click-again-to-confirm, and ANY knob turn
+  // silently cancelled. Users reported "it says Forget adapter? and then
+  // nothing happens". Now: click arms with No selected, turn selects No/Yes
+  // ABSOLUTELY (dir > 0 = Yes, dir < 0 = No -- not a toggle, see menuMove()),
+  // click acts on the highlighted choice.
+  {
+    MenuState d; menuReset(d);
+    d.sel = (uint8_t)MenuItem::ForgetAdapter;
+
+    // First click arms, defaulting to No -- the safe choice.
+    check(menuActivate(d) == MenuAction::None, "confirm: first click does not act");
+    check(d.armed == MenuItem::ForgetAdapter, "confirm: first click arms");
+    check(d.confirmYes == false, "confirm: defaults to No");
+
+    // A turn selects the CHOICE (absolute, not relative). It must not move the
+    // cursor and must not disarm -- disarming on turn is exactly the old bug.
+    menuMove(d, +1);
+    check(d.confirmYes == true, "confirm: turn selects Yes");
+    check(d.sel == (uint8_t)MenuItem::ForgetAdapter, "confirm: turn does not move the cursor");
+    check(d.armed == MenuItem::ForgetAdapter, "confirm: turn does not disarm");
+
+    menuMove(d, -1);
+    check(d.confirmYes == false, "confirm: turn back selects No");
+    menuMove(d, +1);
+    check(d.confirmYes == true, "confirm: +1 selects Yes");
+
+    // Click on Yes fires and disarms.
+    check(menuActivate(d) == MenuAction::ForgetAdapter, "confirm: Yes fires the action");
+    check(d.armed == MenuItem::COUNT, "confirm: firing disarms");
+  }
+  {
+    // Absolute, not a toggle: three detents in the same direction must land on Yes,
+    // not parity-flip back to No. The old toggle made a destructive choice depend on
+    // how fast the knob was spun.
+    MenuState p; menuReset(p); p.sel = (uint8_t)MenuItem::ForgetAdapter;
+    menuActivate(p);
+    menuMove(p, +1); menuMove(p, +1); menuMove(p, +1);
+    check(p.confirmYes == true, "confirm: 3 detents up = Yes, not parity");
+    menuMove(p, -1); menuMove(p, -1);
+    check(p.confirmYes == false, "confirm: 2 detents down = No, not parity");
+  }
+  {
+    // Click on No cancels: no action, disarmed, cursor unmoved.
+    MenuState d; menuReset(d);
+    d.sel = (uint8_t)MenuItem::ForgetAdapter;
+    menuActivate(d);                                  // arm (No)
+    check(menuActivate(d) == MenuAction::None, "confirm: No cancels");
+    check(d.armed == MenuItem::COUNT, "confirm: cancel disarms");
+    check(d.sel == (uint8_t)MenuItem::ForgetAdapter, "confirm: cancel keeps the cursor");
+  }
+  {
+    // Reset trip uses the same dialog -- leaving one row on double-click while
+    // the other has a dialog is how mis-clicks happen.
+    MenuState d; menuReset(d);
+    d.sel = (uint8_t)MenuItem::ResetTrip;
+    check(menuActivate(d) == MenuAction::None, "confirm: reset trip arms too");
+    menuMove(d, +1);
+    check(menuActivate(d) == MenuAction::ResetTrip, "confirm: reset trip fires on Yes");
+  }
+  {
+    // Non-destructive rows are untouched: one click, acts immediately, and a
+    // turn still moves the cursor.
+    MenuState d; menuReset(d);
+    d.sel = (uint8_t)MenuItem::NightMode;
+    check(menuActivate(d) == MenuAction::ToggleNight, "confirm: normal row acts on one click");
+    check(d.armed == MenuItem::COUNT, "confirm: normal row never arms");
+    uint8_t before = d.sel;
+    menuMove(d, +1);
+    check(d.sel != before, "confirm: turn still moves the cursor when not armed");
+  }
 
   printf(failures ? "\n%d FAILED\n" : "\nALL PASS\n", failures);
   return failures ? 1 : 0;
