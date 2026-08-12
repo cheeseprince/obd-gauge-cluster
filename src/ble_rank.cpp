@@ -2,6 +2,7 @@
 #include <cctype>
 #include <cstring>
 #include <cstdio>
+#include <strings.h>   // strcasecmp (POSIX; NOT in <cstring>)
 
 // Case-insensitive substring test: true if `needle` occurs anywhere in `hay`.
 static bool ciContains(const char* hay, const char* needle) {
@@ -49,6 +50,11 @@ bool bleRejectContains(const char* addr) {
 
 void bleRejectRecord(const char* addr) {
   if (!rejValid(addr)) return;
+  // Refuse rather than truncate. A truncated address breaks its own lookup AND can
+  // prefix-collide with a DIFFERENT device, which would skip a peer that was never
+  // rejected -- potentially the user's real adapter. Not storing it merely means that
+  // device is probed again, which is the safe direction to fail.
+  if (strlen(addr) >= REJ_LEN) return;
   if (bleRejectContains(addr)) return;     // duplicates must not consume slots
   snprintf(s_rej[s_rejNext], REJ_LEN, "%s", addr);
   s_rejNext = (s_rejNext + 1) % REJ_CAP;

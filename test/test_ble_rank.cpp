@@ -138,6 +138,15 @@ int main() {
   bleRejectClear();
   check(!bleRejectContains("99:99:99:99:99:99"), "reject: clear empties the ring");
 
+  // Over-length addresses are REFUSED, not truncated. Truncation would both break
+  // self-lookup and prefix-collide with an unrelated device.
+  bleRejectClear();
+  bleRejectRecord("aa:bb:cc:dd:ee:ff:00:11");        // 23 chars, too long
+  check(!bleRejectContains("aa:bb:cc:dd:ee:ff:00:11"), "reject: over-length is not stored");
+  check(!bleRejectContains("aa:bb:cc:dd:ee:ff"),       "reject: over-length cannot collide with a shorter address");
+  bleRejectRecord("11:22:33:44:55:66");
+  check(bleRejectContains("11:22:33:44:55:66"), "reject: over-length record did not consume a slot");
+
   // bleShouldSkip folds the ring in: same question, one predicate. The connect
   // path already calls it, so no new skip site is needed.
   { BleCand c{}; c.name = "vLinker MS-B"; c.rssi = -55; c.svc = SvcHint::None;
