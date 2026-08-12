@@ -146,6 +146,7 @@ void BleObdSource::poll(uint32_t nowMs) {
     // frozen values as live until the connect-fail escalation reboots the board.
     portENTER_CRITICAL(&mux_); cur_.linkUp = false; portEXIT_CRITICAL(&mux_);
     mirrorAddr(); setPhase(ConnPhase::Idle);
+    bleRejectClear();   // Forget = try every device again, including rejected ones
   }
 
   // Reset trip — marshalled from core 1 (menu); runs on core 0 every poll
@@ -357,14 +358,17 @@ bool BleObdSource::connectAndSetup() {
   // named OBD dongle. The ranking is a pure, host-tested function (ble_rank.cpp).
   int order[64]; int m = n < 64 ? n : 64;
   std::string bleNames[64];   // own the name strings so the c_str()s stay valid
+  std::string bleAddrs[64];   // own the address strings so the c_str()s stay valid
   BleCand cands[64];
   for (int i = 0; i < m; i++) {
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
     bleNames[i] = res.getDevice(i)->getName();
+    bleAddrs[i] = res.getDevice(i)->getAddress().toString();   // 2.x returns a pointer
 #else
-    { NimBLEAdvertisedDevice d = res.getDevice(i); bleNames[i] = d.getName(); }
+    { NimBLEAdvertisedDevice d = res.getDevice(i); bleNames[i] = d.getName(); bleAddrs[i] = d.getAddress().toString(); }
 #endif
     cands[i].name = bleNames[i].c_str();
+    cands[i].addr = bleAddrs[i].c_str();
     cands[i].rssi = RSSI_OF(res, i);
     // Read what the ADVERTISEMENT claims about services, before connecting to
     // anything. This is the whole point of UX-6: the old path connected first
@@ -488,7 +492,15 @@ bool BleObdSource::bindChars() {
     Serial.printf("   bound GATT profile %s\n", p.tag);
     break;
   }
-  if (!notifyChar_ || !writeChar_) { bleStep("no OBD profile"); Serial.println("   no known BLE-ELM327 profile"); return false; }
+  if (!notifyChar_ || !writeChar_) {
+    bleStep("no OBD profile");
+    Serial.println("   no known BLE-ELM327 profile");
+    // Remember it for this session so the next scan does not probe it again.
+    // ONLY this outcome is recorded: a connect timeout or a failed ATE0 can be
+    // the user's real adapter having a bad moment.
+    if (client_) bleRejectRecord(client_->getPeerAddress().toString().c_str());
+    return false;
+  }
   delay(200);
   // ELM init, hand-rolled rather than via a library: reset, echo/linefeed/spaces off.
   // ATE0 (echo off) is CRITICAL: if it never acks, every reply is prefixed with the
