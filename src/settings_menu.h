@@ -16,11 +16,15 @@ enum class MenuAction : uint8_t {
 struct MenuState {
   uint8_t  sel   = 0;                  // highlighted item index [0, MenuItem::COUNT)
   MenuItem armed = MenuItem::COUNT;    // COUNT = nothing armed for confirm
+  // Which choice is highlighted while `armed`. Destructive rows (Reset trip,
+  // Forget adapter) open an inline Yes/No dialog: the knob toggles this instead
+  // of moving the cursor, and a click acts on it. Defaults to No on every arm.
+  bool     confirmYes = false;
 };
 
-void       menuReset(MenuState& m);            // sel=0, armed=COUNT
-void       menuMove(MenuState& m, int dir);    // ±1, wraps; clears armed
-MenuAction menuActivate(MenuState& m);         // act on the highlighted row
+void       menuReset(MenuState& m);            // sel=0, armed=COUNT, confirmYes=false
+void       menuMove(MenuState& m, int dir);    // armed: toggle Yes/No. else: ±1, wraps
+MenuAction menuActivate(MenuState& m);         // act on the highlighted row / choice
 
 // Per-board row visibility (set once at input begin(); defaults = dash shape).
 // SetTime is meaningless without an RTC, Logging without an SD slot, and the
