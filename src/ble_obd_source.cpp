@@ -211,26 +211,40 @@ void BleObdSource::poll(uint32_t nowMs) {
     }
   } else {
     // Escalating recovery for "fails forever" (a wedged NimBLE stack). ~3s backoff:
-    // re-init at ~24s of failure, full reboot at ~60s.
-    //
-    // Only count this round toward connFails_ when the scan itself failed or
-    // found ZERO devices. connFails_ exists to detect a wedged NimBLE stack --
-    // a round that scanned fine and found devices (even if none of them was a
-    // usable adapter, e.g. an unreachable adapter with strangers in range) is
-    // proof the stack is alive, which is the only thing this counter is for.
-    // Without this gate, the exact complaint scenario (adapter unreachable,
-    // strangers nearby) fails every round and reboots every ~60s, wiping the
-    // session-scoped reject ring each time it matters most.
-    if (lastScanCount_ <= 0) {
-      connFails_++;
-      if (connFails_ == 8) {
-        Serial.println("[BLE] 8 consecutive fails — re-init NimBLE stack");
-        recoverBleStack();
-      } else if (connFails_ >= 20) {
-        Serial.println("[BLE] 20 consecutive fails — restarting");
-        delay(50);
-        ESP.restart();
-      }
+    // re-init every ~24s of failure, full reboot at ~60s -- but ONLY the reboot
+    // is gated on the scan signal now (see below). connFails_ counts EVERY
+    // failed round again: gating the counter itself disabled the stack-recovery
+    // safety net, because a NimBLE stack wedged in its CONNECTION machinery
+    // (stuck HCI command queue, exhausted ACL contexts, leaked GATT client
+    // handles) keeps scanning fine (lastScanCount_ > 0) while every connect
+    // fails. v0.1.0 shipped exactly that shape -- NimBLE 2.x changed
+    // setConnectTimeout from seconds to milliseconds, giving a 4 ms connect
+    // budget, so scanning worked and connecting never did -- and had to be
+    // pulled. Gating the counter on lastScanCount_<=0 meant that class of
+    // failure never incremented connFails_ at all, so neither escalation below
+    // ever fired.
+    connFails_++;
+    // Re-trigger every 8 consecutive fails rather than only once at exactly 8.
+    // With the reboot below now gated on lastScanCount_, an adapter that is
+    // simply absent (scan keeps finding *something* -- any garage has some BLE
+    // device in range) can push connFails_ well past 8 and never reboot, so a
+    // one-shot "== 8" would recover the stack once and then silently stop
+    // helping for the rest of the session. The alternative -- resetting
+    // connFails_ to 0 after each recovery -- was rejected: it would make the
+    // counter cycle 0..8 forever and the >=20 reboot threshold below would
+    // become unreachable, losing the escalation to a truly wedged stack that
+    // deinit/reinit alone can't fix.
+    if (connFails_ % 8 == 0) {
+      Serial.printf("[BLE] %d consecutive fails — re-init NimBLE stack\n", connFails_);
+      recoverBleStack();
+    } else if (connFails_ >= 20 && lastScanCount_ <= 0) {
+      // A reboot is the ONLY escalation that wipes the session reject ring, so
+      // it is reserved for a radio that cannot even scan. An adapter that is
+      // simply absent must NOT reboot-loop: that is what re-probed the owner's
+      // laptop every minute, since each boot starts with an empty ring.
+      Serial.println("[BLE] 20 consecutive fails and no scan results — restarting");
+      delay(50);
+      ESP.restart();
     }
   }
 }
