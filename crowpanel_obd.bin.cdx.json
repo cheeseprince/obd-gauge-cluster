@@ -1,18 +1,18 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:bda7dcd1-1949-5ea2-a352-b1857c20c56d",
+  "serialNumber": "urn:uuid:c38e8bc1-59c1-5d71-a4ce-0b3b28e0cbff",
   "version": 1,
   "metadata": {
     "component": {
       "type": "firmware",
       "name": "crowpanel_obd",
-      "version": "v0.4.2",
+      "version": "v0.4.3",
       "description": "ESP32-S3 OBD-II gauge cluster firmware",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "0ec25a70fa964231bebf7066f5a54acdeda3743b64782a196eca8a2bc0d6f6a1"
+          "content": "d45f6022fcf41b0cd4007d70a01e5abf80e2057f68e3a7b481774b6830b24437"
         }
       ],
       "externalReferences": [
