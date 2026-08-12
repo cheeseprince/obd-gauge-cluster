@@ -80,7 +80,70 @@ GM_SIERRA = Scenario(
     },
 )
 
+# Ford F-350 Super Duty 6.7L Power Stroke (10R140), 2020-26.
+#
+# The VIN matches `fordSuperDuty67_10R140`: '8' at vin[3] (F-350), 'W' at vin[4]
+# (Super Duty platform), 'B'/'T' at vin[6..7] (6.7L Power Stroke) and 'N' at
+# vin[9] (inside the LMNPRST model-year gate). So a correct dash auto-selects
+# `ford_sd_67`.
+#
+# THIS TRUCK IS THE INVERSE OF THE SIERRA, WHICH IS WHY IT EARNS A SCENARIO.
+# It is 11-bit ONLY -- a real scan found all fifteen 29-bit headers silent -- and
+# almost everything it exposes is a STANDARD Mode-01 PID rather than an enhanced
+# DID. Only transmission fluid temperature and current gear are enhanced, and
+# both live on the TRANSMISSION module at 7E1 (not 7E2 like GM). A dash that
+# hard-codes GM's header map reads nothing here.
+#
+# The Mode-01 rows below are the ones this profile polls beyond the common set.
+# They exist because the profile originally left them dark after looking for
+# them under the WRONG PID numbers (0111 pedal, 0123 rail, 012C EGR, 015E fuel
+# rate) and concluding the parameters were unavailable. The truck serves them at
+# 0149, 016D, 0169 and 019D. "PID X is not in the bitmap" does not mean "the
+# parameter is unavailable" -- that lesson is what this fixture pins.
+FORD_SD_67 = Scenario(
+    vin="1FT8W3BT0N2345678",
+    mode01={
+        **_COMMON_MODE01,
+        "43": "0064",              # absolute load
+        "46": "3C",                # ambient air temp, A-40 = 20 C
+        "49": "80",                # accelerator pedal D, 128/255 = 50%
+        "62": "96",                # actual engine torque, A-125 = 25%
+        "63": "03E8",              # reference torque = 1000 Nm
+        # Fuel pressure control. bytes[3..4] are the ACTUAL rail pressure in
+        # 10 kPa units: 0x35DD = 13789 -> 137.9 MPa -> ~20000 psi.
+        "6D": "0735DD35DD000000000000",
+        "69": "07400000000000",    # commanded EGR, byte[1] 0x40 = 25%
+        # Charge air cooler temp: byte[1] is the reading, A-40 = 40 C.
+        "77": "0150000000",
+        # EGT bank 1, four sensors. Sensor 1 is the one the profile shows.
+        "78": "0F03A6039102CC02B4",
+        # DPF bank 1. bytes[3..4] = 0x01F4 = 500 -> 5.00 kPa differential.
+        "7A": "0201E001F4FFFF",
+        # NOx sensor. bytes[1..2] = 0x0064 = 100 ppm. NOT 0xFFFF, which is the
+        # sensor-not-ready sentinel a cold truck really does report.
+        "83": "030064000000000000",
+        # Intake manifold absolute pressure A: bytes[1..2] x 0.03125 kPa.
+        # 0x1900 = 6400 -> 200 kPa absolute -> ~14.5 psi of boost over baro.
+        "87": "0119000000",
+        # DEF sensor data. byte[1] is tank level: 0xBF = 191 -> 74.9%.
+        "9B": "3FBF4095",
+        # Engine fuel rate. bytes[0..1] x 0.02 g/s = 1.74 g/s -> ~2 gal/hr.
+        "9D": "00570057",
+        "9E": "022F",              # engine exhaust flow rate
+        "A1": "030064000000000000",  # NOx corrected
+    },
+    mode22={
+        "7E1": {                   # TRANSMISSION module -- 7E1, not GM's 7E2
+            "1E1C": "05A0",        # ATF temperature, SIGNED int16 / 16 = 90 C.
+                                   # Must decode signed: the unsigned form reads
+                                   # ~4096 C on a sub-zero cold start.
+            "1E60": "06",          # current gear, 6 of 10 on the 10R140
+        },
+    },
+)
+
 SCENARIOS = {
     "generic": GENERIC,
     "gm_sierra": GM_SIERRA,
+    "ford_sd_67": FORD_SD_67,
 }

@@ -78,6 +78,7 @@ without linking becomes a failure instead of a pass.
 | :--- | :--- |
 | `gm_sierra` | Sierra 1500 LZ0 diesel. VIN matches the LZ0 discriminator, so a correct dash auto-selects `gm_sierra_lz0` and polls the enhanced set — including `221940` on the **transmission** ECU at `7E2` |
 | `generic` | Standard PIDs only, and a VIN whose WMI is unknown, so the dash must fall back to Generic |
+| `ford_sd_67` | F-350 Super Duty 6.7L Power Stroke. **The inverse of the Sierra, which is why it earns a scenario:** 11-bit only, and almost everything it exposes is a standard Mode-01 PID rather than an enhanced DID. Only ATF temperature (`221E1C`) and current gear (`221E60`) are enhanced, and both answer on the transmission module at **`7E1`** — not GM's `7E2`. A dash that hard-codes one vehicle's header map reads nothing here |
 
 Every value is a synthetic fixture. The VINs are synthetic and allowlisted in
 `scripts/check_no_pii.py`; a real VIN pasted anywhere in the tree fails CI.
