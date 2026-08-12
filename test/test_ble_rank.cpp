@@ -94,6 +94,65 @@ int main() {
   { BleCand c[] = {{"OBDII", -70}}; int order[1]; bleRankCandidates(c, 1, order);
     check(order[0] == 0, "single device"); }
 
+  // --- session-scoped reject ring -------------------------------------
+  // The dash connects to a stranger, finds no ELM327 GATT profile, and
+  // disconnects. Without memory it ranks that same stranger just as highly on
+  // the next scan and probes it again -- which is why a laptop in the garage
+  // gets a Bluetooth connection request every minute.
+  bleRejectClear();
+  check(!bleRejectContains("aa:bb:cc:dd:ee:ff"), "reject: empty ring skips nothing");
+
+  bleRejectRecord("aa:bb:cc:dd:ee:ff");
+  check(bleRejectContains("aa:bb:cc:dd:ee:ff"), "reject: recorded address is skipped");
+  check(!bleRejectContains("11:22:33:44:55:66"), "reject: other addresses unaffected");
+
+  // Case-insensitive: BlueZ and NimBLE disagree on hex case for the same peer.
+  check(bleRejectContains("AA:BB:CC:DD:EE:FF"), "reject: match is case-insensitive");
+
+  // Recording twice must not consume two slots.
+  bleRejectRecord("aa:bb:cc:dd:ee:ff");
+  bleRejectRecord("11:22:33:44:55:66");
+  check(bleRejectContains("aa:bb:cc:dd:ee:ff"), "reject: duplicate keeps the original");
+  check(bleRejectContains("11:22:33:44:55:66"), "reject: second address recorded");
+
+  // Ring holds 8. Overflowing drops the OLDEST -- that device gets probed once
+  // more, which is degradation rather than failure.
+  bleRejectClear();
+  char a[24];
+  for (int i = 0; i < 8; i++) { snprintf(a, sizeof a, "00:00:00:00:00:%02d", i); bleRejectRecord(a); }
+  check(bleRejectContains("00:00:00:00:00:00"), "reject: 8 entries all held");
+  check(bleRejectContains("00:00:00:00:00:07"), "reject: newest held");
+  bleRejectRecord("99:99:99:99:99:99");
+  check(!bleRejectContains("00:00:00:00:00:00"), "reject: 9th evicts the oldest");
+  check(bleRejectContains("00:00:00:00:00:07"), "reject: eviction keeps the rest");
+  check(bleRejectContains("99:99:99:99:99:99"), "reject: 9th is present");
+
+  // Null / empty must never match -- a device with no address must not be
+  // silently skipped forever.
+  check(!bleRejectContains(nullptr), "reject: nullptr never matches");
+  check(!bleRejectContains(""), "reject: empty never matches");
+  bleRejectRecord(nullptr);           // must not crash or consume a slot
+  bleRejectRecord("");
+  check(bleRejectContains("99:99:99:99:99:99"), "reject: null/empty record is a no-op");
+
+  bleRejectClear();
+  check(!bleRejectContains("99:99:99:99:99:99"), "reject: clear empties the ring");
+
+  // bleShouldSkip folds the ring in: same question, one predicate. The connect
+  // path already calls it, so no new skip site is needed.
+  { BleCand c{}; c.name = "vLinker MS-B"; c.rssi = -55; c.svc = SvcHint::None;
+    c.addr = "de:ad:be:ef:00:01";
+    check(!bleShouldSkip(c), "shouldSkip: unknown device is still tried");
+    bleRejectRecord("de:ad:be:ef:00:01");
+    check(bleShouldSkip(c), "shouldSkip: rejected address is skipped");
+    bleRejectClear();
+    check(!bleShouldSkip(c), "shouldSkip: clear restores it");
+  }
+  { BleCand c{}; c.name = "phone"; c.rssi = -40; c.svc = SvcHint::Other;
+    c.addr = nullptr;
+    check(bleShouldSkip(c), "shouldSkip: advertised-other still skipped with no addr");
+  }
+
   if (failures) { printf("%d FAILED\n", failures); return 1; }
   printf("all ble_rank tests passed\n");
   return 0;
