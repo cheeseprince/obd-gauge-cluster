@@ -30,8 +30,11 @@ struct BleCand {
   const char* addr = nullptr;        // peer address, for the reject ring; may be null
 };
 
-// True when this device positively advertised a service set that is not ours,
-// and can therefore be skipped WITHOUT connecting to it.
+// True when this device should not be tried this round: either it positively
+// advertised a service set that is not ours (never connected to, safe to
+// infer from the advertisement alone), or its address is in the session
+// reject ring (it WAS connected to earlier this session and turned out to
+// expose no known BLE-ELM327 GATT profile — see the reject-ring section below).
 //
 // Why this matters (UX-6): the connect path used to connect-then-inspect, so it
 // GATT-connected to strangers' phones and watches and attempted bonding with

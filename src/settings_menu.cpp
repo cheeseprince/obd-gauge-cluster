@@ -23,7 +23,15 @@ void menuMove(MenuState& m, int dir) {
   // It deliberately does NOT disarm: the old behaviour cancelled a pending
   // confirm on any turn, so the dialog vanished silently and the action
   // appeared to do nothing.
-  if (m.armed != MenuItem::COUNT) { if (step) m.confirmYes = !m.confirmYes; return; }
+  //
+  // The mapping is ABSOLUTE (dir > 0 = Yes, dir < 0 = No), not a toggle. A
+  // toggle makes the result a parity function of how many detents the knob
+  // saw: this is called once per detent from encoder_input.cpp, so a 3-detent
+  // spin toggles three times and the outcome depends on how fast the knob was
+  // turned — a destructive choice must not depend on that. Absolute selection
+  // is deterministic regardless of detent count, and matches the spatial
+  // `< No >  < Yes >` idiom (right = Yes, left = No).
+  if (m.armed != MenuItem::COUNT) { if (step) m.confirmYes = (step > 0); return; }
   if (!step) return;
   int s = (int)m.sel;
   for (int i = 0; i < N; i++) {          // at most one full lap

@@ -437,16 +437,17 @@ static void updateSdLabel(lv_obj_t* lbl, Theme theme) {
 #endif
 }
 
-// Name of the bonded adapter for the "Forget adapter?" confirm row (falls back
-// to its MAC, then to the literal "adapter"). Investigated 2026-08-11: the
-// obvious source is g_obd.connStatus().addr (a MAC, and even that is a MAC —
-// there is no cached adapter *name* anywhere), but g_obd is `static` inside
-// main.cpp, i.e. it has internal linkage and is not visible from this
-// translation unit at all. MenuState/Settings (what showMenu() is actually
-// given) carry no adapter identity either. Reaching it would mean adding a new
-// cross-file accessor purely to grow this string, which is a separate change
-// from the confirm dialog itself -- so this stays the documented fallback
-// until that plumbing is deliberately added.
+// Name of the bonded adapter for the "Forget adapter?" confirm row. There is
+// NO fallback chain here — adapter identity is not reachable from ui.cpp at
+// all, so this always returns the plain literal "adapter". Investigated
+// 2026-08-11: the obvious source is g_obd.connStatus().addr (and even that is
+// only a MAC — there is no cached adapter *name* anywhere in the firmware),
+// but g_obd is `static` inside main.cpp, i.e. it has internal linkage and is
+// not visible from this translation unit at all. MenuState/Settings (what
+// showMenu() is actually given) carry no adapter identity either. Reaching
+// it would mean adding a new cross-file accessor purely to grow this string,
+// which is a separate change from the confirm dialog itself -- so naming the
+// adapter is deferred until that plumbing is deliberately added.
 static const char* obdAdapterLabel() { return "adapter"; }
 
 namespace ui {
@@ -524,7 +525,13 @@ void showMenu(const MenuState& m, const Settings& s, Theme t, const DateTime& no
   }
   const char* forgetTxt = "Forget adapter";
   if (m.armed == MenuItem::ForgetAdapter) {
-    const char* who = obdAdapterLabel();     // name, else MAC, else "adapter"
+    // obdAdapterLabel() only ever returns the 7-char literal "adapter" today
+    // (see its doc comment — there is no name/MAC plumbing to this file yet),
+    // so %.16s is not doing anything for the current caller. It stays as a
+    // defensive bound on forgetTxtBuf (48 B) for whenever that plumbing is
+    // added and `who` becomes a real MAC ("aa:bb:cc:dd:ee:ff", 17 chars) or an
+    // adapter name of unknown length — cheap insurance now, not dead code.
+    const char* who = obdAdapterLabel();
     snprintf(forgetTxtBuf, sizeof forgetTxtBuf, "Forget %.16s?  < %s >",
              who, m.confirmYes ? "Yes" : "No");
     forgetTxt = forgetTxtBuf;

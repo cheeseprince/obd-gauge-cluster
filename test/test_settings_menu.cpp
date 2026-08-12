@@ -54,8 +54,11 @@ int main() {
   menuMove(m, +1);
   check(m.armed == MenuItem::ForgetAdapter, "move keeps the dialog open");
   check(m.confirmYes == true, "move selects Yes");
+  // Absolute mapping, not a toggle: another +1 move must STAY on Yes.
   menuMove(m, +1);
-  check(m.confirmYes == false, "move toggles back to No");
+  check(m.confirmYes == true, "another +1 move stays on Yes (absolute, not a toggle)");
+  menuMove(m, -1);
+  check(m.confirmYes == false, "-1 move selects No");
 
   // menuReset clears everything.
   menuReset(m);
@@ -103,7 +106,8 @@ int main() {
   // --- Yes/No confirm dialog on destructive rows ----------------------
   // Old behaviour was click-to-arm, click-again-to-confirm, and ANY knob turn
   // silently cancelled. Users reported "it says Forget adapter? and then
-  // nothing happens". Now: click arms with No selected, turn toggles No/Yes,
+  // nothing happens". Now: click arms with No selected, turn selects No/Yes
+  // ABSOLUTELY (dir > 0 = Yes, dir < 0 = No -- not a toggle, see menuMove()),
   // click acts on the highlighted choice.
   {
     MenuState d; menuReset(d);
@@ -114,8 +118,8 @@ int main() {
     check(d.armed == MenuItem::ForgetAdapter, "confirm: first click arms");
     check(d.confirmYes == false, "confirm: defaults to No");
 
-    // A turn toggles the CHOICE. It must not move the cursor and must not disarm
-    // -- disarming on turn is exactly the old bug.
+    // A turn selects the CHOICE (absolute, not relative). It must not move the
+    // cursor and must not disarm -- disarming on turn is exactly the old bug.
     menuMove(d, +1);
     check(d.confirmYes == true, "confirm: turn selects Yes");
     check(d.sel == (uint8_t)MenuItem::ForgetAdapter, "confirm: turn does not move the cursor");
@@ -124,11 +128,22 @@ int main() {
     menuMove(d, -1);
     check(d.confirmYes == false, "confirm: turn back selects No");
     menuMove(d, +1);
-    check(d.confirmYes == true, "confirm: toggles regardless of direction");
+    check(d.confirmYes == true, "confirm: +1 selects Yes");
 
     // Click on Yes fires and disarms.
     check(menuActivate(d) == MenuAction::ForgetAdapter, "confirm: Yes fires the action");
     check(d.armed == MenuItem::COUNT, "confirm: firing disarms");
+  }
+  {
+    // Absolute, not a toggle: three detents in the same direction must land on Yes,
+    // not parity-flip back to No. The old toggle made a destructive choice depend on
+    // how fast the knob was spun.
+    MenuState p; menuReset(p); p.sel = (uint8_t)MenuItem::ForgetAdapter;
+    menuActivate(p);
+    menuMove(p, +1); menuMove(p, +1); menuMove(p, +1);
+    check(p.confirmYes == true, "confirm: 3 detents up = Yes, not parity");
+    menuMove(p, -1); menuMove(p, -1);
+    check(p.confirmYes == false, "confirm: 2 detents down = No, not parity");
   }
   {
     // Click on No cancels: no action, disarmed, cursor unmoved.

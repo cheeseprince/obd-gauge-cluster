@@ -117,6 +117,13 @@ class BleObdSource : public ObdSource {
   };
 
   int connFails_ = 0;        // consecutive connectAndSetup failures (core 0); resets on success
+  // Device count from the most recent connectAndSetup() discovery scan. connFails_
+  // exists purely to detect a WEDGED NIMBLE STACK (see poll()'s escalating
+  // recovery); a round that scanned successfully and found devices is proof the
+  // stack is alive, regardless of whether any of those devices was the adapter.
+  // Set every time connectAndSetup() reaches its discovery scan (i.e. on every
+  // failure path -- the fast cached-addr path returns before reaching it).
+  int lastScanCount_ = 0;
 
   // Connection: try cached addr, else scan + identify by the 0x18f0/2af1 profile.
   bool connectAndSetup();
