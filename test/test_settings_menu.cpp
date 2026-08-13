@@ -11,7 +11,7 @@ int main() {
   // Move wraps both directions and clears any armed confirm.
   menuMove(m, -1);
   check(m.sel == (uint8_t)MenuItem::Close, "wrap up to Close");   // last item
-  check((int)MenuItem::COUNT == 12, "12 menu items");
+  check((int)MenuItem::COUNT == 13, "13 menu items");   // +1: Fuel tank
   menuMove(m, +1);
   check(m.sel == 0, "wrap down to NightMode");
 
@@ -22,6 +22,8 @@ int main() {
   check(menuActivate(m) == MenuAction::CycleBrightness, "Brightness -> CycleBrightness");
   m.sel = (uint8_t)MenuItem::Units;
   check(menuActivate(m) == MenuAction::ToggleUnits, "Units -> ToggleUnits");
+  m.sel = (uint8_t)MenuItem::FuelTank;
+  check(menuActivate(m) == MenuAction::OpenTankPick, "FuelTank -> OpenTankPick");
   m.sel = (uint8_t)MenuItem::SetTime;
   check(menuActivate(m) == MenuAction::OpenTimeSet, "SetTime -> OpenTimeSet");
   m.sel = (uint8_t)MenuItem::Logging;
@@ -89,11 +91,13 @@ int main() {
   menuSetCaps(false, false, true);       // back to the trimmed shape for the block below
 
   MenuState t; menuReset(t);
-  t.sel = (uint8_t)MenuItem::Units;
+  // Start from FuelTank, the row immediately above the gated pair: it is
+  // always visible, so this isolates the hidden-row skip from row ordering.
+  t.sel = (uint8_t)MenuItem::FuelTank;
   menuMove(t, +1);                       // skips SetTime AND Logging
   check(t.sel == (uint8_t)MenuItem::ResetTrip, "move down skips hidden rows");
   menuMove(t, -1);                       // and back up
-  check(t.sel == (uint8_t)MenuItem::Units, "move up skips hidden rows");
+  check(t.sel == (uint8_t)MenuItem::FuelTank, "move up skips hidden rows");
   t.sel = 0;                             // NightMode
   menuMove(t, -1);
   check(t.sel == (uint8_t)MenuItem::Close, "wrap up still lands on visible last row");
@@ -101,7 +105,15 @@ int main() {
   menuSetCaps(true, true, true);         // restore dash shape for any later checks
   MenuState u; u.sel = (uint8_t)MenuItem::Units;
   menuMove(u, +1);
+  // Pins the row ORDER: Fuel tank sits with Units (both units-of-measure kin)
+  // and well above the destructive rows, not next to Forget adapter.
+  check(u.sel == (uint8_t)MenuItem::FuelTank, "full caps: Fuel tank follows Units");
+  menuMove(u, +1);
   check(u.sel == (uint8_t)MenuItem::SetTime, "full caps: SetTime reachable again");
+  // Fuel tank is never capability-gated: no RTC, SD or OTA hardware involved.
+  menuSetCaps(false, false, false);
+  check(menuItemVisible(MenuItem::FuelTank), "Fuel tank visible on a minimal board");
+  menuSetCaps(true, true, true);
 
   // --- Yes/No confirm dialog on destructive rows ----------------------
   // Old behaviour was click-to-arm, click-again-to-confirm, and ANY knob turn
@@ -173,6 +185,101 @@ int main() {
     uint8_t before = d.sel;
     menuMove(d, +1);
     check(d.sel != before, "confirm: turn still moves the cursor when not armed");
+  }
+
+  // ── Scrolling window (settings menu + tank picker share this) ─────────────
+  {
+    // THE INVARIANT: whatever the list length and wherever the cursor is, the
+    // cursor must land inside the rendered window. If it ever falls outside,
+    // the knob moves a selection the user cannot see.
+    for (int n = 1; n <= 40; n++) {
+      for (int vis = 1; vis <= 20; vis++) {
+        for (int c = 0; c < n; c++) {
+          int top = menuWindowTop(c, n, vis);
+          bool inWindow = (c >= top) && (c < top + vis);
+          check(inWindow, "window always contains the cursor");
+          check(top >= 0, "window top is never negative");
+          // Never scroll past the end: the last window must end at the list end.
+          if (n > vis) check(top <= n - vis, "window never runs past the list end");
+          else         check(top == 0, "no scrolling when the whole list fits");
+        }
+      }
+    }
+    // Concrete cases for the two real callers.
+    check(menuWindowTop(0, 13, 10) == 0,  "menu: cursor at top -> window at top");
+    check(menuWindowTop(12, 13, 10) == 3, "menu: cursor at end -> window pinned to end");
+    check(menuWindowTop(6, 13, 10) == 1,  "menu: mid cursor centres the window");
+    check(menuWindowTop(13, 14, 8) == 6,  "tank: last row pins the window to the end");
+    // Out-of-range cursors are clamped, not used to index anything.
+    check(menuWindowTop(-5, 13, 10) == 0,  "negative cursor clamps to the top");
+    check(menuWindowTop(99, 13, 10) == 3,  "over-range cursor clamps to the end");
+  }
+
+  // ── Fuel-tank picker ──────────────────────────────────────────────────────
+  {
+    // Presets are ascending and unique — a duplicate or an out-of-order entry
+    // would make tankPickSeed's match ambiguous and the list confusing.
+    for (int i = 1; i < TANK_PRESET_COUNT; i++)
+      check(TANK_PRESETS[i] > TANK_PRESETS[i-1], "tank presets strictly ascending");
+    check(tankRowCount() == TANK_PRESET_COUNT + 2, "rows = presets + Custom + Unset");
+  }
+  {
+    // SEEDING is what makes the common case one click: the picker opens on the
+    // row that is already correct.
+    TankPickState t;
+    tankPickSeed(t, 24.0f);
+    check(t.sel == 0 && !t.editing, "seed: 24 gal lands on the first preset");
+    float out = -1.0f;
+    check(tankPickActivate(t, out) && out == 24.0f, "seed+click commits 24 gal unchanged");
+
+    tankPickSeed(t, 48.0f);
+    check(TANK_PRESETS[t.sel] == 48.0f, "seed: 48 gal lands on the 48 preset");
+
+    // An unknown capacity opens on Unset, so nothing is pre-committed.
+    tankPickSeed(t, 0.0f);
+    check((int)t.sel == tankRowUnset(), "seed: unset capacity opens on Unset");
+    check(tankPickActivate(t, out) && out == 0.0f, "Unset commits 0 (clear the override)");
+
+    // A value the list does not carry opens on Custom, seeded to that value —
+    // so an aftermarket tank is not silently snapped to a nearby preset.
+    tankPickSeed(t, 37.5f);
+    check((int)t.sel == tankRowCustom(), "seed: off-list capacity opens on Custom");
+    check(t.customGal == 37.5f, "seed: Custom carries the current value");
+  }
+  {
+    // Row cursor wraps; Custom's first click only ENTERS edit mode.
+    TankPickState t; tankPickSeed(t, 0.0f);
+    t.sel = 0;
+    tankPickMove(t, -1);
+    check((int)t.sel == tankRowCount() - 1, "picker wraps backwards to the last row");
+    tankPickMove(t, +1);
+    check(t.sel == 0, "picker wraps forwards to the first row");
+
+    t.sel = (uint8_t)tankRowCustom();
+    t.customGal = 30.0f;
+    float out = -1.0f;
+    check(!tankPickActivate(t, out), "Custom: first click does not commit");
+    check(t.editing, "Custom: first click enters edit mode");
+    // While editing, the knob adjusts the VALUE and must not move the cursor.
+    uint8_t rowBefore = t.sel;
+    tankPickMove(t, +1); tankPickMove(t, +1);
+    check(t.customGal == 31.0f, "editing: two detents = +1.0 gal");
+    check(t.sel == rowBefore, "editing: the knob does not move the row cursor");
+    tankPickMove(t, -1);
+    check(t.customGal == 30.5f, "editing: reverse detent steps back down");
+    check(tankPickActivate(t, out) && out == 30.5f, "Custom: second click commits the value");
+    check(!t.editing, "Custom: committing leaves edit mode");
+  }
+  {
+    // Custom clamps rather than wrapping — a spun knob must not land on a
+    // negative or absurd capacity.
+    TankPickState t;
+    t.sel = (uint8_t)tankRowCustom(); t.editing = true; t.customGal = 1.0f;
+    for (int i = 0; i < 20; i++) tankPickMove(t, -1);
+    check(t.customGal == 1.0f, "Custom clamps at the low end");
+    t.customGal = 199.5f;
+    for (int i = 0; i < 20; i++) tankPickMove(t, +1);
+    check(t.customGal == 200.0f, "Custom clamps at the high end");
   }
 
   printf(failures ? "\n%d FAILED\n" : "\nALL PASS\n", failures);

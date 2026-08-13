@@ -67,6 +67,17 @@ float gallonsToFill(float capacityGal, float levelPct) {
   return g;
 }
 
+// A user override wins over the profile figure; anything <= 0 (or NaN, which
+// fails every comparison) falls through to the profile, and a profile that
+// does not know its own capacity leaves 0.0f = unknown for the caller to gate
+// on. Deliberately NOT clamped to a "sane" range: a 66.5 gal chassis cab and a
+// 24 gal half-ton are both legitimate, and inventing bounds here would silently
+// override what the user explicitly set.
+float effectiveTankGal(float overrideGal, float profileGal) {
+  if (overrideGal > 0.0f) return overrideGal;
+  return profileGal > 0.0f ? profileGal : 0.0f;
+}
+
 // Engine horsepower from actual-torque %, reference torque (N·m), and RPM.
 // hp = (act%/100)*refNm*rpm / 7121. Returns 0 on overrun (negative torque) or
 // before the helper PIDs have been read.

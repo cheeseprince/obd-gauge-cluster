@@ -82,8 +82,8 @@ mapped.**
 | :--- | :--- | :--- |
 | Transmission fluid temp = Mode 22 PID `0x1E1C`, 16-bit, `°C = raw / 16`. **Decode as `int16`** — the common unsigned form reads ~4096 °C on a sub-zero cold start | Medium | ScanGauge + OBDLink + community formulas, three independent families agreeing |
 | Transmission generation break is **MY2019 → MY2020** (6R140 → 10R140). The 2023 facelift is *not* a transmission break | Medium | dieselhub + Wikipedia; Ford primary sources unreachable |
-| Diesel tank capacity is a **six-way** split — 26.5 / 29 / 34 / 40 / 48 / 66.5 gal — not the commonly cited "34 or 48" | High | Ford 2025 Super Duty Owner's Manual, p.209 |
-| DEF tank 7.5 gal (complete) / 7.2 gal (incomplete); DEF burn ≈ 2–6 % of fuel | High | Same manual, p.222 |
+| Diesel tank capacity is a **six-way** split — 26.5 / 29 / 34 / 40 / 48 / 66.5 gal — not the commonly cited "34 or 48". The manual keys it to **wheelbase**: 142/148 in → 29, 160/164 in → 34, 176 in → 48. The other three are *"incomplete vehicle"* (cab-and-chassis) options, so a **pickup only ever has 29 / 34 / 48** | High | Ford Super Duty Owner's Manual, *Capacities and Specifications — 6.7L Diesel* |
+| DEF tank **7.4 gal** (complete vehicle) / 7.2 gal (incomplete vehicle); DEF burn ≈ 2–6 % of fuel | High | Same manual, *Capacities and Specifications — 6.7L Diesel* |
 | **DEF warnings are distance-based, not level-based** — and Ford states they can appear with more than half a tank remaining, *"regardless of the level indicated on the diesel exhaust fluid gauge"* | High | Same manual, pp.217–223 |
 
 Note the last one carefully: a DEF alarm driven off tank percentage would **disagree with

@@ -21,6 +21,8 @@ void showTimeSet(const DateTime& dt, uint8_t field, Theme t);   // date/time edi
 void hideTimeSet();
 void showVehiclePick(uint8_t sel, bool autoOn, Theme t);   // vehicle-profile picker overlay (Pick Vehicle); row 0 = Auto-detect
 void hideVehiclePick();
+void showTankPick(const TankPickState& t, Theme th);   // fuel-tank capacity picker overlay (Fuel tank)
+void hideTankPick();
 // Boot identity splash. rtcValid gates the clock line: valid -> date/time,
 // invalid on an RTC board -> "--:--" (hints at a dead coin cell), invalid on a
 // no-RTC board (knob) -> no clock line at all.

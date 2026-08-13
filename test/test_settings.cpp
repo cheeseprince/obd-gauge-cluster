@@ -90,6 +90,38 @@ int main() {
           "AUTO with location resolves night from solar calc");
   }
 
+  // --- Tank capacity override, scoped to the vehicle it was set for ---------
+  {
+    Settings s;
+    check(tankOverrideFor(s, "ford_sd_67") == 0.0f, "fresh Settings has no tank override");
+
+    setTankOverride(s, 48.0f, "ford_sd_67");
+    check(tankOverrideFor(s, "ford_sd_67") == 48.0f, "override applies to the profile it was set for");
+    // THE POINT of the scoping: it must NOT leak onto another truck, whose own
+    // profile already knows its capacity.
+    check(tankOverrideFor(s, "gm_sierra_lz0") == 0.0f, "override does not follow to another profile");
+
+    // Re-setting on a different profile re-homes it rather than stacking.
+    setTankOverride(s, 60.0f, "gm_sierra_lz0");
+    check(tankOverrideFor(s, "gm_sierra_lz0") == 60.0f, "re-set applies to the new profile");
+    check(tankOverrideFor(s, "ford_sd_67") == 0.0f, "re-set releases the old profile");
+
+    // Clearing forgets the owner too, so it cannot resurrect on a key match.
+    setTankOverride(s, 0.0f, "gm_sierra_lz0");
+    check(tankOverrideFor(s, "gm_sierra_lz0") == 0.0f, "clearing removes the override");
+    check(s.tankVeh[0] == '\0', "clearing also forgets which profile owned it");
+
+    // The default/Generic profile has an empty key; an override must still bind.
+    setTankOverride(s, 29.0f, "");
+    check(tankOverrideFor(s, "") == 29.0f, "override binds to the empty (default) profile key");
+    check(tankOverrideFor(s, nullptr) == 29.0f, "null active key is treated as the empty key");
+    check(tankOverrideFor(s, "ford_sd_67") == 0.0f, "default-profile override does not leak to Ford");
+
+    // A key longer than the field must truncate safely, not overflow.
+    setTankOverride(s, 34.0f, "a_very_long_vehicle_registry_key_beyond_the_field");
+    check(s.tankVeh[sizeof s.tankVeh - 1] == '\0', "long profile key stays NUL-terminated");
+  }
+
   printf(failures ? "\n%d FAILED\n" : "\nALL PASS\n", failures);
   return failures ? 1 : 0;
 }

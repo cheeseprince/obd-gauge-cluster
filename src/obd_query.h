@@ -143,11 +143,19 @@ inline void pidQueryStep(PidQueryState& q, ObdSchedule& sched, IO& io,
 // under the caller's spinlock in ONE critical section.
 // ---------------------------------------------------------------------------
 
-// Tank capacities for the "gallons to fill" tiles come from the active
-// vehicle profile (VEHICLE.dieselTankGal / defTankGal).
+// Tank capacities for the "gallons to fill" tiles. DEF comes from the active
+// vehicle profile (VEHICLE.defTankGal) — it does not vary by cab or bed, so it
+// is a per-profile constant. DIESEL is passed in as `dslCapGal` because it CAN
+// vary within one profile: a Super Duty is 29/34/48 gal depending on wheelbase,
+// and any truck can be refitted with a larger aftermarket tank. The caller
+// resolves it via effectiveTankGal(user override, VEHICLE.dieselTankGal).
+//
+// Either capacity may be 0 = unknown, which is why both FILL rows are gated
+// below instead of inheriting their source's validity.
 
 inline void updateComputedReadouts(Economy& econ, float* values, ObdReadings& cur,
-                                   portMUX_TYPE& mux, uint32_t nowMs) {
+                                   portMUX_TYPE& mux, uint32_t nowMs,
+                                   float dslCapGal) {
   // Compute everything OUTSIDE the lock (core 0 is the only values[] writer).
   econ.update(values[(int)StatId::FuelRate], values[(int)StatId::Speed], nowMs);
   float mi   = econ.instantMpg(),     ma   = econ.avgMpg();
@@ -160,8 +168,11 @@ inline void updateComputedReadouts(Economy& econ, float* values, ObdReadings& cu
   bool hpValid = values[(int)StatId::RefTq] > 0.0f && values[(int)StatId::Rpm] > 0.0f;
 
   // Tank "gallons to fill" from level % + capacity.
-  float dsl = gallonsToFill(VEHICLE.dieselTankGal, values[(int)StatId::FuelLevel]);
-  float def = gallonsToFill(VEHICLE.defTankGal,    values[(int)StatId::Def]);
+  const float defCapGal = VEHICLE.defTankGal;
+  float dsl = gallonsToFill(dslCapGal, values[(int)StatId::FuelLevel]);
+  float def = gallonsToFill(defCapGal, values[(int)StatId::Def]);
+  const bool dslCapKnown = dslCapGal > 0.0f;
+  const bool defCapKnown = defCapGal > 0.0f;
 
   portENTER_CRITICAL(&mux);
   values[(int)StatId::MpgInst]  = mi;   values[(int)StatId::MpgAvg]  = ma;
@@ -178,9 +189,19 @@ inline void updateComputedReadouts(Economy& econ, float* values, ObdReadings& cu
   cur.v[(int)StatId::Hp] = hp; cur.valid[(int)StatId::Hp] = hpValid;
   cur.ms[(int)StatId::Hp] = nowMs;
 
+  // A FILL row is valid only when BOTH its source level and its tank capacity
+  // are known. Inheriting the source's validity alone is what let an unknown
+  // capacity render a confident "0.0 gal" -- "tank full, add nothing" -- at any
+  // real fuel level, because gallonsToFill(0, pct) returns 0.0, not NaN.
+  // When the level is live but the capacity is not, the row is not "no data":
+  // it is waiting on the user, so flag it for the SET UP tile state.
+  const bool dslLevel = cur.valid[(int)StatId::FuelLevel];
+  const bool defLevel = cur.valid[(int)StatId::Def];
   values[(int)StatId::DslFill] = dsl; values[(int)StatId::DefFill] = def;
-  cur.v[(int)StatId::DslFill] = dsl; cur.valid[(int)StatId::DslFill] = cur.valid[(int)StatId::FuelLevel];
-  cur.v[(int)StatId::DefFill] = def; cur.valid[(int)StatId::DefFill] = cur.valid[(int)StatId::Def];
+  cur.v[(int)StatId::DslFill] = dsl; cur.valid[(int)StatId::DslFill] = dslLevel && dslCapKnown;
+  cur.v[(int)StatId::DefFill] = def; cur.valid[(int)StatId::DefFill] = defLevel && defCapKnown;
+  cur.needsSetup[(int)StatId::DslFill] = dslLevel && !dslCapKnown;
+  cur.needsSetup[(int)StatId::DefFill] = defLevel && !defCapKnown;
   cur.ms[(int)StatId::DslFill] = cur.ms[(int)StatId::FuelLevel];   // inherit source freshness
   cur.ms[(int)StatId::DefFill] = cur.ms[(int)StatId::Def];
   portEXIT_CRITICAL(&mux);

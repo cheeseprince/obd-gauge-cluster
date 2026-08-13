@@ -88,6 +88,21 @@ int main() {
   check(fabsf(gallonsToFill(24.0f, 0.0f) - 24.0f) < 0.01f, "empty tank -> full capacity");
   check(gallonsToFill(24.0f, 130.0f) == 0.0f, "over-100% clamps to 0");
 
+  // THE TRAP the capacity gate exists to catch: an unknown capacity does not
+  // produce a NaN or an error, it produces a confident "0.0 gal to fill" --
+  // i.e. "tank is full" -- at ANY fuel level. Callers must gate on capacity.
+  check(gallonsToFill(0.0f, 10.0f) == 0.0f, "0 capacity @10% still returns 0.0 (why the gate exists)");
+
+  // effectiveTankGal: override wins, else the profile figure, else 0 = unknown.
+  checkf("eff-override-wins",   effectiveTankGal(48.0f, 24.0f), 48.0f);
+  checkf("eff-falls-to-profile",effectiveTankGal(0.0f,  24.0f), 24.0f);
+  checkf("eff-both-unset",      effectiveTankGal(0.0f,   0.0f),  0.0f);
+  checkf("eff-override-on-unknown-profile", effectiveTankGal(34.0f, 0.0f), 34.0f);
+  // Negative/NaN overrides must not poison the result — they fall through.
+  checkf("eff-negative-override", effectiveTankGal(-5.0f, 24.0f), 24.0f);
+  checkf("eff-nan-override",      effectiveTankGal(NAN,   24.0f), 24.0f);
+  checkf("eff-nan-profile",       effectiveTankGal(0.0f,  NAN),    0.0f);
+
   // MAF (PID 10): ((A*256)+B)/100 g/s. 0x07D2 -> 20.02.
   check(fabsf(decodeMafGps(0x07,0xD2) - 20.02f) < 0.05f, "MAF 0x07D2 -> 20.02 g/s");
   // NOx (PID 83): ((B*256)+C) ppm. 0x00,0x93 -> 147.

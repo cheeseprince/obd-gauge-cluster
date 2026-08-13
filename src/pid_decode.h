@@ -33,5 +33,10 @@ float decodeDefLevelPct(uint8_t b);              // x/2.55 (%); apply to 9B byte
 float computeHorsepower(float actPct, float refNm, float rpm);  // actPct/100*refNm*rpm/7121, >=0
 float decodeFuelLevelPct(uint8_t a);                          // 2F: A/2.55 (% tank)
 float gallonsToFill(float capacityGal, float levelPct);      // capacity*(1-level/100), [0,cap]
+// Effective tank capacity: the user's override when set, else the profile's
+// factory figure. 0.0f means UNKNOWN and callers must treat it as "no reading"
+// -- gallonsToFill(0, pct) returns a perfectly confident 0.0 ("tank full"),
+// so a zero capacity has to be caught before it reaches a tile.
+float effectiveTankGal(float overrideGal, float profileGal);
 float decodeMafGps(uint8_t a, uint8_t b);        // 10: ((A*256)+B)/100 (g/s mass air flow)
 float decodeNoxPpm(uint8_t b, uint8_t c);        // 83: ((B*256)+C) ppm (NOx; d[0]=status)

@@ -1,5 +1,6 @@
 #include "settings.h"
 #include "solar.h"
+#include <cstring>
 
 uint8_t nextBrightness(uint8_t cur) {
   if (cur < 25)  return 25;
@@ -25,6 +26,26 @@ void cycleNightMode(Settings& s, bool hasRtc) {
 const char* nightModeLabel(const Settings& s) {
   return s.nightMode == NIGHT_AUTO ? "AUTO"
        : s.nightMode == NIGHT_NIGHT ? "ON" : "OFF";
+}
+
+float tankOverrideFor(const Settings& s, const char* activeKey) {
+  if (s.tankGal <= 0.0f) return 0.0f;
+  // A null/empty active key is the default profile; an override stored against
+  // "" belongs to it, so compare both directions through the same strcmp.
+  const char* key = activeKey ? activeKey : "";
+  return std::strcmp(s.tankVeh, key) == 0 ? s.tankGal : 0.0f;
+}
+
+void setTankOverride(Settings& s, float gal, const char* activeKey) {
+  if (gal <= 0.0f) {                       // clear: forget the value AND its owner
+    s.tankGal = 0.0f;
+    s.tankVeh[0] = '\0';
+    return;
+  }
+  s.tankGal = gal;
+  const char* key = activeKey ? activeKey : "";
+  std::strncpy(s.tankVeh, key, sizeof s.tankVeh - 1);
+  s.tankVeh[sizeof s.tankVeh - 1] = '\0';
 }
 
 bool resolveNight(const Settings& s, bool rtcValid, const DateTime& now, bool curNight) {
@@ -60,6 +81,10 @@ void loadSettings(Settings& s) {
   s.detectedName[sizeof s.detectedName - 1] = '\0';
   strncpy(s.detectedEngine, de.c_str(), sizeof s.detectedEngine - 1);
   s.detectedEngine[sizeof s.detectedEngine - 1] = '\0';
+  s.tankGal = p.getFloat("tankgal", 0.0f);       // 0 = unset
+  String tv = p.getString("tankveh", "");
+  strncpy(s.tankVeh, tv.c_str(), sizeof s.tankVeh - 1);
+  s.tankVeh[sizeof s.tankVeh - 1] = '\0';
   p.end();
   if (s.brightnessPct == 0 || s.brightnessPct > 100) s.brightnessPct = 100;
   if (s.nightMode > NIGHT_NIGHT) s.nightMode = NIGHT_AUTO;
@@ -80,6 +105,8 @@ void saveSettings(const Settings& s) {
   p.putUChar("vehauto", s.vehicleAuto ? 1 : 0);
   p.putString("detname", s.detectedName);
   p.putString("deteng",  s.detectedEngine);
+  p.putFloat("tankgal",  s.tankGal);
+  p.putString("tankveh", s.tankVeh);
   p.end();
 }
 #endif

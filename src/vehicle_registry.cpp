@@ -41,5 +41,17 @@ int profileIndexForKey(const char* key) {
   return -1;
 }
 
+// Reverse lookup: the registry key of a profile we already hold a pointer to.
+// Needed because settings.vehicleKey is EMPTY in VIN auto-detect mode, so it
+// cannot identify the profile actually running — but the tank override has to
+// be scoped to the real vehicle either way. Pointer compare, not strcmp: every
+// profile is a single extern object, so identity is the definition here.
+const char* profileKeyFor(const VehicleProfile* p) {
+  if (!p) return "";
+  for (int i = 0; i < PROFILE_REGISTRY_COUNT; i++)
+    if (PROFILE_REGISTRY[i].profile == p) return PROFILE_REGISTRY[i].key;
+  return "";
+}
+
 const char* profileKeyAt(int i)   { return (i>=0 && i<PROFILE_REGISTRY_COUNT) ? PROFILE_REGISTRY[i].key   : ""; }
 const char* profileLabelAt(int i) { return (i>=0 && i<PROFILE_REGISTRY_COUNT) ? PROFILE_REGISTRY[i].label : ""; }

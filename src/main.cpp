@@ -25,6 +25,7 @@
 #include "boot_banner.h"
 #include "vehicle_active.h"
 #include "vehicle_registry.h"
+#include "pid_decode.h"        // effectiveTankGal — the mock build gets it no other way
 #include "vin.h"
 #ifndef FW_DATE
 #define FW_DATE __DATE__
@@ -73,7 +74,8 @@ static HistorySet history;           // rolling 5-min per-stat samples for the F
 static uint32_t g_forgetMsgUntil = 0;// show "Adapter forgotten" until this millis() (0 = off)
 
 #if HAS_KNOB_MENU
-namespace buttonInput { MenuAction consumeMenuAction(); bool consumeVehicleCommit(uint8_t& sel); void setVehiclePickSeed(uint8_t s); }
+namespace buttonInput { MenuAction consumeMenuAction(); bool consumeVehicleCommit(uint8_t& sel); void setVehiclePickSeed(uint8_t s);
+                        bool consumeTankCommit(float& gal); void setTankPickSeed(float gal); }
 #endif
 
 // Two core-0 tasks, split so a blocking OBD connect can't freeze the encoder.
@@ -454,6 +456,20 @@ void loop() {
 #endif
   }
 
+  // Effective diesel tank capacity -> core 0, which computes DIESEL FILL.
+  // UNCONDITIONAL, deliberately outside the knob-menu guard below: a board with
+  // no settings menu still has a vehicle profile, and a profile that knows its
+  // own tank (the Sierra's 24 gal) must feed DIESEL FILL there too. Only the
+  // picker's seed and commit need the knob.
+  //
+  // Recomputed every loop rather than cached on change: the active profile can
+  // switch under VIN auto-detect with no settings write to hang a cache
+  // invalidation on, and this is a strcmp over a seven-entry registry.
+  const char* tankKey = profileKeyFor(&VEHICLE);
+  const float tankEff = effectiveTankGal(tankOverrideFor(settings, tankKey),
+                                         VEHICLE.dieselTankGal);
+  g_obd.setDieselTankGal(tankEff);
+
 #if HAS_KNOB_MENU
   // Encoder menu actions (core 0 queues; apply here on core 1).
   MenuAction menuAct = buttonInput::consumeMenuAction();
@@ -584,6 +600,22 @@ void loop() {
     int lockIdx = profileIndexForKey(settings.vehicleKey);
     buttonInput::setVehiclePickSeed(settings.vehicleAuto ? 0
                                     : (uint8_t)(lockIdx < 0 ? 0 : lockIdx + 1));
+  }
+
+  // tankKey/tankEff are computed above, outside this guard (see there).
+  buttonInput::setTankPickSeed(tankEff);   // picker opens on the current answer
+
+  // Fuel-tank capacity commit from the picker (core 0 queues, core 1 persists).
+  // No reboot: DIESEL FILL is recomputed from this every poll, so the new value
+  // shows up on the next tick.
+  float tankGal;
+  if (buttonInput::consumeTankCommit(tankGal)) {
+    setTankOverride(settings, tankGal, tankKey);
+    saveSettings(settings);
+    if (tankGal > 0.0f) Serial.printf("[TANK] capacity set to %.1f gal for %s\n",
+                                      tankGal, tankKey[0] ? tankKey : "(default)");
+    else                Serial.printf("[TANK] override cleared for %s\n",
+                                      tankKey[0] ? tankKey : "(default)");
   }
 
   // Vehicle-profile pick: core 0 (encoder_input.cpp) only queues the chosen
@@ -722,24 +754,21 @@ void loop() {
     }
 
 #if HAS_KNOB_MENU
-    // Settings / time-set overlays (top layer; independent of link state).
-    if (snap.view == View::Menu) {
-      ui::showMenu(snap.menu, settings, theme, snap.rtcNow);
-      ui::hideTimeSet();
-      ui::hideVehiclePick();
-    } else if (snap.view == View::TimeSet) {
-      ui::showTimeSet(snap.editDt, snap.editField, theme);
-      ui::hideMenu();
-      ui::hideVehiclePick();
-    } else if (snap.view == View::VehiclePick) {
+    // Settings / time-set / picker overlays (top layer; independent of link
+    // state). Hide-every-other-one-then-show, rather than each branch naming
+    // the overlays it must hide: that pattern needs N-1 correct calls in every
+    // one of N branches, and adding a fourth overlay made it four chances per
+    // branch to leave a stale full-screen label covering the gauges.
+    if (snap.view != View::Menu)        ui::hideMenu();
+    if (snap.view != View::TimeSet)     ui::hideTimeSet();
+    if (snap.view != View::VehiclePick) ui::hideVehiclePick();
+    if (snap.view != View::TankPick)    ui::hideTankPick();
+
+    if      (snap.view == View::Menu)    ui::showMenu(snap.menu, settings, theme, snap.rtcNow);
+    else if (snap.view == View::TimeSet) ui::showTimeSet(snap.editDt, snap.editField, theme);
+    else if (snap.view == View::VehiclePick)
       ui::showVehiclePick(snap.vehSel, settings.vehicleAuto, theme);
-      ui::hideMenu();
-      ui::hideTimeSet();
-    } else {
-      ui::hideMenu();
-      ui::hideTimeSet();
-      ui::hideVehiclePick();
-    }
+    else if (snap.view == View::TankPick) ui::showTankPick(snap.tank, theme);
 #endif
 
     // Choose screen by OBD link state.
