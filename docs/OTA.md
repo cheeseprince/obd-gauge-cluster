@@ -131,7 +131,7 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which:
 7. Creates a GitHub Release for the tag with the same files attached, for humans browsing
    the repo (devices never fetch these; they update over the air).
 
-Steps 4–7 put **five** files on both surfaces, not three:
+Steps 4–7 put **six** files on both surfaces, not three:
 
 | Asset | What it is |
 | :--- | :--- |
@@ -140,9 +140,11 @@ Steps 4–7 put **five** files on both surfaces, not three:
 | `manifest.sig` | Signature over the manifest; the device's trust anchor |
 | `crowpanel_obd.bin.cdx.json` | CycloneDX SBOM |
 | `crowpanel_obd.bin.intoto.jsonl` | Sigstore build-provenance bundle |
+| `THIRD-PARTY-NOTICES.md` | License notices for the statically-linked LGPL/Apache/MPL/BSD/MIT code, shipped with the binary that contains it |
 
 Only the first three participate in an OTA update. The SBOM and provenance bundle are there
-for verification (`gh attestation verify`) and for anyone auditing what went into a build.
+for verification (`gh attestation verify`) and for anyone auditing what went into a build; the
+notices file is a license-compliance obligation that travels with the image.
 
 A manual `workflow_dispatch` run (no tag) does steps 1–4 as a dry run — using a
 `dev-<hash>` version string — to prove the build, sign and SBOM pipeline still works, but the

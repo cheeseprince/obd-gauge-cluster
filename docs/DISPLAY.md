@@ -129,6 +129,21 @@ instead removed all of them (the arming rationale recorded above `lowArmTick` in
 Stale values — a held value from a PID that's stopped responding — are shown in grey and are
 excluded from alarming entirely (the stale branch of `render()` in `src/ui.cpp`).
 
+### When a tile has no number
+
+A tile shows text instead of a value in two cases, and the distinction matters:
+
+| Tile reads | Meaning | What to do |
+| :--- | :--- | :--- |
+| `--` (grey) | The vehicle has never answered this PID | Nothing — the parameter is not available on this vehicle |
+| `SET UP` (accent) | The reading needs a **setting** you have not entered yet | Open the settings menu and enter it |
+
+`SET UP` exists so a missing setting cannot be mistaken for missing data — or, worse, silently
+turned into a plausible number. Only the FILL tiles use it today: DIESEL FILL converts a
+fuel-level percentage into gallons, so with no tank capacity it would otherwise read a
+confident `0.0 gal` ("tank full") at any real fuel level. See
+[step 7 of the install guide](INSTALL.md#7-set-the-fuel-tank-size-only-if-diesel-fill-says-set-up).
+
 ## Focus view
 
 Press a tile to zoom into it. Focus view shows a rolling trend graph for that stat, with each

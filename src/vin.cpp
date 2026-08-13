@@ -265,16 +265,22 @@ static bool jeepWagoneer57(const char* vin) {
 // profile that reads 10R140 transmission DIDs it does not have.
 static bool fordSuperDuty67(const char* vin) {
   if (std::strlen(vin) < 8) return false;
-  // Deliberately silent on vin[3] (the series digit): fordF250/fordF350 each
-  // pin it exactly, so re-checking it here is dead code -- and worse, it MASKED
-  // a mutation, letting fordF350 drop its own vin[3] gate with every test still
-  // green. Platform + engine only; series belongs to the callers.
+  // Deliberately says NOTHING about the series. The series digit is vin[5]
+  // (2=F-250, 3=F-350, 4=F-450, 5=F-550) and it is read by the identification
+  // table's FORD_SD_SERIES rows, not here -- see docs/VEHICLES.md#ford.
+  //
+  // This function once had a redundant series check, which MASKED a mutation:
+  // a caller could drop its own series gate with every test still green. Keep
+  // one owner per fact.
+  //
+  // ⚠️ vin[3] is NOT the series. A vPIC sweep found 7, 8, B and R all decode as
+  // F-250 -- reading the series from vin[3] is the bug that shipped and was
+  // fixed in PR #51. Two dead helpers (fordF250/fordF350) encoding that wrong
+  // rule were removed on 2026-08-13; do not reintroduce them.
   return vinAt(vin,4) == 'W' &&
          vinAt(vin,6) == 'B' &&
          vinAt(vin,7) == 'T';
 }
-static bool fordF250(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '7'; }
-static bool fordF350(const char* vin) { return fordSuperDuty67(vin) && vinAt(vin,3) == '8'; }
 
 // The PROFILE gate, distinct from the identity gate above and deliberately
 // narrower.

@@ -20,7 +20,7 @@ date: "2026-07-21"
 >   tank is a *user setting* (**Settings → Fuel tank**) because it is 29/34/48 gal by
 >   wheelbase and the VIN encodes neither wheelbase nor bed length. DIESEL FILL reads
 >   `SET UP` until it is picked; DEF FILL works out of the box.
-> - Addressing is **11-bit only** — all fifteen 29-bit headers were silent, the exact inverse
+> - Addressing is **11-bit only** — all eleven 29-bit headers were silent, the exact inverse
 >   of the Sierra.
 > - Most of the remaining parameters turned out to be **standard SAE J1979 PIDs the ECM's own
 >   supported-PID bitmap already advertised** — boost `0187`, rail `016D`, fuel rate `019D`,

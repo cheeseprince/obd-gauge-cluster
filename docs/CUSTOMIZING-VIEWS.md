@@ -37,6 +37,15 @@ static const char* const PAGE_NAMES[] = { "TOWING","POWER","REGENERATION","RANGE
   `src/readouts.cpp`, keyed by `StatId` and shared by every vehicle, so moving a tile between
   pages carries its label along. `ReadoutDef::name` in the profile is the SD-log CSV column
   key, not the on-screen text — changing it forks the log schema.
+- ⚠️ **A `StatId` may appear on exactly ONE page.** Listing the same stat twice does not
+  duplicate the tile — it breaks knob navigation, because `readoutPageOf()` returns the
+  *first* page holding a stat and `cursorStep()` finds its *first* slot in the reading
+  order. The cursor then jumps backwards to the earlier page instead of advancing.
+  This shipped once: the Ford `RANGE` page re-listed two stats that already lived on other
+  pages, and the dash intermittently went from page 8 to page 4. Use `_` for a spare cell
+  rather than padding a page with a stat that lives elsewhere. A test in
+  `test/test_vehicle_registry.cpp` now enforces this across every profile, so a duplicate
+  fails the build rather than the drive.
 
 ## Common edits
 
@@ -59,6 +68,10 @@ static const StatId HELPERS[] = { StatId::RefTq, StatId::Baro, StatId::ActTq, St
 `HELPERS` are read from the vehicle but never drawn. Use this for values a computed tile
 needs (e.g. barometric pressure feeds the boost calculation) or data you only want in the
 SD log (gear, for towing shift analysis).
+
+`HELPERS` and `PAGES` must be **disjoint** — a stat in both is a contradiction about whether
+it is displayed, and the same registry test rejects it. Promoting a helper to a page means
+deleting it from `HELPERS`.
 
 **Deactivate a tile entirely** — remove it from **both** `PAGES` and `HELPERS`. It is then
 neither shown nor polled, which frees bus time.
@@ -87,6 +100,11 @@ cd tools/ui_snapshot && make && ./snapshot && python3 render_docs_images.py
 
 That converts the PPMs into `docs/images/*.png`. Add `--check` to verify without
 writing, which is exactly what CI runs.
+
+⚠️ **Run `make` first, every time.** `./snapshot` executes the existing binary and does not
+rebuild it. Against a stale binary it re-renders the *old* UI, which of course still matches
+the committed PNGs, and `--check` reports everything current — a false pass that CI then
+contradicts, because a fresh runner has no stale objects to reuse.
 
 ## Adding a whole new vehicle
 

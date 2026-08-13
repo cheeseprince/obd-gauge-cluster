@@ -1,7 +1,7 @@
 # First-time setup
 
 Full walkthrough for flashing the dash, provisioning it over WiFi, and getting live gauges.
-The [README](../README.md) has the five-step short version — this page has the detail and
+The [README](../README.md) has the six-step short version — this page has the detail and
 the troubleshooting.
 
 The first install is over USB from a computer; everything after that is done from your phone
@@ -188,7 +188,7 @@ factory value.
 ## Done
 
 Gauges appear once the adapter links. From here, updates are over-the-air — see the
-[README](../README.md#updates-ota) — no cable needed again.
+[README](../README.md#updates) — no cable needed again.
 
 ---
 

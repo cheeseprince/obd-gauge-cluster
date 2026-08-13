@@ -26,7 +26,7 @@ now rather than waiting for Phase 2.**
 - **v0.1.1 is catchable in Phase 1.** The symptom was `E (nnnn) task_wdt:
   esp_task_wdt_reset(705): task not found` repeating at idle-tick rate. That is an IDF `ESP_LOG`
   write to UART0, and it is emitted whether or not any BLE peer exists. Detecting a regression is
-  a grep on the UART bridge. The failure mode is documented in `src/main.cpp:136-146`.
+  a grep on the UART bridge. The failure mode is documented in the `disableCore0WDT()` note in `setup()` (`src/main.cpp`).
 - **v0.1.0 is not catchable in Phase 1.** With no peer to connect to, "connect failed because the
   timeout is 4 ms" is indistinguishable from "connect failed because nothing is there." That
   needs the Phase 2 fake adapter.
@@ -71,13 +71,13 @@ traffic, and a saturated 115200 UART starving OBD replies is precisely how v0.1.
    protocol garbage instead of a log. The runner owns that port exclusively: release, flash or
    reset, then reopen.
 2. **Discover ports by VID:PID, never by a hardcoded path or `by-id` string.** `ttyACMn`
-   numbering shifts across re-enumeration (`docs/INSTALL.md:57` already warns against globbing
+   numbering shifts across re-enumeration ([the *Never glob the port* warning](../../docs/INSTALL.md) already warns against globbing
    the port), and this board's `by-id` string embeds its MAC address, which does not belong in a
    public repository. `HIL_PORT_NATIVE` and `HIL_PORT_UART` override discovery for a second board.
 
 ## The one firmware change: a boot banner
 
-`setup()` (`src/main.cpp:95-170`) prints **nothing on the success path** — only `[PROFILE]` when
+`setup()` (`src/main.cpp`) prints **nothing on the success path** — only `[PROFILE]` when
 an NVS key fails to resolve and `[WDT]` when the watchdog reconfigure fails. A harness can
 therefore only infer success from the absence of a crash, and cannot tell which build is actually
 on the board.
@@ -145,13 +145,13 @@ capture still holds the boot reason and any panic output, so boot evidence is ne
 | 2 | ROM reports `SPI_FAST_FLASH_BOOT` | UART | bad flash; stuck in download mode | — |
 | 3 | no `Guru Meditation`, no `Backtrace:`, no panic reset code | UART | boot-loop crash | v1.3.0 `obd_core0` stack overflow |
 | 4a | **zero** `esp_task_wdt_reset` / `task not found` lines | UART | UART-saturating IDF log spam | **v0.1.1, replayed exactly** |
-| 4b | no `[WDT] reconfigure failed`, no `[WDT] OBD task stalled` | native | the watchdog reconfigure silently failing; the 240 s stall restart firing | `main.cpp:157,207` |
+| 4b | no `[WDT] reconfigure failed`, no `[WDT] OBD task stalled` | native | the watchdog reconfigure silently failing; the 240 s stall restart firing | `main.cpp`, grep `[WDT] reconfigure failed` / `[WDT] OBD task stalled` |
 | 5 | `[BOOT]` present and its `env` matches the env just flashed | native | flashing the wrong environment | `default_envs = crowpanel_obd` makes this an easy mistake |
-| 6 | `[encoder] found\|MISSING` matches `--expect-knob` | native | I²C or knob wiring regression | `encoder_input.cpp:47`; v1.3.1 invisible-menu class |
+| 6 | `[encoder] found\|MISSING` matches `--expect-knob` | native | I²C or knob wiring regression | `encoder_input.cpp`, grep `[encoder]`; v1.3.1 invisible-menu class |
 | 7 | `'n'` is acknowledged by a `[THEME]` line **somewhere in the run's capture** | native | a console that stopped answering; LVGL repaint hang | latency is asserted by check 10, not here |
 | 8 | `'s'` is acknowledged by **any** `[MOCK]` line, likewise anywhere in the capture, then no panic | native | full-screen alarm-overlay render crash | mock environment only; the toggle's direction depends on prior state, so either `[MOCK] alarm sweep` or `[MOCK] safe bands` counts |
-| 9 | `crowpanel_obd`: the BLE state machine got somewhere — `[BLE] scanning` **or** `[BLE] connected + ELM ready`. With `--expect-peer yes`, a completed link is **required** and scanning alone FAILS | native | a state machine that never starts searching at all; with a peer, one that searches but never finds it. It does **not** catch one that scanned once and then wedged | `ble_obd_source.cpp:309`; **originally keyed only off "scanning", which inverted the logic once Phase 2 gave the rig a peer — a board that reconnects to a cached address never scans, so the check failed the BETTER outcome** |
-| 10 | soak: the `'n'` probe answers every 30 s for 300 s | native | silent late hang | v1.3.0 boot loop; the 240 s heartbeat path, `main.cpp:205-210` |
+| 9 | `crowpanel_obd`: the BLE state machine got somewhere — `[BLE] scanning` **or** `[BLE] connected + ELM ready`. With `--expect-peer yes`, a completed link is **required** and scanning alone FAILS | native | a state machine that never starts searching at all; with a peer, one that searches but never finds it. It does **not** catch one that scanned once and then wedged | `ble_obd_source.cpp`, grep `[BLE] scanning` / `[BLE] connected`; **originally keyed only off "scanning", which inverted the logic once Phase 2 gave the rig a peer — a board that reconnects to a cached address never scans, so the check failed the BETTER outcome** |
+| 10 | soak: the `'n'` probe answers every 30 s for 300 s | native | silent late hang | v1.3.0 boot loop; the 240 s heartbeat path (`obdHeartbeatStalled` in `main.cpp`) |
 
 Check 10 is an **active** probe rather than passive silence, because silence cannot distinguish
 "healthy and idle" from "wedged". It requires no firmware change.
@@ -201,7 +201,7 @@ window would fail a healthy board for being slower than an arbitrary number.
 
 ### One parser pitfall, recorded so it is not rediscovered
 
-`ble_obd_source.cpp:309` reads `Serial.println("[BLE] scanning 6s …")` — that is a **UTF-8
+`ble_obd_source.cpp` reads `Serial.println("[BLE] scanning 6s …")` — that is a **UTF-8
 ellipsis (U+2026), not three ASCII dots.** Matching on `"scanning 6s ..."` will silently never
 fire. Match on the `[BLE] scanning` prefix and treat the remainder as opaque. The same caution
 applies to any other log line with typographic punctuation.
@@ -216,7 +216,7 @@ for two reasons:
 - Adding navigation keys to the serial console would reopen F-11. That console is
   unauthenticated, and serial access to the settings menu means serial access to **Forget
   adapter**, which wipes the stored BLE bond and reopens the trust-on-first-use window — the one
-  thing on that console with a real security consequence (`src/main.cpp:213-235`).
+  thing on that console with a real security consequence (the F-11 note in `main.cpp`'s console handler).
 
 So Phase 1 asserts against exactly the surface the shipped binary already exposes: `'n'` and, in
 the mock build, `'s'`. Navigation *logic* is already covered by pure host suites
@@ -228,7 +228,7 @@ so it needs evidence to justify, not speculation.
 ## Deliberate non-goals
 
 - **Heap-trend leak detection.** The firmware emits no periodic heap line — heap appears only in
-  the OTA path (`ota_update.cpp:115,175,178`). Detecting a slow runtime leak would need more
+  the OTA path (`ota_update.cpp`, the three `heap` printfs). Detecting a slow runtime leak would need more
   firmware surface than the banner. What Phase 1 gets cheaply instead: the banner's boot heap is
   recorded in `verdict.json` for a human to read. There is no baseline comparison and
   no `--update-baseline` flag — a single boot reading could only ever catch static-allocation

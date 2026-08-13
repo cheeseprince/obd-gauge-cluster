@@ -170,4 +170,5 @@ having a known-good example makes the Ford analysis easier to trust.
 2. Keep `sierra_sweep.json`. It is the reference output: if the tool ever behaves oddly
    on another vehicle, diffing against a known-good sweep is the fastest way to tell
    whether the tool or the vehicle changed.
-3. The Ford runbook is `PORTING-LESSONS.md` §9 — same four commands, unknown answers.
+3. The Ford runbook is [`FORD-GATE-RUNBOOK.md`](FORD-GATE-RUNBOOK.md) — written after this one,
+   against a real 2021 F-350.
