@@ -6,7 +6,8 @@
 #include "readouts.h"   // READOUTS[] is the source of truth for name/unit/decimals/thr/fullScale
 #include "vehicle_profile.h" // VEHICLE (splash identity)
 #include "vehicle_active.h" // VEHICLE/READOUTS/READOUT_COUNT macros over g_activeProfile
-#include "vehicle_registry.h" // profileCount/profileLabelAt (Pick Vehicle overlay)
+#include "vehicle_registry.h" // profileCount/profileLabelAt (Pick Vehicle overlay); profileKeyFor (tank scoping)
+#include "pid_decode.h"     // effectiveTankGal (Fuel tank row + picker)
 #include "alarm_holdoff.h"  // 4-second persistence gate for alarms
 #include "alarm_ack.h"      // press-to-dismiss state for the alarm overlay
 #include "sd_log.h"         // logStatus() for the menu Logging row
@@ -68,7 +69,9 @@ static void buildMenu() {
   lv_obj_set_style_text_font(menuLabel, &lv_font_montserrat_18, 0);  // 18 (was 20): fit 12 rows on 320px
   lv_obj_set_style_text_align(menuLabel, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_set_style_pad_left(menuLabel, 24, 0);
-  lv_obj_set_style_pad_top(menuLabel, 18, 0);
+  // showMenu() renders a fixed-height WINDOW of rows (see there), so this pad
+  // no longer has to shrink every time a menu row is added.
+  lv_obj_set_style_pad_top(menuLabel, 14, 0);
   lv_obj_add_flag(menuLabel, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -101,6 +104,23 @@ static void buildVehPick() {
   lv_obj_set_style_pad_left(vehPickLabel, 24, 0);
   lv_obj_set_style_pad_top(vehPickLabel, 24, 0);
   lv_obj_add_flag(vehPickLabel, LV_OBJ_FLAG_HIDDEN);
+}
+
+// --- Fuel-tank picker overlay. Same shape as the vehicle picker, but the list
+// is longer than the screen (12 presets + Custom + Unset), so it renders a
+// scrolling WINDOW that keeps the cursor in view rather than clipping. ---
+static lv_obj_t* tankPickLabel = nullptr;
+
+static void buildTankPick() {
+  tankPickLabel = lv_label_create(lv_layer_top());
+  lv_obj_set_style_bg_opa(tankPickLabel, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(tankPickLabel, lv_color_black(), 0);
+  lv_obj_set_size(tankPickLabel, 480, 320);
+  lv_obj_set_style_text_font(tankPickLabel, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_align(tankPickLabel, LV_TEXT_ALIGN_LEFT, 0);
+  lv_obj_set_style_pad_left(tankPickLabel, 24, 0);
+  lv_obj_set_style_pad_top(tankPickLabel, 24, 0);
+  lv_obj_add_flag(tankPickLabel, LV_OBJ_FLAG_HIDDEN);
 }
 
 // --- Boot splash: full-screen identity card on lv_layer_top(), shown for a few
@@ -481,6 +501,7 @@ void begin(const Settings& s) {
   buildMenu();             // settings menu overlay on lv_layer_top() — hidden by default
   buildTimeSet();          // date/time editor overlay on lv_layer_top() — hidden by default
   buildVehPick();          // vehicle-picker overlay on lv_layer_top() — hidden by default
+  buildTankPick();         // fuel-tank capacity picker overlay — hidden by default
   buildSplash(s);          // boot splash on lv_layer_top() — shown by main() at power-up
   lv_scr_load(quadScreen);
 }
@@ -536,6 +557,17 @@ void showMenu(const MenuState& m, const Settings& s, Theme t, const DateTime& no
              who, m.confirmYes ? "Yes" : "No");
     forgetTxt = forgetTxtBuf;
   }
+  // Fuel tank shows the EFFECTIVE capacity — user override if set for this
+  // vehicle, else the profile's factory figure. The row doubles as a readout of
+  // what DIESEL FILL is actually using, which is how a mis-set value becomes
+  // visible instead of silently scaling every gallons figure.
+  char tankVal[16];
+  {
+    float gal = effectiveTankGal(tankOverrideFor(s, profileKeyFor(&VEHICLE)),
+                                 VEHICLE.dieselTankGal);
+    if (gal > 0.0f) snprintf(tankVal, sizeof tankVal, "[ %.1f gal ]", gal);
+    else            snprintf(tankVal, sizeof tankVal, "[ SET UP ]");
+  }
   char clk[24];
   if (now.y >= 2000) formatDateTime(now, clk, sizeof clk); else snprintf(clk, sizeof clk, "--:--");
   // Show the user's intent (ON/OFF) — the runtime status only overrides for a
@@ -548,34 +580,67 @@ void showMenu(const MenuState& m, const Settings& s, Theme t, const DateTime& no
     default:                logTxt = s.logging ? "[ ON ]" : "[ OFF ]"; break;
   }
 
-  char buf[700];
-  snprintf(buf, sizeof buf,
-    "SETTINGS            %s\n"
-    "%s Night mode      %s\n"
-    "%s Brightness      %s\n"
-    "%s Units           %s\n"
-    "%s Set date/time\n"
-    "%s Logging         %s\n"
-    "%s %s\n"
-    "%s %s\n"
-    "%s Pick vehicle\n"
-    "%s WiFi setup\n"
-    "%s Check update / time sync\n"
-    "%s Version\n"
-    "%s Close",
-    clk,
-    cur(MenuItem::NightMode),     nightVal,
-    cur(MenuItem::Brightness),    brightVal,
-    cur(MenuItem::Units),         unitsVal,
-    cur(MenuItem::SetTime),
-    cur(MenuItem::Logging),       logTxt,
-    cur(MenuItem::ResetTrip),     resetTxt,
-    cur(MenuItem::ForgetAdapter), forgetTxt,
-    cur(MenuItem::PickVehicle),
-    cur(MenuItem::WifiSetup),
-    cur(MenuItem::CheckUpdate),
-    cur(MenuItem::Version),
-    cur(MenuItem::Close));
+  // One table instead of a fixed 13-row format string. The menu had outgrown
+  // the panel: every added row ate another 22 px of a 320 px screen, and the
+  // Fuel tank row left no headroom at all -- the next row would have pushed
+  // Close off the bottom, invisibly. Rendering a WINDOW of rows around the
+  // cursor decouples the row count from the screen height for good.
+  //
+  // The knob already scrolled past the bottom (menuMove wraps and skips hidden
+  // rows); only the drawing was stuck showing everything at once.
+  struct MRow { MenuItem it; const char* name; const char* val; };
+  const MRow rows[] = {
+    { MenuItem::NightMode,     "Night mode",    nightVal  },
+    { MenuItem::Brightness,    "Brightness",    brightVal },
+    { MenuItem::Units,         "Units",         unitsVal  },
+    { MenuItem::FuelTank,      "Fuel tank",     tankVal   },
+    { MenuItem::SetTime,       "Set date/time", nullptr   },
+    { MenuItem::Logging,       "Logging",       logTxt    },
+    { MenuItem::ResetTrip,     resetTxt,        nullptr   },   // whole-row text (may be a dialog)
+    { MenuItem::ForgetAdapter, forgetTxt,       nullptr   },   // ditto
+    { MenuItem::PickVehicle,   "Pick vehicle",  nullptr   },
+    { MenuItem::WifiSetup,     "WiFi setup",    nullptr   },
+    { MenuItem::CheckUpdate,   "Check update / time sync", nullptr },
+    { MenuItem::Version,       "Version",       nullptr   },
+    { MenuItem::Close,         "Close",         nullptr   },
+  };
+  constexpr int MENU_ROWS = (int)(sizeof(rows) / sizeof(rows[0]));
+  // Adding a MenuItem without a row here would silently drop it from the menu.
+  static_assert(MENU_ROWS == (int)MenuItem::COUNT,
+                "every MenuItem needs exactly one row in showMenu()");
+
+  // Collapse to the rows this board actually shows (SetTime needs an RTC,
+  // Logging an SD slot, WiFi/Update the OTA stack), and locate the cursor
+  // among them -- the window must be computed over VISIBLE rows, or a hidden
+  // row would leave a blank line and shift everything below it.
+  int visIdx[MENU_ROWS], nVis = 0, cursor = 0;
+  for (int i = 0; i < MENU_ROWS; i++) {
+    if (!menuItemVisible(rows[i].it)) continue;
+    if (m.sel == (uint8_t)rows[i].it) cursor = nVis;
+    visIdx[nVis++] = i;
+  }
+
+  // 10 rows + header + up to two "more" markers = 13 lines at montserrat_18
+  // (~22 px) = ~286 px, inside the 320 px panel with the top pad.
+  const int VIS = 10;
+  int top = menuWindowTop(cursor, nVis, VIS);
+  int bot = top + VIS;
+  if (bot > nVis)       bot = nVis;
+
+  char buf[900];
+  int p = snprintf(buf, sizeof buf, "SETTINGS            %s\n", clk);
+  // Count the hidden rows rather than just pointing: "3 more" tells the user
+  // how far the list goes, which a bare arrow does not.
+  if (top > 0)
+    p += snprintf(buf + p, sizeof buf - p, "  ^ %d more\n", top);
+  for (int k = top; k < bot && p < (int)sizeof buf - 80; k++) {
+    const MRow& r = rows[visIdx[k]];
+    if (r.val) p += snprintf(buf + p, sizeof buf - p, "%s %-16s%s\n", cur(r.it), r.name, r.val);
+    else       p += snprintf(buf + p, sizeof buf - p, "%s %s\n",      cur(r.it), r.name);
+  }
+  if (bot < nVis)
+    snprintf(buf + p, sizeof buf - p, "  v %d more", nVis - bot);
+
   lv_label_set_text(menuLabel, buf);
   lv_obj_clear_flag(menuLabel, LV_OBJ_FLAG_HIDDEN);
 }
@@ -622,6 +687,42 @@ void showVehiclePick(uint8_t sel, bool autoOn, Theme th) {
 }
 
 void hideVehiclePick() { lv_obj_add_flag(vehPickLabel, LV_OBJ_FLAG_HIDDEN); }
+
+void showTankPick(const TankPickState& t, Theme th) {
+  // The list does not fit the screen, so show a window of rows that keeps the
+  // cursor inside it. Centring the cursor (rather than paging) means a turn
+  // always visibly moves something, which is what tells the user the knob is
+  // doing anything at the ends of a long list.
+  const int VIS = 8;
+  const int n   = tankRowCount();
+  const int top = menuWindowTop((int)t.sel, n, VIS);
+
+  char buf[768];
+  int p = snprintf(buf, sizeof buf, "FUEL TANK CAPACITY\n\n");
+  for (int i = top; i < top + VIS && i < n && p < (int)sizeof buf - 64; i++) {
+    const char* mark = ((uint8_t)i == t.sel) ? ">" : " ";
+    if (i < TANK_PRESET_COUNT)
+      p += snprintf(buf + p, sizeof buf - p, "%s %5.1f gal   %s\n",
+                    mark, TANK_PRESETS[i], TANK_HINTS[i]);
+    else if (i == tankRowCustom())
+      // While editing, the value is live and bracketed so it is obvious the
+      // knob is changing THIS and not the row cursor.
+      p += snprintf(buf + p, sizeof buf - p, t.editing ? "%s Custom  < %.1f gal >\n"
+                                                       : "%s Custom  ( %.1f gal )\n",
+                    mark, t.customGal);
+    else
+      p += snprintf(buf + p, sizeof buf - p, "%s Not set   (hide the tile)\n", mark);
+  }
+  snprintf(buf + p, sizeof buf - p,
+           t.editing ? "\nrotate=adjust  click=save  hold=cancel"
+                     : "\nrotate=move  click=select  hold=cancel");
+  lv_label_set_text(tankPickLabel, buf);
+  lv_obj_set_style_text_color(tankPickLabel,
+      (th == Theme::Day) ? lv_color_white() : lv_color_hex(0xFF7A00), 0);
+  lv_obj_clear_flag(tankPickLabel, LV_OBJ_FLAG_HIDDEN);
+}
+
+void hideTankPick() { lv_obj_add_flag(tankPickLabel, LV_OBJ_FLAG_HIDDEN); }
 
 void showSplash(const DateTime& now, bool rtcValid) {
   // Gate on rtcValid, not now.y: NavState seeds rtcNow with a plausible
@@ -690,9 +791,15 @@ void render(const GaugeSet& gs, const NavState& navState, Theme theme, const His
       char buf[24];
       if (!g.valid) {
         // No reading yet (unsupported/unread PID) — show "--", grey, empty bar.
-        snprintf(buf, sizeof buf, "--");
+        // EXCEPT when the row is blocked on a SETTING rather than on the truck
+        // (a FILL row with no tank capacity): say so, in the accent colour, so
+        // it reads as actionable rather than dead. This is a prompt, not a
+        // reading — it is deliberately not a number, so it cannot be mistaken
+        // for data the way a defaulted capacity's "0.0 gal" would be.
+        snprintf(buf, sizeof buf, g.needsSetup ? "SET UP" : "--");
         lv_label_set_text(cells[i].val, buf);
-        lv_obj_set_style_text_color(cells[i].val, lv_color_hex(0x666666), 0);
+        lv_obj_set_style_text_color(cells[i].val,
+            g.needsSetup ? lv_color_hex(0xFF7A00) : lv_color_hex(0x666666), 0);
         lv_bar_set_value(cells[i].bar, 0, LV_ANIM_OFF);
         lv_obj_set_style_bg_color(cells[i].bar, lv_color_hex(0x333333), LV_PART_INDICATOR);
         lv_label_set_text(cells[i].peak, "");
@@ -734,9 +841,12 @@ void render(const GaugeSet& gs, const NavState& navState, Theme theme, const His
     // Large value with unit, zone-coloured. "--" grey if no reading yet.
     char buf[24];
     if (!g.valid) {
-      snprintf(buf, sizeof buf, "--");
+      // "SET UP" when the row is waiting on a setting, not on the truck — same
+      // rule as the quad cells above.
+      snprintf(buf, sizeof buf, g.needsSetup ? "SET UP" : "--");
       lv_label_set_text(fVal, buf);
-      lv_obj_set_style_text_color(fVal, lv_color_hex(0x666666), 0);
+      lv_obj_set_style_text_color(fVal,
+          g.needsSetup ? lv_color_hex(0xFF7A00) : lv_color_hex(0x666666), 0);
     } else {
       snprintf(buf, sizeof buf, (r.decimals ? "%.1f%s" : "%.0f%s"),
                toDisplayValue(r.quantity, g.value, metric), displayUnit(r, metric));

@@ -29,7 +29,27 @@ struct Settings {
   // re-identifies and overwrites.
   char detectedName[24]   = "";        // NVS "detname"
   char detectedEngine[24] = "";        // NVS "deteng"
+  // Diesel tank capacity override, in US gallons. 0 = unset (use the profile's
+  // factory figure, or show SET UP when the profile does not know either).
+  //
+  // Scoped by `tankVeh`, the vehicle-registry key it was set for: capacity is a
+  // property of the TRUCK, but Settings is global. Without the key, a 48 gal
+  // override entered on a Super Duty would follow the user to the Sierra and
+  // silently displace its sourced 24.0.
+  //
+  // There is no DEF equivalent: DEF capacity does not vary by cab or bed, so it
+  // stays a per-profile constant (VehicleProfile::defTankGal).
+  float tankGal = 0.0f;                // NVS "tankgal"
+  char  tankVeh[24] = "";              // NVS "tankveh"
 };
+
+// The tank override IF it belongs to the active profile, else 0. `activeKey` is
+// the vehicle-registry key of the running profile (vehicleKeyActive()).
+// Pure — no NVS, no platform types — so the scoping rule is host-testable.
+float tankOverrideFor(const Settings& s, const char* activeKey);
+
+// Record an override against the active profile. gal <= 0 clears it.
+void  setTankOverride(Settings& s, float gal, const char* activeKey);
 
 // Next brightness preset, cycling 25->50->75->100->25. A non-preset value
 // snaps up to the next-higher preset.

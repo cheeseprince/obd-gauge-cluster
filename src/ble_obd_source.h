@@ -40,6 +40,12 @@ class BleObdSource : public ObdSource {
   ConnStatus connStatus() const override;
   void resetTrip() { resetTripReq_ = true; }  // menu "Reset trip" — marshalled to core 0 via resetTripReq_
 
+  // Effective diesel tank capacity (gal), pushed from core 1 whenever the
+  // setting or the active profile changes; 0 = unknown. Plain float rather than
+  // a request flag: a torn read costs one frame of a wrong fill figure, which
+  // self-corrects on the next poll, so it does not earn a critical section.
+  void setDieselTankGal(float gal) { dieselTankGal_ = gal; }
+
   // Called from the NimBLE host task when a notification arrives.
   void onNotify(const uint8_t* data, size_t len);
 
@@ -88,6 +94,9 @@ class BleObdSource : public ObdSource {
     for (size_t i = 0; i < n; i++) addrBuf_[i] = addr_[i];
     addrBuf_[n] = 0;
   }
+
+  // Written by setDieselTankGal() (core 1), read in poll() (core 0). 0 = unknown.
+  volatile float dieselTankGal_ = 0.0f;
 
   volatile bool forgetReq_ = false;   // set by forget() (core 1), consumed in poll() (core 0)
   volatile bool resetTripReq_ = false;  // set by resetTrip() (core 1), consumed in poll() (core 0)
@@ -161,6 +170,7 @@ class BleObdSource : public ObdSource {
   void begin() override {}
   void poll(uint32_t) override {}
   ObdReadings latest() const override { return cur_; }
+  void setDieselTankGal(float) {}    // no-op: keeps main.cpp board-agnostic
  private:
   ObdReadings cur_;
 };

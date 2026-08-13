@@ -299,30 +299,46 @@ static_assert(sizeof(FORD_READOUTS)/sizeof(FORD_READOUTS[0]) == (size_t)STAT_COU
 // earlier pages: that was the previous layout and it put one dead tile on
 // three separate pages, which is how the bug hid as "a few tiles look odd"
 // instead of "the rare tier is broken".
+// A stat must appear on EXACTLY ONE page. nav_model's readoutPageOf() returns
+// the FIRST page holding a stat and cursorStep() finds its FIRST slot in the
+// reading order, so a duplicate makes the knob teleport backwards -- putting
+// FuelLevel on both FUEL and RANGE sent page 8 to page 4 on the bench. `_` is a
+// deliberately empty cell, the same placeholder gm_sierra_lz0 uses.
+#define _ StatId::COUNT
 static const StatId FORD_PAGES[][4] = {
   { StatId::Rpm,       StatId::Speed,    StatId::Coolant,  StatId::Load     },  // ENGINE
   { StatId::Trans,     StatId::Oil,      StatId::Egt,      StatId::Cac      },  // THERMAL
   { StatId::Boost,     StatId::Rail,     StatId::ActTq,    StatId::Gear     },  // POWER
-  { StatId::FuelLevel, StatId::FuelRate, StatId::MpgInst,  StatId::MpgAvg   },  // FUEL
+  { StatId::FuelRate,  StatId::MpgInst,  StatId::MpgAvg,   StatId::Gal100mi },  // TRIP
   { StatId::Maf,       StatId::Intake,   StatId::Pedal,    StatId::Volts    },  // AIR
-  { StatId::Def,       StatId::DpfDp,    StatId::Egr,      StatId::Nox      },  // EMISSIONS
+  { StatId::DpfDp,     StatId::Egr,      StatId::Nox,      _                },  // EMISSIONS
   { StatId::Ambient,   StatId::Baro,     StatId::RefTq,    StatId::Hp       },  // AMBIENT
+  // RANGE: each tank level beside its gallons-to-fill partner -- byte-for-byte
+  // the same page gm_sierra_lz0 ships, which is why FuelLevel and Def live HERE
+  // and not on TRIP/EMISSIONS. Nothing was lost in the move: FUEL became TRIP
+  // (economy) and EMISSIONS keeps all three of its real parameters.
+  { StatId::FuelLevel, StatId::DslFill,  StatId::Def,      StatId::DefFill  },  // RANGE
 };
-static const char* const FORD_PAGE_NAMES[] = { "ENGINE", "THERMAL", "POWER", "FUEL",
-                                               "AIR", "EMISSIONS", "AMBIENT" };
+#undef _
+static const char* const FORD_PAGE_NAMES[] = { "ENGINE", "THERMAL", "POWER", "TRIP",
+                                               "AIR", "EMISSIONS", "AMBIENT", "RANGE" };
 
 // Every polled row now has a tile, so the helper list is empty of *display*
 // duties. It is NOT empty: OilP has no command at all on this truck (no
 // standard PID exists for engine oil pressure and the scan found no enhanced
-// DID), and DslFill/DefFill need a tank capacity the device is not told, so
-// all three stay dark by design rather than by omission.
+// DID), so it stays dark by design rather than by omission.
+//
+// DslFill/DefFill are no longer in that company. DEF FILL works from the 7.4
+// gal constant below; DIESEL FILL reads SET UP until the owner picks a
+// capacity in Settings -> Fuel tank, because this truck's tank size is a
+// wheelbase option the vehicle cannot be asked about.
 //
 // MPG/AVG MPG are live because updateComputedReadouts() derives them from
 // FuelRate + Speed, both of which now read. HP is on page 7 rather than POWER
 // because computeHorsepower() needs values[RefTq], which is tier 2 -- so HP is
 // dark for exactly as long as FORD-BUG-1 is open, and belongs with the other
 // casualties rather than stranded on a working page.
-static const StatId FORD_HELPERS[] = { StatId::Gal100mi, StatId::L100km };
+static const StatId FORD_HELPERS[] = { StatId::L100km };
 
 static constexpr int FORD_PAGE_COUNT   = (int)(sizeof(FORD_PAGES)   / sizeof(FORD_PAGES[0]));
 static constexpr int FORD_HELPER_COUNT = (int)(sizeof(FORD_HELPERS) / sizeof(FORD_HELPERS[0]));
@@ -352,13 +368,28 @@ static constexpr int FORD_ADDRESSING_COUNT =
 extern const VehicleProfile FORD_SD_67_PROFILE = {
   "Ford Super Duty",
   "6.7L Power Stroke",
-  0.0f,                   // fuel tank: UNKNOWN for this truck (29/34/48 gal are
-                          // all factory options and the VIN does not say which)
-  // DEF tank: capacity UNKNOWN for this truck (not sourced). DEF level (%) IS
-  // decoded now (019B, 2026-08-09) but DEF FILL stays 0.0f/hidden as a result
-  // -- see the implementation report for the gallonsToFill(0, defPct)=0 trap
-  // this creates once DEF has a live value.
+  // Fuel tank: UNKNOWABLE from the truck itself, so it is a user setting
+  // (Settings -> Fuel tank). The Owner's Manual, "Capacities and
+  // Specifications - 6.7L Diesel", keys it to WHEELBASE:
+  //     142/148 in -> 29.0 gal      160/164 in -> 34.0 gal
+  //     176 in     -> 48.0 gal
+  // (plus 26.5 / 40 / 66.5 gal on an "incomplete vehicle" -- Ford's term for a
+  // cab-and-chassis, which is why those three never appear on a pickup).
+  //
+  // The VIN carries neither wheelbase nor bed length: NHTSA vPIC returns Bed
+  // Length, Bed Type and Wheel Base empty for a Super Duty, and its Cab Type is
+  // one lumped "Crew/Super Crew/Crew Max" bucket. There is no lookup to do here
+  // and no runtime way to ask -- WiFi is OTA-only and suspends OBD -- so 0.0f
+  // means "ask the user", which the DIESEL FILL tile renders as SET UP.
   0.0f,
+  // DEF tank: 7.4 gal, quoted from the same table --
+  //     "Diesel Exhaust Fluid (DEF) (complete vehicle)   28 L (7.4 gal)"
+  //     "Diesel Exhaust Fluid (DEF) (incomplete vehicle) 27.3 L (7.2 gal)"
+  // 7.4 is the pickup figure; 7.2 is the cab-and-chassis. Unlike the fuel tank
+  // this does NOT vary by cab or bed, so it is a constant rather than a
+  // setting. (docs/FORD-STATUS.md previously said 7.5 -- a transcription slip,
+  // corrected in the same change as this line.)
+  7.4f,
   FORD_READOUTS,
   { FORD_PAGES, FORD_PAGE_COUNT, FORD_PAGE_NAMES, FORD_HELPERS, FORD_HELPER_COUNT },
   FORD_ADDRESSING, FORD_ADDRESSING_COUNT,

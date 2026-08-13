@@ -22,6 +22,12 @@ class MockObdSource : public ObdSource {
   void setSafeMode(bool on) { safe_ = on; }
   bool safeMode() const { return safe_; }
 
+  // No-op: the mock synthesises DslFill/DefFill directly as waveforms (see the
+  // table in the .cpp) rather than deriving them from a tank capacity, so there
+  // is nothing for a capacity to change. Present only so main.cpp can push the
+  // value without caring which source is compiled in.
+  void setDieselTankGal(float) {}
+
  private:
   ObdReadings cur_;
 #if defined(ARDUINO)

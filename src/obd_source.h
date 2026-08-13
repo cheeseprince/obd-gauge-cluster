@@ -30,6 +30,11 @@ struct ObdReadings {
   uint32_t ms[STAT_COUNT] = {0};         // millis() of stat i's last FRESH (non-NaN) store
   bool     linkUp = false;
   char     vin[18] = "";                 // VIN read on connect (empty until read)
+  // Stat i is NOT readable for a reason the USER can fix, rather than because
+  // the vehicle never answered. Only the FILL rows set this today: their source
+  // level is live but the tank capacity is unknown, so the tile prompts for
+  // setup instead of showing "--" (never seen) or "0.0 gal" (a confident lie).
+  bool     needsSetup[STAT_COUNT] = {false};
 };
 
 class ObdSource {
@@ -83,6 +88,7 @@ inline void applyReadings(GaugeSet& s, const ObdReadings& r, uint32_t now) {
     lowArmTick(r.linkUp && rpmFresh && r.v[rpm] >= LOWARM_RPM, now);
   }
   for (int i = 0; i < STAT_COUNT; i++) {
+    s.g[i].needsSetup = r.needsSetup[i];            // "--" vs "SET UP" (see ObdReadings)
     if (!r.valid[i]) {                              // never read -> "--"
       s.g[i].valid = false; s.g[i].stale = false;
       continue;

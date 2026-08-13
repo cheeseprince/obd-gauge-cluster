@@ -215,6 +215,11 @@ settings menu.
 **5. Set the clock** (optional) via **Set date/time** — it backs up to the coin cell, so you
 only do it once.
 
+**6. Set the fuel tank size** if the DIESEL FILL tile reads `SET UP`, via **Fuel tank**. Most
+profiles already know their capacity; a Ford Super Duty's is 29/34/48 gal depending on
+wheelbase, which the VIN does not encode, so it has to be picked once. Also how you tell the
+dash about a larger aftermarket tank.
+
 Gauges appear once the adapter links. From here, updates are over-the-air — no cable.
 **Full walkthrough, per-OS notes and troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md).
 

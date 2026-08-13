@@ -15,3 +15,4 @@ int          profileCount();                            // == PROFILE_REGISTRY_C
 const char*  profileKeyAt(int i);                       // "" if out of range
 const char*  profileLabelAt(int i);                     // "" if out of range
 int          profileIndexForKey(const char* key);       // -1 if unknown
+const char*  profileKeyFor(const VehicleProfile* p);    // "" if unknown/null — key of the ACTIVE profile

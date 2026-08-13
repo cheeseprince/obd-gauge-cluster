@@ -168,7 +168,7 @@ void BleObdSource::poll(uint32_t nowMs) {
     if (gearOilReq_)  { gearOilReq_  = false; runGearOilProbe(); return; }  // gear/oil live probe
     pollQuery(nowMs);
     // Derived rows (economy/HP/fill) — shared engine, one impl for all sources.
-    updateComputedReadouts(economy_, values_, cur_, mux_, nowMs);
+    updateComputedReadouts(economy_, values_, cur_, mux_, nowMs, dieselTankGal_);
     return;
   }
 

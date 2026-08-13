@@ -164,6 +164,27 @@ and what each profile supports.
 **Set date/time** in the settings menu. It backs up to the coin cell, so it's a one-time
 step — the dash keeps time across power cycles after that.
 
+## 7. Set the fuel tank size (only if DIESEL FILL says `SET UP`)
+
+**Fuel tank** in the settings menu. Turn to a size, click to select; hold to cancel.
+
+The DIESEL FILL tile needs a tank capacity to turn a fuel-level percentage into gallons, and
+the vehicle cannot be asked for it. Where the capacity is a single known figure the profile
+already fills it in and the tile just works — the Sierra 1500's 24 gal, for instance.
+
+Where it is not, the tile reads **`SET UP`** until you pick one. On a Ford Super Duty the
+factory tank is 29, 34 or 48 gal depending on **wheelbase** (Owner's Manual, *Capacities and
+Specifications*), and the VIN encodes neither wheelbase nor bed length — so there is nothing
+to look it up from. The preset list labels each size with the configuration it belongs to.
+
+Fitted a larger aftermarket tank? Pick its size, or use **Custom** for anything not listed;
+this overrides the factory figure on any vehicle. The setting is remembered per vehicle
+profile, so it will not follow you to a different truck, and **Not set** returns to the
+factory value.
+
+> DEF FILL needs no setup — DEF capacity does not vary by cab or bed, so each profile carries
+> its own figure.
+
 ## Done
 
 Gauges appear once the adapter links. From here, updates are over-the-air — see the

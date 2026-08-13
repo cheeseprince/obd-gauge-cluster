@@ -35,6 +35,13 @@ static volatile uint8_t g_vehCommitSel = 0;
 // (Auto-detect) when settings.vehicleAuto, else the locked profile's row —
 // instead of always resetting to Auto-detect. See setVehiclePickSeed().
 static volatile uint8_t g_vehPickSeed = 0;
+// Fuel-tank commit queue + cursor seed — same core-0/core-1 split as the
+// vehicle picker above: core 0 queues the chosen capacity, loop() writes it to
+// `settings` and persists. The seed is the CURRENT effective capacity, so the
+// picker opens on the row that is already correct (one click to confirm).
+static volatile bool  g_tankCommitReq = false;
+static volatile float g_tankCommitGal = 0.0f;
+static volatile float g_tankPickSeed  = 0.0f;
 static portMUX_TYPE navMux = portMUX_INITIALIZER_UNLOCKED;
 
 namespace buttonInput {
@@ -85,6 +92,7 @@ void update(NavState& s) {
       if (a == MenuAction::CloseMenu)        s.view = View::Quad;
       else if (a == MenuAction::OpenTimeSet) { s.editDt = s.rtcNow; s.editField = 0; s.view = View::TimeSet; }
       else if (a == MenuAction::OpenVehiclePick) { s.vehSel = g_vehPickSeed; s.view = View::VehiclePick; }  // seed to Auto-detect row or the current lock (pushed by main.cpp; no `settings` access here — see g_vehCommit*/g_vehPickSeed above)
+      else if (a == MenuAction::OpenTankPick) { tankPickSeed(s.tank, g_tankPickSeed); s.view = View::TankPick; }
       // ForgetAdapter/ResetTrip must ALSO close the menu, same as CloseMenu:
       // their feedback lives OUTSIDE the menu overlay (the status overlay for
       // Forget; the gauges for Reset trip), and statusLabel/menuLabel are both
@@ -113,6 +121,22 @@ void update(NavState& s) {
       g_vehCommitSel = s.vehSel;
       g_vehCommitReq = true;
       s.view = View::Menu;
+    }
+  } else if (s.view == View::TankPick) {
+    for (int32_t i = 0; i < d; i++) tankPickMove(s.tank, +1);
+    for (int32_t i = 0; i > d; i--) tankPickMove(s.tank, -1);
+    // Long press always backs out, including out of Custom's edit mode, so
+    // there is a way to abandon a half-typed value without committing it.
+    if (ev == EncEvent::PressLong)  { s.tank.editing = false; s.view = View::Menu; }
+    if (ev == EncEvent::PressShort) {
+      float gal = 0.0f;
+      // Custom's first press only opens the value editor — the picker stays up
+      // until tankPickActivate reports a real commit.
+      if (tankPickActivate(s.tank, gal)) {
+        g_tankCommitGal = gal;
+        g_tankCommitReq = true;
+        s.view = View::Menu;
+      }
     }
   } else {
     for (int32_t i = 0; i < d; i++) nav::cursorNext(s);   // CW / right = next stat
@@ -148,6 +172,24 @@ bool consumeVehicleCommit(uint8_t& sel) {
   portEXIT_CRITICAL(&navMux);
   return req;
 }
+
+// One-shot: true (with the chosen capacity in `gal`, 0 = clear the override) if
+// the fuel-tank picker was just committed on core 0. loop() (core 1) performs
+// the setTankOverride + saveSettings. NO reboot, unlike the vehicle picker:
+// the capacity feeds a derived readout that is recomputed every poll, so it
+// takes effect on the next tick.
+bool consumeTankCommit(float& gal) {
+  portENTER_CRITICAL(&navMux);
+  bool req = g_tankCommitReq;
+  gal = g_tankCommitGal;
+  g_tankCommitReq = false;
+  portEXIT_CRITICAL(&navMux);
+  return req;
+}
+
+// Push from main.cpp (core 1): the effective capacity the tank picker should
+// seed its cursor to. Same no-locking rationale as setVehiclePickSeed below.
+void setTankPickSeed(float gal) { g_tankPickSeed = gal; }
 
 // One-shot-per-loop push from main.cpp (core 1): the row the Pick Vehicle
 // cursor should seed to next time it opens (0 = Auto-detect, i>0 = registry

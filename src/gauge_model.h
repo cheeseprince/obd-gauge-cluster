@@ -40,6 +40,8 @@ struct Gauge {
   bool valid = false;
   bool stale = false;   // valid but no fresh read within the tier window while linked
                         // (dead PID): render grey + exclude from alarm evaluation
+  bool needsSetup = false;  // !valid because a SETTING is missing, not because the
+                            // vehicle never answered: render "SET UP", not "--"
 };
 
 void gaugeUpdate(Gauge& g, float v);  // store value, mark valid, raise peak
