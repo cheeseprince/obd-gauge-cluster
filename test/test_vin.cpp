@@ -215,6 +215,52 @@ int main() {
     check(strcmp(f.engine, c.engine)==0, c.engine);
   }
 
+  // ---- Ford PROFILE gate: cab style and axle must not gate it --------------
+  // The identification table already refuses to gate cab/drive (above), but the
+  // PROFILE gate did, and nothing tested it: fordSuperDuty67 required
+  // vin[4]=='W' and vin[6]=='B', which is Crew Cab / single-rear-wheel / 4WD.
+  // A vPIC 2-D sweep (2026-08-13) found 24 valid (vin[4],vin[6]) pairs for a
+  // 6.7L Super Duty; that gate accepted 1 of the 24, so every Regular Cab,
+  // SuperCab, dually and 4x2 silently fell through to Standard+.
+  //
+  //   vin[4] cab   F=Regular  W=Crew  X=SuperCab
+  //   vin[6] axle  A/E=SRW 4x2  B/F=SRW 4WD  C/G=DRW 4x2  D/H=DRW 4WD
+  {
+    static const char* const CABS = "FWX";
+    static const char* const AXLES = "ABCDEFGH";
+    char vin[18]; int accepted = 0;
+    for (const char* cab = CABS; *cab; cab++) {
+      for (const char* ax = AXLES; *ax; ax++) {
+        // 1FT <cab> <series=3> <axle> T <chk> <year=N> ...  -> 2022 F-350 6.7L
+        std::snprintf(vin, sizeof vin, "1FT8%c3%cT0N2345678", *cab, *ax);
+        const char* key = vinToProfileKey(vin);
+        if (key && strcmp(key, "ford_sd_67") == 0) accepted++;
+      }
+    }
+    check(accepted == 24, "every cab/axle combination gets the Ford profile (24 of 24)");
+  }
+
+  // Every Super Duty series takes the profile; the F-150 must not.
+  check(strcmp(vinToProfileKey("1FT8F2AT0N2345678"),"ford_sd_67")==0, "F-250 RegCab 4x2 -> Ford profile");
+  check(strcmp(vinToProfileKey("1FT8X4HT0N2345678"),"ford_sd_67")==0, "F-450 SuperCab dually 4WD -> Ford profile");
+  check(strcmp(vinToProfileKey("1FT8W5DT0N2345678"),"ford_sd_67")==0, "F-550 Crew dually 4WD -> Ford profile");
+  // vin[7]='T' on an F-150 is a 3.5L EcoBoost, NOT a Power Stroke — the series
+  // digit is the only thing keeping this profile off that truck.
+  check(vinToProfileKey("1FTFW1ET0L2345678")==nullptr ||
+        strcmp(vinToProfileKey("1FTFW1ET0L2345678"),"ford_sd_67")!=0, "F-150 never gets the Ford profile");
+  // Gas Super Dutys read no 10R140 DIDs; they belong on Standard+.
+  check(vinToProfileKey("1FT8W3B60N2345678")==nullptr ||
+        strcmp(vinToProfileKey("1FT8W3B60N2345678"),"ford_sd_67")!=0, "6.2L V8 never gets the Ford profile");
+  check(vinToProfileKey("1FT8W3BN0N2345678")==nullptr ||
+        strcmp(vinToProfileKey("1FT8W3BN0N2345678"),"ford_sd_67")!=0, "7.3L V8 never gets the Ford profile");
+  // F-600 (vin[5]='6') also takes the 6.7L but is a Class-6 chassis cab that
+  // has never been scanned — fails closed on purpose.
+  check(vinToProfileKey("1FT8W6BT0N2345678")==nullptr ||
+        strcmp(vinToProfileKey("1FT8W6BT0N2345678"),"ford_sd_67")!=0, "F-600 fails closed");
+  // The 6R140/10R140 break still holds: a 2019 truck must not get this profile.
+  check(vinToProfileKey("1FT8W3BT0K2345678")==nullptr ||
+        strcmp(vinToProfileKey("1FT8W3BT0K2345678"),"ford_sd_67")!=0, "2019 (6R140) still excluded");
+
   // F-150 is named but its ENGINE is deliberately left blank: vin[7]='T' is a
   // 3.5L EcoBoost on an F-150 and a 6.7L Power Stroke on a Super Duty, so the
   // engine codes are not shared between the two lines and only the Super Duty

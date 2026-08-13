@@ -32,6 +32,16 @@ ALLOWED_VINS = {
     "1FT7W2BT0L2345678",   # 2020 (L) — first 10R140 year, inside the gate
     "1FT8W3BT0M2345678",   # 2021 (M) — the model year actually scanned
     "1FT7W2BT0K2345678",   # 2019 (K) — 6R140, must fall to Standard+
+    # Ford Super Duty PROFILE-gate coverage (test_vin), added 2026-08-13 with
+    # the cab/axle fix. Same synthetic ...2345678 tail; vin[4] is the cab
+    # (F/W/X), vin[5] the series, vin[6] the axle+drive, vin[7] the engine.
+    "1FT8F2AT0N2345678",   # F-250 Regular Cab, SRW 4x2 — the old gate rejected it
+    "1FT8X4HT0N2345678",   # F-450 SuperCab, dually 4WD — ditto
+    "1FT8W5DT0N2345678",   # F-550 Crew Cab, dually 4WD — ditto
+    "1FT8W3B60N2345678",   # 6.2L V8 — gas, must NOT get the diesel profile
+    "1FT8W3BN0N2345678",   # 7.3L V8 — gas, must NOT get the diesel profile
+    "1FT8W6BT0N2345678",   # F-600 (vin[5]='6') — Class 6, fails closed
+    "1FT8W3BT0K2345678",   # 2019 (K) Crew/SRW/4WD — 6R140, still excluded
     "1FT7W2BT0V2345678",   # 2027 (V) — unverified year, must fail closed
     "1FT9W4BT0M2345678",   # F-450 2021 — the series digit is not gated
     "WAU0123456789ABCD",   # Audi
