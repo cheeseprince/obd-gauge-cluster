@@ -92,7 +92,7 @@ There are **three tiers**, and the difference between the first two is worth bei
 
 | Tier | What the dash does | What you see |
 | :--- | :--- | :--- |
-| ✅🟢🟡 **Profiled** | Reads manufacturer-specific (Mode 22 / UDS) parameters | 3–7 pages of enhanced stats — trans temp, DPF, EGT, regen… |
+| ✅🟢🟡 **Profiled** | Reads manufacturer-specific (Mode 22 / UDS) parameters | 3–8 pages of enhanced stats — trans temp, DPF, EGT, regen… |
 | 🔵 **Recognized** | Names the vehicle, and picks a **Standard+** layout from the engine in its VIN | **3–4 pages** of legislated SAE J1979 parameters |
 | ⚪ **Unknown** | Nothing vehicle-specific | 2 Generic pages, no caption |
 
@@ -115,7 +115,7 @@ volts, since no thresholds have been sourced for any of these vehicles.
 | Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
 | Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
 | Ford | F-150 | *(engine not identified)* | 2010–23 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
-| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke | 2020–26 | **7** — ENGINE · THERMAL · POWER · FUEL · AIR · EMISSIONS · AMBIENT | 🟡 Skeleton — scanned 2026-08-09; trans temp + gear confirmed, **not yet run on the truck** — [details](docs/FORD-STATUS.md) |
+| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke | 2020–26 | **8** — ENGINE · THERMAL · POWER · TRIP · AIR · EMISSIONS · AMBIENT · RANGE | 🟡 Skeleton — scanned 2026-08-09; trans temp + gear confirmed, **not yet run on the truck** — [details](docs/FORD-STATUS.md) |
 | Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke (2011–19) · 6.2L · 7.3L V8 | 2011–26 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — pre-2020 diesels are the 6R140, a different transmission, so they stay on Standard+ |
 | GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
 | GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
