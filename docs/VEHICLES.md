@@ -7,10 +7,21 @@ automatically, what each profile currently supports, and what "not supported" ac
 
 On first OBD connect, the firmware requests the VIN over **Mode-09 PID `0902`** and parses the
 17-character VIN out of the reassembled multi-frame ISO-TP reply (`parseVinReply` in `src/vin.cpp`). The first three characters — the WMI — are looked up in a fixed table
-(`MAP` in `vinToProfileKey`, `src/vin.cpp`): `1GT`/`3GT`/`1GC`/`3GC` → `gm_sierra_lz0`,
+(`MAP` in `profileKeyFor`, `src/vin.cpp`): `1GT`/`3GT`/`1GC`/`3GC` → `gm_sierra_lz0`,
 `WBA`/`WBS`/`5UX`/`4US` → `bmw_f10_535i`, `WAU`/`WA1`/`WUA`/`TRU` → `audi_q5`,
-`1C4`/`1J4`/`3C4` → `jeep_ws`. An unrecognized WMI returns no match
-(`vinToProfileKey` returns `nullptr`), and the display falls back to the Generic profile.
+`1C4` → `jeep_ws`, `1FT`/`3FT` → `ford_sd_67`. A WMI match is necessary but not
+sufficient — each row also carries a predicate over the rest of the VIN (engine, platform,
+model year), so a Ford that is not a 2020–26 6.7L Power Stroke fails the row it matched.
+
+**Falling through does not mean Generic.** There are two tables, and they fail differently:
+
+- A vehicle in the **identification** table but with no profile match gets **Standard+** —
+  `std_diesel` or `std_gas` depending on the engine the VIN named (`src/vin.cpp`, the
+  `profileKeyFor(vin)` fallback). Same legislated PIDs as Generic, laid out for the engine.
+- Only a vehicle in **neither** table falls all the way back to **Generic**.
+
+An engine the table could not name falls back to the *gas* layout, because diesel-only tiles
+on a gas truck look broken while the reverse merely omits data.
 
 ### What a recognized-but-unprofiled vehicle actually shows
 
@@ -251,13 +262,51 @@ Silverado.
 
 ## Ford
 
-**Identified, but no profile ships yet — those are two different things.**
+**One Ford has a profile; the rest are identified only.** Those are two different things —
+see [Standard+](#standard) for why.
 
-A Super Duty or F-150 is recognized by VIN and the dash captions itself on the boot splash.
-It still runs the **Generic** profile: standard Mode-01 parameters populate, and the enhanced
-Power Stroke parameters (transmission temp, EGT, DPF, fuel rail pressure, DEF, NOx) do not
-exist in this firmware yet. Naming the truck is not the same as reading it — nothing here has
-been measured on a Power Stroke.
+The **2020–26 Super Duty 6.7L Power Stroke** ships a real profile
+(`src/vehicles/ford_sd_67.cpp`, registry key `ford_sd_67`), mapped from a **real scan on
+2026-08-09** of a 2021 F-350: a census, a 187-PID sweep and a 29-minute cold-start drive.
+Transmission fluid temperature (`221E1C`, signed int16 ÷ 16) and current gear (`221E60`) are
+confirmed enhanced DIDs on the TCM at `7E1`; boost, rail pressure, fuel rate, DEF, DPF
+differential pressure, pedal, charge-air temp and EGR turned out to be **standard SAE J1979
+PIDs** the ECM's own supported-PID bitmap already advertised. Addressing is **11-bit only** —
+every 29-bit header was silent, the exact inverse of the Sierra.
+
+**Eight pages, 31 tiles:**
+
+| Page | Tiles |
+| :--- | :--- |
+| ENGINE | RPM · SPEED · COOLANT · ENGINE LOAD |
+| THERMAL | TRANSMISSION · OIL · EXHAUST GAS · CHARGE AIR |
+| POWER | BOOST · RAIL PRESSURE · ACTUAL TORQUE · GEAR |
+| TRIP | FUEL RATE · MPG · AVERAGE MPG · GAL/100 MI |
+| AIR | AIR FLOW · INTAKE · ACCEL PEDAL · VOLTAGE |
+| EMISSIONS | DPF PRESSURE · EGR VALVE · NOx · *(empty)* |
+| AMBIENT | AMBIENT · BAROMETRIC · REF TORQUE · HORSEPOWER |
+| RANGE | FUEL LEVEL · DIESEL FILL · DEF LEVEL · DEF FILL |
+
+**DIESEL FILL reads `SET UP` until you set a tank size.** The factory tank is 29 / 34 / 48 US
+gal depending on **wheelbase**, and the VIN encodes neither wheelbase nor bed length, so the
+dash cannot derive it — see [step 7 of the install guide](INSTALL.md). DEF needs no setup: that
+tank does not vary by cab or bed, so the profile carries the constant (7.4 gal).
+
+⚠️ **Engine oil pressure is still absent** — no standard PID and no enhanced DID for it was
+found, and **no dash has yet been plugged into a moving Super Duty**: the profile is validated
+against a replay of the capture and the HIL rig, not a drive. See
+[`FORD-STATUS.md`](FORD-STATUS.md).
+
+**Everything else Ford is identify-only** and runs Standard+ or Generic: the F-150, the gas
+Super Dutys, and the **pre-2020 diesels** (those are the 6R140, a different transmission, and
+this profile decodes gear as ten positions).
+
+⚠️ **The profile gate is narrower than the identity gate.** `fordSuperDuty67` additionally
+requires `vin[4]='W'` and `vin[6]='B'` — a cab-style and a drive-type code — so a Super Duty
+6.7L outside that combination is *identified* but handed Standard+ rather than this profile.
+That predicate has never been re-derived from a vPIC sweep the way the series digit was
+(see [How these patterns were verified](#how-these-patterns-were-verified)), so it may be
+narrower than intended.
 
 | Positions | Meaning |
 | :--- | :--- |
@@ -304,12 +353,11 @@ span is **identified only** — named on the splash, running Generic gauges.
 which vPIC resolves for only 16 of 1,089 combinations — not enough to be confident, so the dash
 says "Sierra HD" and stops rather than guessing the tonnage.
 
-## Jeep## Jeep
+## Jeep
 
-Ships as a skeleton profile (`src/vehicles/jeep_ws.cpp`), auto-detected by VIN (WMI
-`1C4`/`1J4`/`3C4`). Mapped from a **real on-car scan** of a **2022 Jeep Wagoneer (WS platform,
+Ships as a skeleton profile (`src/vehicles/jeep_ws.cpp`), auto-detected by VIN (WMI `1C4` only). Mapped from a **real on-car scan** of a **2022 Jeep Wagoneer (WS platform,
 5.7L Hemi eTorque, ZF 8HP75)** — the first port where the scan came before the profile rather
-than after. Fourteen standard Mode-01 parameters are measured live and are exact.
+than after. Thirteen standard Mode-01 parameters are measured live and are exact.
 
 **This vehicle's addressing is unlike every other profile: the 11-bit path is completely dead.**
 `7DF` and `7E0` both return `NO DATA` with zero supported PIDs, while 29-bit `18DB33F1` carries

@@ -101,9 +101,9 @@ python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
   Reads a drive CSV, writes a Markdown (optionally PDF, via `--pdf`) report
   ranking every candidate PID with its best interpretation, correlated
   anchor, and a verdict (`correlated` / `weak` / `no-signal` /
-  `too-few-samples` / `constant` / `sentinel` — see the report's own "How to
+  `too-few-samples` / `constant` / `sentinel` / `mirror-tautology` — see the report's own "How to
   read this" section for what each means and why `r` alone is not proof).
-  `--workers` controls parallelism (default `min(os.cpu_count(), 4)`).
+  `--workers` controls parallelism (default `min(os.cpu_count() or 1, 4)`).
 
 ## In-cab runbook
 

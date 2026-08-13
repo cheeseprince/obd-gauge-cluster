@@ -11,7 +11,7 @@ date: "2026-08-01"
 on-car scan rather than from a third-party capture: a census plus a 1024-probe sweep of a
 **2022 Jeep Wagoneer (WS platform, 5.7L Hemi eTorque, ZF 8HP75)** on 2026-08-01.
 
-Fourteen legislated Mode-01 parameters are **measured live**, and two enhanced DIDs on the
+Thirteen legislated Mode-01 parameters are **measured live**, and two enhanced DIDs on the
 transmission **answer**: ATF temp `2204FE` and gear `22051A`. Both ship with **alarms off** — the
 DIDs are confirmed, but what their bytes mean is only partly pinned down.
 

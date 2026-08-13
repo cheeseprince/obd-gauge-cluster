@@ -2,7 +2,7 @@
 
 The 3D-printable enclosure is published on Printables (STLs, print settings, and photos):
 
-**→ https://www.printables.com/model/1788789-odb-gauge-cluster-case**
+**→ https://www.printables.com/model/1788789-obd-gauge-cluster-case**
 
 Three printed parts — a bottom shell that carries the board on moulded standoffs, a frame
 that captures the display bezel, and a top. Heat-set the inserts into the bottom, then the

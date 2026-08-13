@@ -11,7 +11,7 @@
 //  the standard J1979 F4xx block as though it were proprietary. See
 //  docs/FORD-STATUS.md.
 //
-//  ADDRESSING IS 11-BIT, and this matters: the census found ALL FIFTEEN 29-bit
+//  ADDRESSING IS 11-BIT, and this matters: the census found ALL ELEVEN 29-bit
 //  headers silent while 7DF/7E0/7E1 answered -- the exact inverse of the
 //  Sierra. 7DF is the functional broadcast and returns the union of 7E0+7E1,
 //  so it is deliberately NOT used here; polling the physical ECUs keeps one

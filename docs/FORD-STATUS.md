@@ -12,10 +12,15 @@ date: "2026-07-21"
 >
 > - A **2021 F-350 was scanned on 2026-08-09** (census + 187-PID sweep + a 29-minute
 >   cold-start drive). The data IS on HS-CAN — no MS-CAN adapter needed.
-> - `src/vehicles/ford_sd_67.cpp` now ships **seven pages**. Transmission fluid temperature
+> - `src/vehicles/ford_sd_67.cpp` now ships **eight pages** — ENGINE · THERMAL · POWER ·
+>   TRIP · AIR · EMISSIONS · AMBIENT · RANGE. Transmission fluid temperature
 >   (`221E1C`, signed int16 ÷ 16) and current gear (`221E60`) are confirmed enhanced DIDs on
 >   the TCM at `7E1`.
-> - Addressing is **11-bit only** — all fifteen 29-bit headers were silent, the exact inverse
+> - **Tank capacities are settled** (2026-08-12). DEF is a constant **7.4 gal**; the diesel
+>   tank is a *user setting* (**Settings → Fuel tank**) because it is 29/34/48 gal by
+>   wheelbase and the VIN encodes neither wheelbase nor bed length. DIESEL FILL reads
+>   `SET UP` until it is picked; DEF FILL works out of the box.
+> - Addressing is **11-bit only** — all eleven 29-bit headers were silent, the exact inverse
 >   of the Sierra.
 > - Most of the remaining parameters turned out to be **standard SAE J1979 PIDs the ECM's own
 >   supported-PID bitmap already advertised** — boost `0187`, rail `016D`, fuel rate `019D`,
