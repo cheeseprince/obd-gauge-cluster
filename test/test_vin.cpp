@@ -3,7 +3,10 @@
 #include "../src/vin.h"
 
 static int failures = 0;
-static void check(bool c, const char* m){ if(!c){ printf("FAIL: %s\n", m); failures++; } }
+// Returns the condition so a caller can bail out of a row rather than press on
+// with null fields — an unguarded strcmp on a failed identify crashes the suite
+// instead of reporting which row broke.
+static bool check(bool c, const char* m){ if(!c){ printf("FAIL: %s\n", m); failures++; } return c; }
 
 int main() {
   char vin[18];
@@ -211,8 +214,12 @@ int main() {
   };
   for (const auto& c : FORD) {
     VinIdentity f{};
-    check(vinIdentify(c.vin, &f) && strcmp(f.name, c.name)==0, c.name);
-    check(strcmp(f.engine, c.engine)==0, c.engine);
+    // Guard every field access on identify SUCCEEDING. VinIdentity leaves its
+    // pointers null when it fails, so an unguarded strcmp on a row that stops
+    // matching crashes the suite instead of reporting which row broke.
+    if (!check(vinIdentify(c.vin, &f), c.name)) continue;
+    check(f.name   && strcmp(f.name,   c.name)==0,   c.name);
+    check(f.engine && strcmp(f.engine, c.engine)==0, c.engine);
   }
 
   // ---- Ford PROFILE gate: cab style and axle must not gate it --------------
@@ -260,6 +267,39 @@ int main() {
   // The 6R140/10R140 break still holds: a 2019 truck must not get this profile.
   check(vinToProfileKey("1FT8W3BT0K2345678")==nullptr ||
         strcmp(vinToProfileKey("1FT8W3BT0K2345678"),"ford_sd_67")!=0, "2019 (6R140) still excluded");
+
+  // ---- Ford: pre-2010 Super Duty (VEH-12) and the 1FD WMI ------------------
+  // A different VDS ERA, not a different position: series is still vin[5], but
+  // the engine alphabet is entirely different (P/R/5/Y vs T/6/N). Year codes
+  // cannot collide -- 2001-2009 are digits, 2010+ are letters.
+  struct OldCase { const char* vin; const char* name; const char* engine; };
+  static const OldCase FORD_OLD[] = {
+    {"1FTWW31P062345678", "Ford F-350", "6.0L Power Stroke"},   // 2006
+    {"1FTWW31P072345678", "Ford F-350", "6.0L Power Stroke"},   // 2007
+    {"1FTSW21P052345678", "Ford F-250", "6.0L Power Stroke"},   // 2005
+    {"1FTWW31R082345678", "Ford F-350", "6.4L Power Stroke"},   // 2008
+    {"3FTWW31R092345678", "Ford F-350", "6.4L Power Stroke"},   // 2009, Mexico
+    {"1FDXW47P062345678", "Ford F-450", "6.0L Power Stroke"},   // 1FD chassis cab
+    {"1FDXW57R082345678", "Ford F-550", "6.4L Power Stroke"},
+    {"1FTWW315062345678", "Ford F-350", "5.4L V8"},             // gas, same era
+  };
+  for (const auto& c : FORD_OLD) {
+    VinIdentity o{};
+    if (!check(vinIdentify(c.vin, &o), c.name)) continue;
+    check(o.name   && strcmp(o.name,   c.name)==0,   c.name);
+    check(o.engine && strcmp(o.engine, c.engine)==0, c.engine);
+    // A pre-2010 truck must NEVER get the 6.7L/10R140 profile.
+    const char* k = vinToProfileKey(c.vin);
+    check(k == nullptr || strcmp(k, "ford_sd_67") != 0, "pre-2010 never gets ford_sd_67");
+  }
+
+  // 1FD was missing entirely: a modern F-450/F-550 was not identified at all.
+  VinIdentity fd{};
+  check(vinIdentify("1FD8W4BT0N2345678", &fd), "1FD F-450 identifies");
+  check(strcmp(fd.name, "Ford F-450")==0, "1FD F-450 name");
+  check(strcmp(fd.engine, "6.7L Power Stroke")==0, "1FD F-450 engine");
+  check(strcmp(vinToProfileKey("1FD8W4BT0N2345678"),"ford_sd_67")==0,
+        "1FD F-450 gets the Ford profile, same as its 1FT twin");
 
   // F-150 is named but its ENGINE is deliberately left blank: vin[7]='T' is a
   // 3.5L EcoBoost on an F-150 and a 6.7L Power Stroke on a Super Duty, so the

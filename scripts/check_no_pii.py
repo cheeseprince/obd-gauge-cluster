@@ -42,6 +42,19 @@ ALLOWED_VINS = {
     "1FT8W3BN0N2345678",   # 7.3L V8 — gas, must NOT get the diesel profile
     "1FT8W6BT0N2345678",   # F-600 (vin[5]='6') — Class 6, fails closed
     "1FT8W3BT0K2345678",   # 2019 (K) Crew/SRW/4WD — 6R140, still excluded
+    # Pre-2010 Super Duty (VEH-12, added 2026-08-13). A different VDS era: the
+    # series is still vin[5] but the engine alphabet is P/R/5/Y, and the model
+    # year is a DIGIT (2001-2009) rather than a letter.
+    "1FTWW31P062345678",   # 2006 F-350 6.0L Power Stroke
+    "1FTWW31P072345678",   # 2007 F-350 6.0L — last 6.0L year
+    "1FTSW21P052345678",   # 2005 F-250 6.0L
+    "1FTWW31R082345678",   # 2008 F-350 6.4L Power Stroke
+    "3FTWW31R092345678",   # 2009 F-350 6.4L, Mexico-built WMI
+    "1FTWW315062345678",   # 2006 F-350 5.4L V8 — gas, same era
+    # 1FD is the F-450/F-550 (and F-350 chassis-cab) WMI, missing until now.
+    "1FDXW47P062345678",   # 2006 F-450 6.0L
+    "1FDXW57R082345678",   # 2008 F-550 6.4L
+    "1FD8W4BT0N2345678",   # 2022 F-450 6.7L — the modern gap this closed
     "1FT7W2BT0V2345678",   # 2027 (V) — unverified year, must fail closed
     "1FT9W4BT0M2345678",   # F-450 2021 — the series digit is not gated
     "WAU0123456789ABCD",   # Audi

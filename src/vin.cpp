@@ -360,6 +360,10 @@ static const char* profileKeyFor(const char* vin) {
     // gate alone is not enough.
     {"1FT",fordSuperDuty67_10R140,"ford_sd_67"},
     {"3FT",fordSuperDuty67_10R140,"ford_sd_67"},
+    // 1FD is the same truck as its 1FT twin -- the WMI differs by body/plant,
+    // not by drivetrain, and a 1FT F-450/F-550 already selects this profile.
+    // Leaving 1FD out would deny the profile on a WMI difference alone.
+    {"1FD",fordSuperDuty67_10R140,"ford_sd_67"},
                   };
   // First matching row wins. Two rows may share a WMI (the F-250 and F-350
   // predicates both live under 1FT and differ only at vin[3]), so the predicate
@@ -403,6 +407,25 @@ static const SeriesRow FORD_SD_SERIES[] = {
 // Super Duty and a 3.5L EcoBoost on an F-150.
 static const EngineRow FORD_SD_ENGINES[] = {
   {'T',"6.7L Power Stroke",true}, {'6',"6.2L V8",false}, {'N',"7.3L V8",false},
+};
+
+// Pre-2010 Super Duty. SAME series position (vin[5]) and same series codes as
+// the modern truck, but a COMPLETELY DIFFERENT engine alphabet -- which is why
+// this needs its own table rather than another entry in the one above.
+//
+// Verified against vPIC 2026-08-13, one probe per model year rather than one
+// probe generalised across the span:
+//   P = 6.0L Power Stroke  confirmed 2003, 2004, 2005, 2006, 2007
+//   R = 6.4L Power Stroke  confirmed 2008, 2009
+//   5 = 5.4L Triton V8 (gas)      Y = 6.8L V10 (gas)
+//
+// 2010 (year code 'A') returned NO Model for either diesel code, so the span
+// stops at 2009. The 6.4L was built into 2010, so this is a gap in vPIC's data
+// or a VDS change, NOT evidence that no 2010 truck exists -- it is simply
+// unverified, and the doctrine here is to gate to what was actually confirmed.
+static const EngineRow FORD_SD_ENGINES_PRE2010[] = {
+  {'P',"6.0L Power Stroke",true}, {'R',"6.4L Power Stroke",true},
+  {'5',"5.4L V8",false}, {'Y',"6.8L V10",false},
 };
 static const SeriesRow FORD_F150_SERIES[] = { {"1","Ford F-150"} };
 
@@ -449,8 +472,24 @@ struct LineRow {
 
 static const LineRow LINES[] = {
   // Ford Super Duty -- verified 2011-2026.
+  //
+  // 1FD is the F-450/F-550 (and F-350 chassis-cab) WMI and decodes identically:
+  // same series position, same series codes, same engine codes. It was missing
+  // until 2026-08-13, so a 1FD truck was not identified at all -- confirmed
+  // against vPIC, where 1FD8W4BT/1FD8W5BT decode as a 2022 F-450/F-550 6.7L
+  // exactly as their 1FT twins do. There is no 3FD: it decodes to nothing.
   {"1FT","BCDEFGHJKLMNPRST",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES)},
   {"3FT","BCDEFGHJKLMNPRST",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES)},
+  {"1FD","BCDEFGHJKLMNPRST",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES)},
+  // Ford Super Duty, PREVIOUS generation -- verified 2003-2009 (VEH-12).
+  //
+  // Year codes cannot collide with the row above: 2001-2009 are the digits 1-9
+  // and 2010-2039 are letters, so a digit at vin[9] is unambiguously this era.
+  // These identify only -- they get Standard+, never ford_sd_67, because that
+  // profile decodes 10R140 gear positions and reads DIDs confirmed on a 6.7L.
+  {"1FT","3456789",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES_PRE2010)},
+  {"3FT","3456789",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES_PRE2010)},
+  {"1FD","3456789",nullptr,5,ARR(FORD_SD_SERIES),nullptr,ARR(FORD_SD_ENGINES_PRE2010)},
   // Ford F-150 -- verified 2010-2023. No engine table on purpose: the codes are
   // year-dependent on this line and only sparsely confirmed, so we name the
   // truck and say nothing about what is under the hood.

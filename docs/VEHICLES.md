@@ -329,8 +329,21 @@ enough to derive a rule here.
 | Positions | Meaning |
 | :--- | :--- |
 | `1FT` / `3FT` | Ford truck, US- or Mexico-built |
+| `1FD` | Ford truck — the **F-450/F-550** (and F-350 chassis-cab) WMI. Decodes identically to `1FT`; there is no `3FD` |
 | `vin[5]` | **series** — `1`=F-150, `2`=F-250, `3`=F-350, `4`=F-450, `5`=F-550 |
-| `vin[7]` | engine (Super Duty only) — `T`=6.7L Power Stroke, `6`=6.2L V8, `N`=7.3L V8 |
+| `vin[7]` | engine, **2011+** (Super Duty only) — `T`=6.7L Power Stroke, `6`=6.2L V8, `N`=7.3L V8 |
+| `vin[7]` | engine, **2003–2009** — `P`=6.0L Power Stroke, `R`=6.4L Power Stroke, `5`=5.4L V8, `Y`=6.8L V10 |
+
+**Two Super Duty eras, one series position.** `vin[5]` means the same thing in both, but the
+engine alphabet is completely different, so each era is its own table row. The model year tells
+them apart with no ambiguity: **2001–2009 are digits, 2010 onward are letters.**
+
+The pre-2010 trucks are **identify-only** — they get Standard+, never `ford_sd_67`, which
+decodes 10R140 gear positions and reads DIDs confirmed on a 6.7L. Verified per model year
+rather than generalised across the span: `P` on 2003/04/05/06/07 and `R` on 2008/09. **2010
+(year code `A`) returned no result** for either diesel code, so the row stops at 2009 — the
+6.4L was built into 2010, so that is a gap in vPIC's data, not evidence the truck does not
+exist.
 
 `vin[5]` is the series digit — position 6 in Ford's 1-indexed VDS layout. **`vin[3]`, `vin[4]`
 and `vin[6]` are deliberately not gated:** they encode a class code, the cab/body style and
