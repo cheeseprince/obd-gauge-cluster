@@ -380,6 +380,35 @@ span is **identified only** — named on the splash, running Generic gauges.
 | Sierra / Silverado **1500**, 2022+ | `vin[3]∈NPRUV`, `vin[4]∈HU` | `8`=3.0L Duramax (LZ0) · `D`=5.3L V8 · `K`=2.7L I4 Turbo · `L`=6.2L V8 | 2022–2026 |
 | Sierra / Silverado **1500**, T1XX | `vin[4]∈{8,9}`, `vin[5]∈ABCDEFG` | `T`=3.0L Duramax (LM2) · `D`/`F`=5.3L V8 · `H`=4.3L V6 · `K`=2.7L I4 Turbo · `L`=6.2L V8 | 2019–2021 |
 | Sierra / Silverado **HD** | `vin[3]∈0–5`, `vin[4]∈{8,9}`, `vin[5]∈LMNPRSTUVW` | `Y`=6.6L Duramax · `7`=6.6L V8 | 2020–2024 |
+| Sierra **K2XX** | `vin[4]∈{1,2}`, tonnage at `vin[5]` | *(none — see below)* | 2014–2018 |
+| Silverado **K2XX** | `vin[4]∈{C,K}`, tonnage at `vin[5]` | *(none — see below)* | 2014–2018 |
+
+### K2XX (2014–2018): the tonnage alphabet is per-make and changes mid-generation
+
+| Era | 1500 | 2500 | 3500 |
+| :--- | :--- | :--- | :--- |
+| GMC, MY2014–15 | `TUVW` | `04XYZ` | `123` |
+| GMC, MY2016–18 | `LMNP` | `RSTU` | `VWXY` |
+| Chevrolet, MY2014–18 | `NPRST` | `UVWX` | `01YZ` |
+
+Read those twice. **GMC `T`/`U` means 1500 in 2015 and 2500 in 2016** — adjacent model years,
+opposite meanings, inside one platform generation. And **Chevrolet `U`/`V`/`W` means 2500 while
+GMC `T`/`U`/`V`/`W` means 1500 in the same year.** A single shared tonnage table would therefore
+name a 2500 a "1500", so each make and each era gets its own row.
+
+Verified on **three independent seeds** — different `vin[3]`, `vin[4]`, `vin[6]` and `vin[7]` —
+across MY2014–2018, because a mid-generation flip is exactly the kind of claim a single seed
+gets wrong.
+
+**These rows carry no engine table**, the same call as the F-150. vPIC returns the
+manufacturer's whole engine list for these VINs rather than what a given tonnage could actually
+be ordered with — it offers the 6.6L Duramax on a 1500, which never existed — so the
+code-to-engine mapping cannot be trusted per row. The truck is named; nothing is claimed about
+what is under the hood. A consequence worth knowing: with no engine, these fall to the
+Standard+ **gas** layout, which is the deliberate safe default (diesel-only tiles on a gas truck
+look broken, while the reverse merely omits data).
+
+**GMT900 (2007–2013) is not done.** It is another VDS layout again and wants its own pass.
 
 **Tonnage is `vin[5]`** — `ABCDEFG`=1500, `LMNPR`=2500, `STUVW`=3500 — and this is load-bearing,
 not trivia. Swept identically on MY2020, 2021, 2022, 2023 and 2024.

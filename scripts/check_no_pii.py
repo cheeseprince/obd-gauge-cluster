@@ -68,6 +68,18 @@ ALLOWED_VINS = {
     "1GT09CED5N2345678",   # HD-shaped, 1500 tonnage, MY2022 — must fail closed
     "1GT49PEY0L2345678",   # 2020 Sierra HD 2500 — must still be found
     "1GT49TEY0P2345678",   # 2023 Sierra HD 3500 — tonnage STUVW
+    # GM K2XX pickups 2014-2018 (VEH-12). Tonnage is vin[5], per-MAKE, and the
+    # alphabet changes between MY2015 and MY2016 — these pin exactly that.
+    "1GCUKP0C5F2345678",   # 2015 Silverado 1500
+    "1GCUKU0C5F2345678",   # 2015 Silverado 2500 — U is 1500 on a GMC
+    "1GCUKZ0C5F2345678",   # 2015 Silverado 3500
+    "1GTU220C5F2345678",   # 2015 Sierra 3500
+    "1GTU2L0C5H2345678",   # 2017 Sierra 1500 — alphabet changed at MY2016
+    "1GTU2T0C5F2345678",   # 2015 Sierra 1500 — T=1500 in the early K2XX years
+    "1GTU2T0C5H2345678",   # K2XX test VIN
+    "1GTU2W0C5H2345678",   # 2017 Sierra 3500 — W was 1500 in 2015
+    "1GTU2X0C5F2345678",   # 2015 Sierra 2500
+    "3GCUKP0C5J2345678",   # 2018 Silverado 1500, Mexico-built
     "1FT7W2BT0V2345678",   # 2027 (V) — unverified year, must fail closed
     "1FT9W4BT0M2345678",   # F-450 2021 — the series digit is not gated
     "WAU0123456789ABCD",   # Audi
