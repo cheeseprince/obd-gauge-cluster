@@ -55,6 +55,19 @@ ALLOWED_VINS = {
     "1FDXW47P062345678",   # 2006 F-450 6.0L
     "1FDXW57R082345678",   # 2008 F-550 6.4L
     "1FD8W4BT0N2345678",   # 2022 F-450 6.7L — the modern gap this closed
+    # GM T1XX light duty 2019-2021 (VEH-12, added 2026-08-13). Tonnage is
+    # vin[5]: ABCDEFG=1500, LMNPR=2500, STUVW=3500. vin[3] varies on purpose in
+    # these rows -- it carries cab/drive, not tonnage, and must not be gated.
+    "1GT09CED5LZ345678",   # 2020 Sierra 1500 5.3L — was misnamed "Sierra HD"
+    "1GT39CED5LZ345678",   # same, different vin[3]
+    "1GTU9CED5LZ345678",   # same, LD-shaped vin[3]
+    "1GTU8CET5KZ345678",   # 2019 Sierra 1500 3.0L Duramax LM2
+    "1GTU9CEL5MZ345678",   # 2021 Sierra 1500 6.2L
+    "1GCU9CEK5LZ345678",   # 2020 Silverado 1500 2.7L turbo
+    "3GTU9CEH5LZ345678",   # 2020 Sierra 1500 4.3L V6, Mexico-built
+    "1GT09CED5N2345678",   # HD-shaped, 1500 tonnage, MY2022 — must fail closed
+    "1GT49PEY0L2345678",   # 2020 Sierra HD 2500 — must still be found
+    "1GT49TEY0P2345678",   # 2023 Sierra HD 3500 — tonnage STUVW
     "1FT7W2BT0V2345678",   # 2027 (V) — unverified year, must fail closed
     "1FT9W4BT0M2345678",   # F-450 2021 — the series digit is not gated
     "WAU0123456789ABCD",   # Audi

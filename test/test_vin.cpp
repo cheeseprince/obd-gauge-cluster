@@ -268,6 +268,57 @@ int main() {
   check(vinToProfileKey("1FT8W3BT0K2345678")==nullptr ||
         strcmp(vinToProfileKey("1FT8W3BT0K2345678"),"ford_sd_67")!=0, "2019 (6R140) still excluded");
 
+  // ---- GM: T1XX light duty 2019-2021, and the HD misidentification --------
+  // TONNAGE IS vin[5], not vin[3]/vin[4]. In this era the 1500 shares the HD's
+  // vin[3]/vin[4] space, so a guard without vin[5] named 1500s "Sierra HD" --
+  // shipped, and confirmed against vPIC (1GT09CED5LZ345678 is a 2020 Sierra
+  // 1500 5.3L L84). vin[5]: ABCDEFG=1500, LMNPR=2500, STUVW=3500.
+  struct GmT1Case { const char* vin; const char* name; const char* engine; };
+  static const GmT1Case GM_T1XX[] = {
+    // vin[3] varies deliberately: it carries cab/drive, NOT tonnage, and must
+    // not gate the row (the mistake made twice on the Ford predicates).
+    {"1GT09CED5LZ345678", "GMC Sierra 1500",          "5.3L V8"},
+    {"1GT39CED5LZ345678", "GMC Sierra 1500",          "5.3L V8"},
+    {"1GTU9CED5LZ345678", "GMC Sierra 1500",          "5.3L V8"},
+    {"1GTU8CET5KZ345678", "GMC Sierra 1500",          "3.0L Duramax I6"},  // LM2, 2019
+    {"1GTU9CEL5MZ345678", "GMC Sierra 1500",          "6.2L V8"},          // 2021
+    {"1GCU9CEK5LZ345678", "Chevrolet Silverado 1500", "2.7L I4 Turbo"},
+    {"3GTU9CEH5LZ345678", "GMC Sierra 1500",          "4.3L V6"},
+  };
+  for (const auto& c : GM_T1XX) {
+    VinIdentity g{};
+    if (!check(vinIdentify(c.vin, &g), c.vin)) continue;
+    check(g.name   && strcmp(g.name,   c.name)==0,   c.name);
+    check(g.engine && strcmp(g.engine, c.engine)==0, c.engine);
+    // The T1XX 3.0L is the LM2, not the LZ0 this profile was scanned on.
+    const char* k = vinToProfileKey(c.vin);
+    check(k == nullptr || strcmp(k, "gm_sierra_lz0") != 0, "T1XX never gets gm_sierra_lz0");
+  }
+  // ⚠️ PIN THE GUARD, NOT THE ROW ORDER. The T1XX rows sit above the HD rows,
+  // so they win by ordering alone and would mask a too-broad HD guard. This VIN
+  // is HD-SHAPED (vin[3]='0', vin[4]='9') with 1500 TONNAGE (vin[5]='C') in a
+  // model year the T1XX rows do not cover (N = 2022, vs KLM = 2019-2021), so
+  // only the vin[5] check in gmHeavyDuty can reject it. Before the fix it was
+  // named "GMC Sierra HD"; now it fails closed, which is correct -- from 2022
+  // the 1500 moved to a different VDS (vin[4] in HU), so this shape is not a
+  // real truck.
+  {
+    VinIdentity ghost{};
+    bool ok = vinIdentify("1GT09CED5N2345678", &ghost);
+    check(!ok || !ghost.name || strcmp(ghost.name, "GMC Sierra HD") != 0,
+          "1500 tonnage is never named HD, whatever the row order");
+  }
+
+  // HD must still be recognised -- narrowing the guard must not lose it.
+  {
+    VinIdentity hd{};
+    check(vinIdentify("1GT49PEY0L2345678", &hd), "2020 Sierra HD identifies");
+    check(hd.name && strcmp(hd.name, "GMC Sierra HD")==0, "HD still named HD");
+    VinIdentity hd3{};
+    check(vinIdentify("1GT49TEY0P2345678", &hd3), "2023 Sierra HD 3500 identifies");
+    check(hd3.name && strcmp(hd3.name, "GMC Sierra HD")==0, "3500 tonnage still HD");
+  }
+
   // ---- Ford: pre-2010 Super Duty (VEH-12) and the 1FD WMI ------------------
   // A different VDS ERA, not a different position: series is still vin[5], but
   // the engine alphabet is entirely different (P/R/5/Y vs T/6/N). Year codes

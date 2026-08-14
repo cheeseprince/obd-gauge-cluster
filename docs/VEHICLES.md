@@ -377,12 +377,31 @@ span is **identified only** — named on the splash, running Generic gauges.
 
 | Line | Gate | Engine `vin[7]` | Verified |
 | :--- | :--- | :--- | :--- |
-| Sierra / Silverado **1500** | `vin[3]∈NPRUV`, `vin[4]∈HU` | `8`=3.0L Duramax · `D`=5.3L V8 · `K`=2.7L I4 Turbo · `L`=6.2L V8 | 2022–2026 |
-| Sierra / Silverado **HD** | `vin[3]∈0–5`, `vin[4]∈{8,9}` | `Y`=6.6L Duramax · `7`=6.6L V8 | 2020–2024 |
+| Sierra / Silverado **1500**, 2022+ | `vin[3]∈NPRUV`, `vin[4]∈HU` | `8`=3.0L Duramax (LZ0) · `D`=5.3L V8 · `K`=2.7L I4 Turbo · `L`=6.2L V8 | 2022–2026 |
+| Sierra / Silverado **1500**, T1XX | `vin[4]∈{8,9}`, `vin[5]∈ABCDEFG` | `T`=3.0L Duramax (LM2) · `D`/`F`=5.3L V8 · `H`=4.3L V6 · `K`=2.7L I4 Turbo · `L`=6.2L V8 | 2019–2021 |
+| Sierra / Silverado **HD** | `vin[3]∈0–5`, `vin[4]∈{8,9}`, `vin[5]∈LMNPRSTUVW` | `Y`=6.6L Duramax · `7`=6.6L V8 | 2020–2024 |
 
-**HD is not split into 2500 and 3500.** That distinction is a joint function of `vin[4]`+`vin[5]`
-which vPIC resolves for only 16 of 1,089 combinations — not enough to be confident, so the dash
-says "Sierra HD" and stops rather than guessing the tonnage.
+**Tonnage is `vin[5]`** — `ABCDEFG`=1500, `LMNPR`=2500, `STUVW`=3500 — and this is load-bearing,
+not trivia. Swept identically on MY2020, 2021, 2022, 2023 and 2024.
+
+> ⚠️ **`vin[3]`+`vin[4]` do not separate a 1500 from an HD.** In the T1XX era the 1500 sits in
+> the *same* `vin[3]`/`vin[4]` space as the HD, so the HD gate — which checked neither tonnage
+> nor anything else unique — matched light-duty trucks and **named a 2020 Sierra 1500 "GMC
+> Sierra HD"**, with a blank engine because its `vin[7]` was not in the HD engine table. Fixed
+> 2026-08-13 by adding the `vin[5]` check. This page previously stated that "`vin[4]` is what
+> separates 1500 from HD"; that was the wrong rule, and it shipped.
+
+The 2019–2021 trucks are **identify-only**. Their 3.0L Duramax is the **LM2**, a different engine
+generation from the **LZ0** the `gm_sierra_lz0` profile was scanned on, so they get Standard+ —
+the profile's own model-year rule (2023–2026) already excludes them.
+
+**HD is still not split into 2500 and 3500 on the splash**, though the sweep above shows `vin[5]`
+resolves it cleanly (`LMNPR` vs `STUVW`) — contradicting an earlier conclusion that the split was
+a joint `vin[4]`+`vin[5]` function vPIC could resolve for only 16 of 1,089 combinations. Naming
+the tonnage is now *possible*; whether the splash should say it is a separate call.
+
+MY2024 additionally showed `X`/`Z` as 2500 and `Y` as 3500. Seen on one model year only, so they
+are **not** admitted — a 2024 truck with those codes fails closed, as everywhere else here.
 
 ## Jeep
 
