@@ -301,12 +301,30 @@ against a replay of the capture and the HIL rig, not a drive. See
 Super Dutys, and the **pre-2020 diesels** (those are the 6R140, a different transmission, and
 this profile decodes gear as ten positions).
 
-⚠️ **The profile gate is narrower than the identity gate.** `fordSuperDuty67` additionally
-requires `vin[4]='W'` and `vin[6]='B'` — a cab-style and a drive-type code — so a Super Duty
-6.7L outside that combination is *identified* but handed Standard+ rather than this profile.
-That predicate has never been re-derived from a vPIC sweep the way the series digit was
-(see [How these patterns were verified](#how-these-patterns-were-verified)), so it may be
-narrower than intended.
+**The profile gate reads series and engine only** — `vin[5]` ∈ `2345` and `vin[7]='T'` — plus
+the model-year rule below. Cab style and axle deliberately do **not** gate it: neither changes
+which PIDs a truck answers.
+
+> **This was wrong until 2026-08-13.** The gate also required `vin[4]='W'` and `vin[6]='B'`. A
+> vPIC 2-D sweep of both positions across the full 33-character alphabet — 1089 combinations —
+> found **24** valid pairs for a 6.7L Super Duty, and that gate accepted **one** of them:
+>
+> | Position | Encodes | Values |
+> | :--- | :--- | :--- |
+> | `vin[4]` | cab style | `F`=Regular · `W`=Crew · `X`=SuperCab |
+> | `vin[6]` | rear wheels + drive | `A`/`E`=SRW 4x2 · `B`/`F`=SRW 4WD · `C`/`G`=DRW 4x2 · `D`/`H`=DRW 4WD |
+>
+> So it admitted Crew Cab / single-rear-wheel / 4WD and silently dropped every Regular Cab,
+> every SuperCab, every dually and every 4x2 to Standard+ — the same shape as the
+> identification bug fixed earlier, which "rejected every 4x2 Super Duty and every cab style
+> but one". Checking no series digit, it also wrongly *accepted* an F-600. `test_vin.cpp` now
+> asserts all 24 combinations select the profile.
+
+The **F-600** (`vin[5]='6'`, a Class-6 chassis cab that also takes the 6.7L) is excluded on
+purpose: nothing of that class has been scanned, so it fails closed like any unverified
+vehicle. The sweep also showed the series set is cab-dependent — an F-250 has no dually
+configuration, and F-600 only appears on one — which is why a **one-position** sweep is not
+enough to derive a rule here.
 
 | Positions | Meaning |
 | :--- | :--- |

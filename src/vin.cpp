@@ -265,20 +265,40 @@ static bool jeepWagoneer57(const char* vin) {
 // profile that reads 10R140 transmission DIDs it does not have.
 static bool fordSuperDuty67(const char* vin) {
   if (std::strlen(vin) < 8) return false;
-  // Deliberately says NOTHING about the series. The series digit is vin[5]
-  // (2=F-250, 3=F-350, 4=F-450, 5=F-550) and it is read by the identification
-  // table's FORD_SD_SERIES rows, not here -- see docs/VEHICLES.md#ford.
+  // SERIES + ENGINE, and deliberately nothing else.
   //
-  // This function once had a redundant series check, which MASKED a mutation:
-  // a caller could drop its own series gate with every test still green. Keep
-  // one owner per fact.
+  //   vin[5] = series   2=F-250 3=F-350 4=F-450 5=F-550
+  //   vin[7] = engine   T=6.7L Power Stroke  6=6.2L V8  N=7.3L V8
   //
-  // ⚠️ vin[3] is NOT the series. A vPIC sweep found 7, 8, B and R all decode as
-  // F-250 -- reading the series from vin[3] is the bug that shipped and was
-  // fixed in PR #51. Two dead helpers (fordF250/fordF350) encoding that wrong
-  // rule were removed on 2026-08-13; do not reintroduce them.
-  return vinAt(vin,4) == 'W' &&
-         vinAt(vin,6) == 'B' &&
+  // The series check is what keeps an F-150 out: vin[7]='T' is a 6.7L on a
+  // Super Duty and a 3.5L EcoBoost on an F-150 (docs/VEHICLES.md#ford), so
+  // engine alone would hand this profile to the wrong truck. F-150 is vin[5]='1'.
+  //
+  // ⚠️ THIS USED TO ALSO REQUIRE vin[4]=='W' AND vin[6]=='B', WHICH WAS A BUG.
+  // A vPIC 2-D sweep of both positions across the full 33-character alphabet
+  // (1089 combinations, 2026-08-13) found 24 valid (vin[4],vin[6]) pairs for a
+  // 6.7L Super Duty. That gate accepted exactly ONE of the 24:
+  //
+  //   vin[4] = CAB STYLE            F=Regular  W=Crew  X=SuperCab
+  //   vin[6] = REAR WHEELS + DRIVE  A/E=SRW 4x2  B/F=SRW 4WD
+  //                                 C/G=DRW 4x2  D/H=DRW 4WD
+  //
+  // So it admitted Crew-Cab / single-rear-wheel / 4WD and rejected every
+  // Regular Cab, every SuperCab, every dually and every 4x2 -- the same shape
+  // as the identification bug fixed in PR #51, which "rejected every 4x2 Super
+  // Duty and every cab style but one". Neither cab nor axle changes which PIDs
+  // a truck answers; the engine and the transmission generation do, and those
+  // are covered here and by fordSuperDuty67_10R140 below.
+  //
+  // ⚠️ vin[3] is NOT the series either. The same sweep method found 7, 8, B and
+  // R all decode as F-250. Two dead helpers (fordF250/fordF350) encoding that
+  // wrong rule were removed on 2026-08-13; do not reintroduce them.
+  //
+  // F-600 (vin[5]='6', a Class-6 chassis cab that also takes the 6.7L) is
+  // deliberately EXCLUDED: it is not in the identification table's
+  // FORD_SD_SERIES either, and nothing of that class has been scanned. Fails
+  // closed, per the doctrine above.
+  return vinIs("2345", vinAt(vin,5)) &&
          vinAt(vin,7) == 'T';
 }
 
