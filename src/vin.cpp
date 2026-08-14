@@ -150,8 +150,13 @@ bool parseVinReply(const char* elmReply, char out[18]) {
 //   [NPRUV][HU]**D -> L84 5.3L V8 gas
 //   [NPRUV][HU]**L -> L87 6.2L V8 gas
 //   [NPRUV][HU]**K -> L3B 2.7L I4 turbo gas
-// Sierra/Silverado HD sits on a different schema ([NPRUV][89]*E), so vin[4]
-// is what separates 1500 from HD.
+// ⚠️ That vin[3]/vin[4] keying holds for the 2022+ trucks this profile targets,
+// but it is NOT how 1500 and HD are told apart in general: in the T1XX era
+// (2019-2021) the 1500 shares the HD's vin[3]/vin[4] space entirely. TONNAGE
+// LIVES AT vin[5] -- ABCDEFG=1500, LMNPR=2500, STUVW=3500, identical on MY2020
+// through MY2024. See gmHeavyDuty/gmLightDutyT1XX below, and note this comment
+// once said "vin[4] is what separates 1500 from HD", which was wrong and is how
+// a 2020 Sierra 1500 came to be named "Sierra HD".
 // Every discriminator below reads vin[3..7], so they all need >= 8 characters.
 // vinAt() upper-cases one position; vinIs() tests membership in a small set.
 // The explicit c!=0 guard matters: strchr(set, '\0') returns a pointer to the
@@ -441,6 +446,14 @@ static const EngineRow RAM_ENGINES[] = {
 static const EngineRow GM_LD_ENGINES[] = {
   {'8',"3.0L Duramax I6",true}, {'D',"5.3L V8",false}, {'K',"2.7L I4 Turbo",false}, {'L',"6.2L V8",false},
 };
+// T1XX-era light duty (2019-2021). A different engine alphabet from the 2022+
+// table below: the 3.0L Duramax is 'T' (LM2) here and '8' (LZ0) there, and this
+// era also offers a 4.3L V6 and a second 5.3L code. Verified per model year on
+// 2019, 2020 and 2021 -- all six codes present and identical in all three.
+static const EngineRow GM_LD_ENGINES_T1XX[] = {
+  {'T',"3.0L Duramax I6",true}, {'D',"5.3L V8",false}, {'F',"5.3L V8",false},
+  {'H',"4.3L V6",false}, {'K',"2.7L I4 Turbo",false}, {'L',"6.2L V8",false},
+};
 static const EngineRow GM_HD_ENGINES[] = {
   {'Y',"6.6L Duramax V8",true}, {'7',"6.6L V8",false},
 };
@@ -451,11 +464,35 @@ static bool ramBrand(const char* vin)  { return vinAt(vin,4) == 'R'; }   // 1C6 
 static bool gmLightDuty(const char* vin) {
   return vinIs("NPRUV", vinAt(vin,3)) && vinIs("HU", vinAt(vin,4));
 }
+// GM TONNAGE lives at vin[5], and this is load-bearing.
+//
+// ⚠️ vin[3]+vin[4] DO NOT separate a 1500 from an HD. In the T1XX era
+// (2019-2021) the light-duty 1500 sits in the SAME vin[3]/vin[4] space as the
+// HD, so the old guard -- vin[3] in 0-5 and vin[4] in 8/9, with no vin[5] check
+// -- matched 1500s and named them "Sierra HD". Confirmed against the shipped
+// firmware: 1GT09CED5LZ345678 is a 2020 Sierra 1500 5.3L per vPIC and the dash
+// called it a Sierra HD with a blank engine.
+//
+// vin[5] sweeps clean and identically on MY2020, 2021, 2022, 2023 and 2024:
+//   ABCDEFG = 1500      LMNPR = 2500      STUVW = 3500
+// (MY2024 additionally showed X/Z as 2500 and Y as 3500. Seen on one year only,
+// so they are NOT admitted here -- a 2024 truck with those codes fails closed,
+// which is the doctrine everywhere else in this file.)
+static const char* const GM_TONNAGE_HD = "LMNPRSTUVW";
+static const char* const GM_TONNAGE_LD = "ABCDEFG";
+
 static bool gmHeavyDuty(const char* vin) {
-  // vin[4] 8/9 and vin[3] 0-5 mark the HD chassis. The 2500-vs-3500 split is a
-  // JOINT function of vin[4]+vin[5] that vPIC only resolves for 16 of 1089
-  // combinations, so we name the line and stop rather than guess the tonnage.
-  return vinIs("012345", vinAt(vin,3)) && vinIs("89", vinAt(vin,4));
+  return vinIs("012345", vinAt(vin,3)) && vinIs("89", vinAt(vin,4)) &&
+         vinIs(GM_TONNAGE_HD, vinAt(vin,5));
+}
+
+// T1XX light duty (2019-2021). Deliberately does NOT gate vin[3]: the sweep
+// showed eleven values valid there and it carries cab/drive, not tonnage --
+// gating a position that does not discriminate is the bug that shipped twice on
+// the Ford rows. vin[4] in 8/9 is what separates the pickup from a Canyon (5/6)
+// and a Savana (7); vin[5] is what separates it from the HD.
+static bool gmLightDutyT1XX(const char* vin) {
+  return vinIs("89", vinAt(vin,4)) && vinIs(GM_TONNAGE_LD, vinAt(vin,5));
 }
 
 struct LineRow {
@@ -503,6 +540,19 @@ static const LineRow LINES[] = {
   {"3GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},
   {"1GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
   {"3GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
+  // GM light duty, T1XX generation -- verified 2019-2021 (VEH-12).
+  //
+  // These trucks were previously identified as "Sierra HD" / "Silverado HD",
+  // because the HD guard did not look at tonnage. Naming them correctly is the
+  // point of these rows; the tonnage split is done by gmLightDutyT1XX.
+  //
+  // The 3.0L Duramax here is the LM2, NOT the LZ0 the gm_sierra_lz0 profile was
+  // scanned on, so these identify only -- the profile gate's own year rule
+  // (2023-2026) already excludes them, and that is left alone deliberately.
+  {"1GT","KLM",gmLightDutyT1XX,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES_T1XX)},
+  {"3GT","KLM",gmLightDutyT1XX,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES_T1XX)},
+  {"1GC","KLM",gmLightDutyT1XX,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES_T1XX)},
+  {"3GC","KLM",gmLightDutyT1XX,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES_T1XX)},
   // GM heavy duty -- verified 2020-2024.
   {"1GT","LMNPR",gmHeavyDuty,-1,nullptr,0,"GMC Sierra HD",ARR(GM_HD_ENGINES)},
   {"3GT","LMNPR",gmHeavyDuty,-1,nullptr,0,"GMC Sierra HD",ARR(GM_HD_ENGINES)},
