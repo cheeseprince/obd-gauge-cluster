@@ -330,6 +330,34 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
     anchor_cols = list(cat.ANCHORS.keys())
     header = ["iso_time", "uptime_ms"] + hit_cols + anchor_cols
 
+    # Header the anchors are asked under. Pinned ONCE for the whole drive.
+    #
+    # WHY THIS EXISTS: the anchor probes used to carry no set_header at all, so
+    # each one inherited whatever header the last hit left selected -- a
+    # PHYSICAL ECU address like 7E0. The anchors are generic Mode-01 PIDs and
+    # belong on the FUNCTIONAL BROADCAST, addressed to the vehicle rather than
+    # to one module. Asking 0110 of an ECU that does not serve it returns
+    # nothing, and the anchor was then recorded as unsupported.
+    #
+    # Cost, measured: on the 2021 F-350 (2026-08-09) maf and ambient logged
+    # 0/64 rows, `correlate` called both UNUSABLE, and all 391 candidate
+    # columns were scored without airflow or ambient temperature. The Mode-22
+    # mirror fallback below restored the DATA but not the diagnosis -- 0110 was
+    # never unsupported on that truck, it was misaddressed.
+    #
+    # Bit width matters: the ford/gm/jeep presets declare BOTH broadcasts
+    # (11-bit 7DF and 29-bit 18DB33F1), so pick the one matching the hits being
+    # polled. Otherwise a 29-bit drive would swap protocol every cycle to ask
+    # on a bus it is not using. Chosen from the hits, not from the session's
+    # current protocol, so it is stable for the whole drive rather than a
+    # function of whichever hit happened to run last.
+    broadcasts = [h for h in pool if "functional broadcast" in h.role]
+    anchor_hdr = None
+    if broadcasts:
+        n29 = sum(1 for h in hit_headers if h.bits == 29)
+        want = 29 if n29 * 2 > len(hit_headers) else 11
+        anchor_hdr = next((h for h in broadcasts if h.bits == want), broadcasts[0])
+
     # Request actually used for each anchor. Starts as the generic Mode-01
     # PID and may be swapped for its Mode-22 mirror on the first cycle -- see
     # cat.ANCHOR_MIRRORS and the resolution block in the loop below.
@@ -369,6 +397,8 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
                         # from the vehicle not supporting the PID.
                         error_polls += 1
                     row.append(r.payload.hex().upper() if r.cls is Cls.POSITIVE else "")
+                if anchor_hdr is not None:
+                    sess.set_header(anchor_hdr)   # cached; one ATSH per cycle
                 for name in cat.ANCHORS:
                     r = sess.probe(anchor_req[name])
                     # Anchor resolution, first cycle only. A silent generic
@@ -420,4 +450,5 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
             "error_polls": error_polls, "aborted": aborted, "error": error,
             "dropped_headers": sorted(set(dropped)),
             "anchor_requests": dict(anchor_req),
+            "anchor_header": anchor_hdr.name if anchor_hdr else None,
             "anchor_fallbacks": anchor_fallbacks}
