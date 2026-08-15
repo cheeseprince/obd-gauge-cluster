@@ -10,6 +10,7 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/pk.h>
 #include <cstring>
+#include <esp_heap_caps.h>
 #include "wifi_cred_store.h"
 #include "ota_common.h"
 #include "fw_git.h"
@@ -107,6 +108,14 @@ static uint32_t parseSemver(const char* v) {
   return sawDigit ? ((f[0] << 20) | (f[1] << 10) | f[2]) : 0;
 }
 
+// Largest CONTIGUOUS free internal block. Total free heap is the wrong number
+// to debug a TLS failure with: mbedTLS asks for 16 KB record buffers in one
+// piece, so a fragmented 60 KB can fail where a clean 45 KB succeeds. Logged
+// next to the total precisely so the two can be told apart.
+static size_t largestFreeBlock() {
+  return heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+}
+
 static bool joinKnownWifi(void (*pump)(const char*), char* ssidOut, size_t ssidN) {
   WifiCredList list;
   credLoad(list);
@@ -123,6 +132,7 @@ static bool joinKnownWifi(void (*pump)(const char*), char* ssidOut, size_t ssidN
                                                           // change can fail (-2)
   Serial.printf("[OTA] scan: %d networks, %d saved, heap %u\n",
                 n, list.n, (unsigned)ESP.getFreeHeap());
+  Serial.printf("[OTA] largest free block %u\n", (unsigned)largestFreeBlock());
 
   char failedSsid[33] = "";        // last visible network we couldn't join
   for (int c = 0; c < list.n; c++) {
@@ -186,10 +196,12 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
 
   // ── Manifest ──────────────────────────────────────────────────────────────
   pump("Update: checking...");
-  Serial.printf("[OTA] joined %s, heap %u — GET manifest\n", ssid, (unsigned)ESP.getFreeHeap());
+  Serial.printf("[OTA] joined %s, heap %u largest %u — GET manifest\n", ssid,
+                (unsigned)ESP.getFreeHeap(), (unsigned)largestFreeBlock());
   if (!http.begin(net, OTA_BASE_URL "manifest.txt")) { say(pump, "Update: bad URL"); return; }
   int code = http.GET();
-  Serial.printf("[OTA] manifest HTTP %d, heap %u\n", code, (unsigned)ESP.getFreeHeap());
+  Serial.printf("[OTA] manifest HTTP %d, heap %u largest %u\n", code,
+                (unsigned)ESP.getFreeHeap(), (unsigned)largestFreeBlock());
   if (code != 200) {
     // 160, not 96: the longest branch below is 102 bytes with the code
     // substituted, and snprintf truncates SILENTLY -- a half-written
