@@ -242,7 +242,12 @@ static const ReadoutDef FORD_READOUTS[] = {
   {"DSL FILL", "gal",           1,  T(NA,NA,NA,NA),        48,   nullptr,   0,  2,  fNone,      Quantity::None},   // tank capacity unknown for this truck
   {"DEF FILL", "gal",           1,  T(NA,NA,NA,NA),        8,    nullptr,   0,  2,  fNone,      Quantity::None},
   {"ACT TQ",   "%",             0,  T(NA,NA,NA,NA),        100,  "0162",    0,  1,  fActTq,     Quantity::None},
-  {"REF TQ",   "",              0,  T(NA,NA,NA,NA),        1500, "0163",    0,  2,  fRefTq,     Quantity::None},
+  // 2000, not 1500: this is the engine's reference-torque CONSTANT, and the
+  // 2026-08-09 scan read 1615 Nm on all 63 samples (0x064F). A full-scale below
+  // the reported value pinned the bar at 100% permanently -- and because the
+  // value never moves, it could never un-pin. 2000 also clears the High-Output
+  // 6.7L (1200 lb-ft = 1627 Nm).
+  {"REF TQ",   "",              0,  T(NA,NA,NA,NA),        2000, "0163",    0,  2,  fRefTq,     Quantity::None},
   {"BARO",     "kPa",           0,  T(NA,NA,NA,NA),        110,  "0133",    0,  2,  fBaro,      Quantity::Press},
   {"MAF",      "g/s",           0,  T(NA,NA,NA,NA),        400,  "0110",    0,  1,  fMaf,       Quantity::None},
   {"AMBIENT",  "\xC2\xB0""F",   0,  T(NA,NA,NA,NA),        150,  "0146",    0,  2,  fTempF,     Quantity::Temp},
@@ -290,15 +295,27 @@ static_assert(sizeof(FORD_READOUTS)/sizeof(FORD_READOUTS[0]) == (size_t)STAT_COU
 // the parameters were unavailable, when the truck serves them at
 // 0149/016D/0169/019D. See the per-row comments.
 //
-// PAGE ORDER IS DELIBERATE AND IS A DIAGNOSTIC. Pages 1-5 contain ONLY tier-0
-// and tier-1 stats plus computed rows that depend on them, so they populate
-// normally. Pages 6-7 hold every stat that is tier 2 OR depends on a tier-2
-// value (HP needs RefTq). While FORD-BUG-1 is open -- the whole tier-2 set
-// never renders -- those two pages are the bug's exact footprint, and the
-// other five are unaffected. Do NOT scatter tier-2 stats back through the
-// earlier pages: that was the previous layout and it put one dead tile on
-// three separate pages, which is how the bug hid as "a few tiles look odd"
-// instead of "the rare tier is broken".
+// PAGE ORDER IS DELIBERATE. Pages 1-5 contain ONLY tier-0 and tier-1 stats plus
+// computed rows that depend on them; pages 6-7 hold every stat that is tier 2 OR
+// depends on a tier-2 value (HP needs RefTq). Keep it that way: grouping the
+// rare tier makes its slower fill rate legible instead of scattering one
+// late-populating tile across three pages.
+//
+// This grouping was originally a diagnostic for FORD-BUG-1 ("the whole tier-2
+// set never renders"). THAT BUG WAS NEVER IN THIS FIRMWARE and is closed:
+// root-caused 2026-08-10 to a leak in the bench BLE shim, which desynced the
+// reply stream and fed the dash stale/mismatched frames (REF TQ handed the
+// Mode-09 VIN reply, BARO handed RPM's). parseObdResponse() correctly rejected
+// every mismatch, so valid[] was never set and the tiles read "--". Fixing the
+// shim fixed the tiles. Re-verified 2026-08-15 at every layer -- wire, parse,
+// decode, valid[], gauge state, layout, rendered pixels -- on this commit and
+// on the one the bug was filed against: all clean, and nothing in the
+// query-to-display path is tier-dependent in the first place.
+//
+// Two things worth keeping from it: blank tiles are evidence about the LINK,
+// not about the rare tier; and tier-2 genuinely fills slowly (first reading
+// 18-51 s after link-up on the bench rig), so pages 6-7 read "--" for the first
+// minute by design. Do not re-open without a fresh observation AND a serial log.
 // A stat must appear on EXACTLY ONE page. nav_model's readoutPageOf() returns
 // the FIRST page holding a stat and cursorStep() finds its FIRST slot in the
 // reading order, so a duplicate makes the knob teleport backwards -- putting
