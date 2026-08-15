@@ -4,9 +4,11 @@
 // Elecrow board; on this board it is the rotary encoder. This is the only
 // implementation that ships.
 //
-// Milestone A (this file, display bring-up): begin() discovers the knob and
-// reports it; update() is a no-op so we verify the display/UI in isolation.
-// Milestone A2 fills update() with encoder_logic -> nav cursor primitives.
+// begin() discovers the knob over I2C and reports it; update() reads it and
+// drives the nav cursor. See update() for the three things that are not
+// obvious: the ~66 Hz I2C throttle, the 30 ms button debounce (the raw line
+// bounces — bring-up log), and the deferred rtcWrite, which is kept OUTSIDE
+// the nav spinlock because it is another I2C transaction.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Modulino.h>
