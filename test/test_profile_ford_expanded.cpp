@@ -242,6 +242,29 @@ int main() {
   }
   printf("  ok   EGR (0169)\n");
 
+  // ===========================================================================
+  // REF TQ (0163): the engine's reference-torque CONSTANT, not a live signal.
+  //
+  // The 2026-08-09 scan of the F-350 read 0x064F = 1615 Nm on all 63 samples
+  // (F350SCAN/ford_drive.csv, column 22F463@7DF -- the mode-22 mirror of J1979
+  // 0x63). 1615 Nm = 1191 lb-ft, which matches the 6.7L's 1200 lb-ft rating.
+  //
+  // fullScale shipped as 1500, BELOW that constant, so the bar sat pinned at
+  // 100% forever and the trend graph clipped -- on every truck, permanently,
+  // since the value never moves. Pin the relationship rather than the number:
+  // the point is that full-scale must exceed what the engine actually reports.
+  // ===========================================================================
+  {
+    const ReadoutDef& rt = READOUTS[(int)StatId::RefTq];
+    const uint8_t d[] = {0x06, 0x4F};
+    float scanned = rt.decode(d, 2, ctx);
+    assert(near(scanned, 1615.0f, 0.5f));
+    assert(rt.fullScale > scanned);   // bar must not pin on a stock 6.7L
+    // Headroom for the High-Output 6.7L (1200 lb-ft = 1627 Nm) too.
+    assert(rt.fullScale >= 1700.0f);
+  }
+  printf("  ok   REF TQ (0163) full-scale clears the scanned 1615 Nm\n");
+
   printf("test_profile_ford_expanded: ALL PASS\n");
   return 0;
 }
