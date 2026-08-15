@@ -480,6 +480,36 @@ static const SeriesRow GM_SILVERADO_K2XX[] = {
   {"01YZ","Chevrolet Silverado 3500"},
 };
 
+// GMT900-era pickups. A THIRD tonnage alphabet, distinct from both K2XX tables
+// above, and it collides with them:
+//
+//   GMC    MY2011-13   1500=TUVWXY  2500=015Z    3500=2346
+//   Chevy  MY2010-13   1500=PRSTU   2500=VXY     3500=01Z
+//
+// Chevy 'U' is a 1500 here and a 2500 in K2XX (2014-18); 'Y' is a 2500 here and
+// a 3500 there. GMC 'X'/'Y' are 1500 here and 2500 in early K2XX. So the
+// platform boundary flips meanings the same way the mid-K2XX boundary does.
+//
+// Verified per model year: Chevy on 2010, 2011, 2012, 2013; GMC on 2011, 2012,
+// 2013. GMC MY2010 did not decode from the seeds tried and is NOT claimed --
+// the row starts at 2011 and fails closed below that.
+//
+// MY2007-2009 did not decode at all for either make. That is another VDS layout
+// (or a vPIC data gap) and is left for a separate pass rather than guessed at.
+//
+// vPIC reports the 2010 Series as "1/2 Ton" / "3/4 ton" / "1 ton" and switches
+// to "1500"/"2500"/"3500" from 2011. Same trucks; this table normalises to the
+// modern names so the splash does not change vocabulary by model year.
+//
+// No engine table, for the same reason as the K2XX rows.
+static const SeriesRow GM_SIERRA_GMT900[] = {
+  {"TUVWXY","GMC Sierra 1500"}, {"015Z","GMC Sierra 2500"}, {"2346","GMC Sierra 3500"},
+};
+static const SeriesRow GM_SILVERADO_GMT900[] = {
+  {"PRSTU","Chevrolet Silverado 1500"}, {"VXY","Chevrolet Silverado 2500"},
+  {"01Z","Chevrolet Silverado 3500"},
+};
+
 static const EngineRow GM_LD_ENGINES_T1XX[] = {
   {'T',"3.0L Duramax I6",true}, {'D',"5.3L V8",false}, {'F',"5.3L V8",false},
   {'H',"4.3L V6",false}, {'K',"2.7L I4 Turbo",false}, {'L',"6.2L V8",false},
@@ -576,6 +606,14 @@ static const LineRow LINES[] = {
   {"3GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},
   {"1GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
   {"3GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
+  // GM GMT900 pickups -- Chevy verified 2010-2013, GMC verified 2011-2013.
+  // Year codes A-D cannot collide with K2XX (EFGHJ), T1XX (KLM), HD (LMNPR) or
+  // the 2022+ rows (NPRST). The vin[4] pickup gates are the same ones the K2XX
+  // rows use -- that part of the scheme did not change across the boundary.
+  {"1GC","ABCD",gmPickupSilveradoK2XX,5,ARR(GM_SILVERADO_GMT900),nullptr,nullptr,0},
+  {"3GC","ABCD",gmPickupSilveradoK2XX,5,ARR(GM_SILVERADO_GMT900),nullptr,nullptr,0},
+  {"1GT","BCD",gmPickupSierraK2XX,5,ARR(GM_SIERRA_GMT900),nullptr,nullptr,0},
+  {"3GT","BCD",gmPickupSierraK2XX,5,ARR(GM_SIERRA_GMT900),nullptr,nullptr,0},
   // GM K2XX pickups -- verified 2014-2018 (VEH-12). Split into two GMC rows
   // because the tonnage alphabet changes between MY2015 and MY2016; see the
   // tables above. Year codes E-J cannot collide with the T1XX (KLM), HD

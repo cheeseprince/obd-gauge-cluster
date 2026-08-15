@@ -80,6 +80,19 @@ ALLOWED_VINS = {
     "1GTU2W0C5H2345678",   # 2017 Sierra 3500 — W was 1500 in 2015
     "1GTU2X0C5F2345678",   # 2015 Sierra 2500
     "3GCUKP0C5J2345678",   # 2018 Silverado 1500, Mexico-built
+    # GM GMT900 pickups (VEH-12). A THIRD tonnage alphabet, colliding with
+    # K2XX across the platform boundary: Chevy 'U' is 1500 here, 2500 there.
+    "1GCNKP0A5A2345678",
+    "1GCNKP0A5B2345678",
+    "1GCNKU0A5B2345678",
+    "1GCNKV0A5B2345678",
+    "1GCNKY0A5B2345678",
+    "1GCNKZ0A5B2345678",
+    "1GTN230A5B2345678",
+    "1GTN2T0A5A2345678",
+    "1GTN2T0A5B2345678",
+    "1GTN2Y0A5B2345678",
+    "1GTN2Z0A5B2345678",
     "1FT7W2BT0V2345678",   # 2027 (V) — unverified year, must fail closed
     "1FT9W4BT0M2345678",   # F-450 2021 — the series digit is not gated
     "WAU0123456789ABCD",   # Audi
