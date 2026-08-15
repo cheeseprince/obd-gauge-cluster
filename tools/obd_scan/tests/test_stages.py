@@ -615,6 +615,90 @@ def _log_once(responses, tmp_path, name="drive.csv", cycles=4):
     return res, rows, fake.requests_seen
 
 
+def _headers_used_for(seen, requests):
+    """Which header each of `requests` was actually sent under.
+
+    Replays the command stream the way the ELM does: ATSH selects a header and
+    it stays selected until the next ATSH. Returns {request: {headers seen}} so
+    a request sent under two different headers across cycles is visible rather
+    than averaged away.
+    """
+    cur = None
+    used: dict[str, set[str]] = {r: set() for r in requests}
+    for cmd in seen:
+        if cmd.startswith("ATSH"):
+            cur = cmd[4:]
+        elif cmd in used:
+            used[cmd].add(cur)
+    return used
+
+
+def test_anchors_are_pinned_to_the_functional_broadcast(tmp_path):
+    """Generic anchors must be ASKED OF THE VEHICLE, not of the last hit's ECU.
+
+    The bug: the poll loop set a header per hit but probed the anchors with no
+    set_header at all, so every anchor inherited whatever header the last hit
+    left selected -- a physical ECU address like 7E0. A generic Mode-01 PID
+    addressed to one ECU that does not serve it comes back silent, and the
+    anchor was then recorded as unsupported.
+
+    That is exactly what happened on the 2021 F-350 (2026-08-09): maf 0/64 and
+    ambient 0/64, "UNUSABLE", so 2 of 7 anchors were discarded and all 391
+    candidate columns were scored without airflow or ambient temperature. The
+    Mode-22 mirror fallback (PR #60) made the data appear again but left the
+    misdiagnosis in place -- 0110 was never unsupported, it was misaddressed.
+    """
+    responses = {**BASE, "ATSH7E0": "OK", "ATSH7DF": "OK",
+                 "220041": "620041DEAD", **_ANCHORS_OK}
+    res, _, seen = _log_once(responses, tmp_path)
+
+    used = _headers_used_for(seen, list(cat.ANCHORS.values()))
+    for req, headers in used.items():
+        assert headers == {"7DF"}, f"{req} was sent under {headers}, not the 7DF broadcast"
+
+    # The hit itself must still go to its own ECU -- pinning the anchors must
+    # not disturb the thing the log is actually collecting.
+    assert _headers_used_for(seen, ["220041"])["220041"] == {"7E0"}
+
+    # Recorded, not silent: the same principle PR #60 applied to fallbacks.
+    assert res["anchor_header"] == "7DF"
+
+
+def test_anchor_header_matches_the_bit_width_of_the_hits(tmp_path):
+    """A 29-bit drive gets the 29-bit broadcast, not 7DF.
+
+    Ford, GM and Jeep presets all declare BOTH functional broadcasts (11-bit
+    7DF and 29-bit 18DB33F1), so "the functional broadcast" is ambiguous until
+    the protocol is known. Pinning to 7DF on a 29-bit drive would swap the
+    protocol on every cycle and ask on a bus the hits are not using.
+    """
+    responses = {**BASE, "ATSP7": "OK", "ATCP18": "OK",
+                 "ATSHDA10F1": "OK", "ATSHDB33F1": "OK",
+                 "220041": "620041DEAD", **_ANCHORS_OK}
+    fake = FakeElm(responses)
+    host, port = fake.start()
+    s = ElmSession(host, port); s.connect(); s.init()
+    out = tmp_path / "drive29.csv"
+    hits = [Hit("18DA10F1", "220041", "620041DEAD", "DEAD", 2)]
+    n = 0
+
+    def stop():
+        nonlocal n
+        if n >= 3:
+            return True
+        n += 1
+        return False
+
+    res = run_log(s, hits, str(out), hz=1000.0, stop=stop,
+                  allowed_headers=cat.PRESETS["ford"].headers)
+    s.close(); fake.stop()
+
+    assert res["anchor_header"] == "18DB33F1"
+    used = _headers_used_for(fake.requests_seen, list(cat.ANCHORS.values()))
+    for req, headers in used.items():
+        assert headers == {"DB33F1"}, f"{req} was sent under {headers}"
+
+
 def test_anchor_falls_back_to_mode22_mirror(tmp_path):
     responses = {**BASE, "ATSH7E0": "OK", "220041": "620041DEAD",
                  **{k: v for k, v in _ANCHORS_OK.items() if k not in ("0110", "0146")},
