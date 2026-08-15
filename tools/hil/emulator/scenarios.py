@@ -57,9 +57,29 @@ GENERIC = Scenario(
 # TRANSMISSION module at 7E2, not the engine module at 7E0. A firmware bug that
 # forgot to switch headers would read nothing here — which is exactly the class
 # of bug a single-ECU fixture would hide.
+# ONE REAL MOMENT, NOT A PILE OF PLAUSIBLE NUMBERS.
+#
+# The values below are a single row of Alan's own 2026-07-17 drive
+# (obd-display/csv_logs/20260717_095729.csv): 2142 rpm, 73 mph, 8.3 psi boost,
+# 53% EGR, 7.2 gph, CAC 246 F, coolant 219 F, 55% load — a loaded pull, not
+# idle. Every payload was produced by INVERTING the shipped decoder in
+# src/vehicles/gm_sierra_lz0.cpp (brute-force search over the byte space with
+# the real decoder as the oracle), so no formula is duplicated here and no byte
+# is hand-typed. Residual error is the log's own rounding: worst case 0.3 mph.
+#
+# WHY A LOADED ROW. The scenario used to inherit _COMMON_MODE01's idle state
+# (750 rpm), where boost and EGR both read 0.00 — and a fixture that serves 0 is
+# indistinguishable from a decoder that returns 0. Under load every one of these
+# stats is non-zero, so a broken decode is visible instead of camouflaged.
 GM_SIERRA = Scenario(
     vin="3GTUUEE80S2345678",
-    mode01=dict(_COMMON_MODE01),
+    mode01={
+        **_COMMON_MODE01,
+        "0C": "2178",            # rpm 2142  (common baseline is idle; overridden)
+        "0D": "75",              # speed 72.7 mph
+        "05": "90",              # coolant 219.2 F
+        "04": "8C",              # load 54.9%
+    },
     mode22={
         "7E0": {                 # engine module
             "000C": "0BB8",      # rpm
@@ -71,6 +91,24 @@ GM_SIERRA = Scenario(
             "0010": "05DC",      # mass air flow
             "0083": "0100",      # DEF-related
             "115C": "5A",        # oil-temperature candidate
+            # --- added 2026-08-15: the eight the profile polled and this
+            # --- scenario did not answer, so the dash saw NO DATA for them.
+            "000B": "9E",        # BOOST   8.27 psi (MAP 158 kPa vs baro 101)
+            "000F": "40",        # INTAKE  75.2 F
+            "005E": "0221",      # FUEL    7.20 gph
+            "002F": "54",        # FUEL%   32.9%
+            "002C": "87",        # EGR     52.9%
+            "0077": "009F",      # CAC     246.2 F  (byte[1] is the reading)
+            # TORQUE and RefTq are the only two NOT taken from the log — that
+            # drive recorded no values for either. They are chosen to reproduce
+            # the row's REAL logged 184 hp through the firmware's own
+            # computeHorsepower(actPct, refNm, rpm) = act/100*ref*rpm/7121:
+            # 87% of 700 Nm at 2142 rpm = 183.2 hp. Coherent rather than
+            # arbitrary, because HP is a COMPUTED tile the dash renders from
+            # these two — arbitrary values would put a nonsense horsepower on
+            # screen for a future reader to chase.
+            "0062": "D4",        # TORQUE  87%   (synthetic, see above)
+            "0063": "02BC",      # RefTq   700 Nm (synthetic, see above)
         },
         "7E2": {                 # transmission module
             "1940": "008C",      # transmission fluid temperature — THE crux
