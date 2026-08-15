@@ -268,6 +268,36 @@ int main() {
   check(vinToProfileKey("1FT8W3BT0K2345678")==nullptr ||
         strcmp(vinToProfileKey("1FT8W3BT0K2345678"),"ford_sd_67")!=0, "2019 (6R140) still excluded");
 
+  // ---- GM GMT900 pickups (VEH-12) -----------------------------------------
+  // A THIRD tonnage alphabet, colliding with K2XX across the platform boundary:
+  // Chevy 'U' is 1500 here and 2500 in K2XX; 'Y' is 2500 here and 3500 there.
+  struct G9Case { const char* vin; const char* name; };
+  static const G9Case GM_GMT900[] = {
+    {"1GCNKP0A5B2345678", "Chevrolet Silverado 1500"},
+    {"1GCNKU0A5B2345678", "Chevrolet Silverado 1500"},   // 'U' is 2500 in K2XX
+    {"1GCNKV0A5B2345678", "Chevrolet Silverado 2500"},
+    {"1GCNKY0A5B2345678", "Chevrolet Silverado 2500"},   // 'Y' is 3500 in K2XX
+    {"1GCNKZ0A5B2345678", "Chevrolet Silverado 3500"},
+    {"1GCNKP0A5A2345678", "Chevrolet Silverado 1500"},   // MY2010: vPIC says "1/2 Ton"
+    {"1GTN2T0A5B2345678", "GMC Sierra 1500"},
+    {"1GTN2Y0A5B2345678", "GMC Sierra 1500"},            // 'Y' is 2500 in early K2XX
+    {"1GTN2Z0A5B2345678", "GMC Sierra 2500"},
+    {"1GTN230A5B2345678", "GMC Sierra 3500"},
+  };
+  for (const auto& c : GM_GMT900) {
+    VinIdentity g9{};
+    if (!check(vinIdentify(c.vin, &g9), c.vin)) continue;
+    check(g9.name && strcmp(g9.name, c.name)==0, c.name);
+    check(g9.engine && g9.engine[0] == '\0', "GMT900 says nothing about the engine");
+  }
+  // GMC MY2010 did not verify, so it must fail closed rather than be guessed.
+  {
+    VinIdentity g{};
+    bool ok = vinIdentify("1GTN2T0A5A2345678", &g);
+    check(!ok || !g.name || strncmp(g.name, "GMC Sierra", 10) != 0,
+          "GMC MY2010 is not claimed (unverified)");
+  }
+
   // ---- GM K2XX pickups 2014-2018 (VEH-12) ---------------------------------
   // The tonnage alphabet is PER-MAKE and CHANGES MID-GENERATION. These cases
   // pin exactly that: the same vin[5] must mean different tonnages in 2015 vs

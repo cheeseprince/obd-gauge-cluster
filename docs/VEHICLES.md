@@ -408,7 +408,26 @@ what is under the hood. A consequence worth knowing: with no engine, these fall 
 Standard+ **gas** layout, which is the deliberate safe default (diesel-only tiles on a gas truck
 look broken, while the reverse merely omits data).
 
-**GMT900 (2007–2013) is not done.** It is another VDS layout again and wants its own pass.
+### GMT900: a third tonnage alphabet, colliding with K2XX
+
+| Era | 1500 | 2500 | 3500 |
+| :--- | :--- | :--- | :--- |
+| GMC, MY2011–13 | `TUVWXY` | `015Z` | `2346` |
+| Chevrolet, MY2010–13 | `PRSTU` | `VXY` | `01Z` |
+
+The platform boundary flips meanings exactly as the mid-K2XX one does: Chevrolet `U` is a **1500**
+here and a **2500** in K2XX; `Y` is a **2500** here and a **3500** there. GMC `X`/`Y` are **1500**
+here and **2500** in early K2XX.
+
+Verified per model year — Chevrolet on 2010–2013, GMC on 2011–2013. **GMC MY2010 did not decode**
+from the seeds tried, so it is not claimed and fails closed.
+
+**MY2007–2009 did not decode for either make.** That is another layout again (or a vPIC data gap)
+and is left for a separate pass rather than guessed at.
+
+vPIC reports the 2010 Series as *"1/2 Ton"* / *"3/4 ton"* / *"1 ton"* and switches to
+*"1500"/"2500"/"3500"* from 2011. Same trucks — the table normalises to the modern names so the
+splash does not change vocabulary by model year.
 
 **Tonnage is `vin[5]`** — `ABCDEFG`=1500, `LMNPR`=2500, `STUVW`=3500 — and this is load-bearing,
 not trivia. Swept identically on MY2020, 2021, 2022, 2023 and 2024.
