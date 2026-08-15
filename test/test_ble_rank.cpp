@@ -23,9 +23,9 @@ int main() {
     BleCand quiet{"", -40, SvcHint::None};
     BleCand other{"Living Room TV", -40, SvcHint::Other};
 
-    check(!bleShouldSkip(obd),   "advertises our service -> never skipped");
-    check(!bleShouldSkip(quiet), "advertises NO services -> still tried (fail-safe)");
-    check(bleShouldSkip(other),  "advertises other services only -> skipped");
+    check(!bleShouldSkip(obd, false),   "advertises our service -> never skipped");
+    check(!bleShouldSkip(quiet, false), "advertises NO services -> still tried (fail-safe)");
+    check(bleShouldSkip(other, false),  "advertises other services only -> skipped");
 
     // A service match outranks BOTH a name hint and a much stronger signal.
     BleCand cands[3] = {quiet, obd, BleCand{"OBDII dongle", -30, SvcHint::None}};
@@ -151,15 +151,57 @@ int main() {
   // path already calls it, so no new skip site is needed.
   { BleCand c{}; c.name = "vLinker MS-B"; c.rssi = -55; c.svc = SvcHint::None;
     c.addr = "de:ad:be:ef:00:01";
-    check(!bleShouldSkip(c), "shouldSkip: unknown device is still tried");
+    check(!bleShouldSkip(c, false), "shouldSkip: unknown device is still tried");
     bleRejectRecord("de:ad:be:ef:00:01");
-    check(bleShouldSkip(c), "shouldSkip: rejected address is skipped");
+    check(bleShouldSkip(c, false), "shouldSkip: rejected address is skipped");
     bleRejectClear();
-    check(!bleShouldSkip(c), "shouldSkip: clear restores it");
+    check(!bleShouldSkip(c, false), "shouldSkip: clear restores it");
   }
   { BleCand c{}; c.name = "phone"; c.rssi = -40; c.svc = SvcHint::Other;
     c.addr = nullptr;
-    check(bleShouldSkip(c), "shouldSkip: advertised-other still skipped with no addr");
+    check(bleShouldSkip(c, false), "shouldSkip: advertised-other still skipped with no addr");
+  }
+
+  // --- silent strangers, once an adapter is already known -------------------
+  //
+  // Measured on the truck 2026-08-15, in a parking lot with 23-25 BLE
+  // advertisers: with the vLinker bonded and cached but momentarily
+  // unreachable, every round connected to a dozen silent strangers and walked
+  // their GATT databases -- including a neighbour's "Aqara Smart Door Lock
+  // U100". Blind-probing cannot help a dash that already knows its adapter's
+  // address, so once one is cached, silence stops being worth a connect.
+  //
+  // The fail-safe still holds where it is load-bearing: with NO cached adapter
+  // (first setup, or after Forget adapter) a silent device is tried exactly as
+  // before. That is the case an adapter that does not advertise its service
+  // UUID depends on, and it is untouched.
+  {
+    BleCand silentStranger{"", -48, SvcHint::None};
+    silentStranger.addr = "70:98:d1:a2:b4:09";
+    BleCand namedDongle{"vLinker MS-IOS", -51, SvcHint::None};
+    namedDongle.addr = "c0:04:b4:3f:45:44";
+    BleCand svcDongle{"", -60, SvcHint::Obd};
+    svcDongle.addr = "c0:04:b4:3f:45:45";
+
+    check(!bleShouldSkip(silentStranger, false),
+          "no cached adapter: a silent stranger is still tried (unchanged)");
+    check(bleShouldSkip(silentStranger, true),
+          "cached adapter: a silent, unnamed stranger is NOT connected to");
+
+    // The two ways a replacement adapter can still be found without the user
+    // pressing Forget adapter. Both must survive, or swapping dongles becomes a
+    // support problem.
+    check(!bleShouldSkip(namedDongle, true),
+          "cached adapter: a device NAMED like a dongle is still tried");
+    check(!bleShouldSkip(svcDongle, true),
+          "cached adapter: a device ADVERTISING our service is still tried");
+
+    // A stranger that positively advertised something else was already skipped
+    // and must stay skipped -- the new rule adds cases, never removes them.
+    BleCand otherSvc{"Living Room TV", -30, SvcHint::Other};
+    otherSvc.addr = "aa:bb:cc:dd:ee:01";
+    check(bleShouldSkip(otherSvc, true),  "cached adapter: advertised-other still skipped");
+    check(bleShouldSkip(otherSvc, false), "no cached adapter: advertised-other still skipped");
   }
 
   if (failures) { printf("%d FAILED\n", failures); return 1; }

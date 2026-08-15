@@ -64,8 +64,15 @@ void bleRejectRecord(const char* addr) {
 // Sort key: OBD-named devices sort ahead of everything else, and within each
 // group stronger RSSI sorts first. RSSI is ~[-100, 0] dBm; bias it positive and
 // keep it well below the OBD flag's weight so the flag always dominates.
-bool bleShouldSkip(const BleCand& c) {
-  return c.svc == SvcHint::Other || bleRejectContains(c.addr);
+bool bleShouldSkip(const BleCand& c, bool adapterCached) {
+  if (c.svc == SvcHint::Other) return true;        // positively something else
+  if (bleRejectContains(c.addr)) return true;      // connected before, no OBD profile
+  // Silence is evidence of nothing -- UNLESS we already know the address we
+  // want, in which case a silent unknown cannot be the answer and probing it
+  // only bonds with strangers. See the header for the measurement.
+  if (adapterCached && c.svc == SvcHint::None && !bleNameLooksLikeObd(c.name))
+    return true;
+  return false;
 }
 
 static long rankKey(const BleCand& c) {

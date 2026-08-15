@@ -492,13 +492,16 @@ bool BleObdSource::connectAndSetup() {
       Serial.printf("[BLE] round budget spent after %d tried — retrying shortly\n", tried);
       break;
     }
-    // Skip a device for either of two reasons: it positively advertised a
-    // service set that is not ours (SvcHint::Other), or it is in the
-    // session-scoped reject ring (connected before and had no known
-    // BLE-ELM327 GATT profile). Devices advertising NOTHING are still tried:
-    // silence is not evidence, and some adapters do not advertise their
-    // service UUID.
-    if (bleShouldSkip(cands[order[k]])) { skipped++; continue; }
+    // Skip a device for any of three reasons: it positively advertised a
+    // service set that is not ours (SvcHint::Other); it is in the
+    // session-scoped reject ring (connected before and had no known BLE-ELM327
+    // GATT profile); or an adapter is already cached and this one is silent and
+    // not OBD-named, which cannot be the address we are looking for.
+    //
+    // With NO adapter cached, a silent device is still tried — silence is not
+    // evidence, and some adapters never advertise their service UUID. That
+    // fail-safe is exactly what first setup depends on. See bleShouldSkip().
+    if (bleShouldSkip(cands[order[k]], addr_.length() > 0)) { skipped++; continue; }
     tried++;
 #if defined(NIMBLE_CPP_VERSION_MAJOR) && NIMBLE_CPP_VERSION_MAJOR >= 2
     const NimBLEAdvertisedDevice* dev = res.getDevice(order[k]);   // 2.x: pointer
@@ -523,8 +526,10 @@ bool BleObdSource::connectAndSetup() {
     }
     if (client_->isConnected()) client_->disconnect();
   }
-  Serial.printf("[BLE] no OBD adapter found this round (%d skipped: other-service adverts + session reject-ring hits)\n",
-                skipped);
+  Serial.printf("[BLE] no OBD adapter found this round (%d tried, %d skipped: other-service adverts, "
+                "reject-ring hits%s)\n",
+                tried, skipped,
+                addr_.length() ? ", silent strangers (adapter cached)" : "");
   return false;
 }
 

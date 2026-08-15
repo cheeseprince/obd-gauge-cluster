@@ -41,7 +41,26 @@ struct BleCand {
 // them -- 87 connect failures and 6 stranger bonds in one 7-minute bench window
 // with no adapter reachable. Every device this skips is a bond never attempted
 // with somebody else's hardware.
-bool bleShouldSkip(const BleCand& c);
+//
+// `adapterCached` — true when this dash already knows its adapter's address
+// (bonded and stored in NVS). It tightens the SvcHint::None case, and only that
+// case:
+//
+//   cached + silent + not OBD-named  -> SKIP. Blind-probing cannot help a dash
+//     that already knows which address it wants; if the cached adapter is not
+//     answering, connecting to a neighbour's door lock will not make it answer.
+//     Measured on the truck 2026-08-15: a parking lot with 23-25 advertisers
+//     produced a dozen stranger connections and full GATT walks PER ROUND while
+//     the adapter was simply unplugged.
+//   no cache + silent                -> TRY, exactly as before. This is the
+//     fail-safe an adapter that does not advertise its service UUID relies on,
+//     and first setup / post-Forget is precisely when it matters.
+//
+// A replacement adapter is still discovered without pressing Forget adapter so
+// long as it advertises our service UUID or carries an OBD-ish name — which
+// covers every adapter this project has tested. A silent, generically-named
+// replacement needs Forget adapter, which is the documented way to swap.
+bool bleShouldSkip(const BleCand& c, bool adapterCached);
 
 // True when the advertised name hints at an OBD-II / ELM327 adapter
 // (case-insensitive substring match against a small hint list).
