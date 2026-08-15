@@ -32,10 +32,14 @@ class BleObdSource : public ObdSource {
   // settings menu calls.
   void forget();        // Settings -> Forget adapter: clear cached adapter from NVS
   bool pairing() const { return false; }   // discovery is automatic; never owns the console
+  // Vehicle bring-up probes. COMPILED OUT of the shipped firmware — see the
+  // OBD_DEV_CONSOLE note on the implementations in the .cpp.
+#if defined(OBD_DEV_CONSOLE)
   void requestDiag() { diagReq_ = true; }   // 'e' — dump raw EGT/DPF replies once
   void requestScan() { scanReq_ = true; }    // 'x' — sweep enhanced PID ranges + candidates once
   void requestDefProbe() { defProbeReq_ = true; }  // 'd' — dump DEF candidate PIDs once
   void requestGearOilProbe() { gearOilReq_ = true; }  // 'g' — ~20-sample gear/oil live probe
+#endif
 
   ConnStatus connStatus() const override;
   void resetTrip() { resetTripReq_ = true; }  // menu "Reset trip" — marshalled to core 0 via resetTripReq_
@@ -116,10 +120,12 @@ class BleObdSource : public ObdSource {
 
   volatile bool forgetReq_ = false;   // set by forget() (core 1), consumed in poll() (core 0)
   volatile bool resetTripReq_ = false;  // set by resetTrip() (core 1), consumed in poll() (core 0)
+#if defined(OBD_DEV_CONSOLE)
   volatile bool diagReq_ = false;   // set by 'e' key (core 1), consumed in poll() (core 0)
   volatile bool scanReq_ = false;   // set by 'x' key (core 1), consumed in poll() (core 0)
   volatile bool defProbeReq_ = false;  // set by 'd' key (core 1), consumed in poll() (core 0)
   volatile bool gearOilReq_ = false;   // set by 'g' key (core 1), consumed in poll() (core 0)
+#endif
 
   // VIN read runs once per connected session (Conn::Up success block); cleared
   // on disconnect so a reconnect re-reads (e.g. after an adapter/vehicle swap).
@@ -160,6 +166,18 @@ class BleObdSource : public ObdSource {
   void recoverBleStack();    // deinit+reinit NimBLE after repeated failures (clears a wedged stack)
   bool bindChars();          // after connect: secure, find chars, subscribe, AT-init
   void pollQuery(uint32_t nowMs);
+  // --- Vehicle bring-up probes — DEV BUILD ONLY (F-11) ---------------------
+  // PR #12 gated the serial DISPATCH so these are unreachable in the shipped
+  // firmware, but the implementations and their PID tables were still compiled
+  // into it. Unreachable is not the same as absent: the code, the candidate DID
+  // lists and the sweep ranges all shipped, on a device whose OBD link is
+  // read-only by design. Gating the implementations too removes them from the
+  // binary rather than merely from the menu.
+  //
+  // `runScan` alone sweeps 544 PIDs and monopolises the OBD link for minutes —
+  // on a moving vehicle that is a denial of the gauges, which is why discovery
+  // is a bench activity with its own env (crowpanel_obd_dev).
+#if defined(OBD_DEV_CONSOLE)
   void runDiag();            // raw-dump EGT/DPF PIDs to Serial (diagnostic)
   void runScan();            // sweep 2200xx/2219xx + candidate PIDs, log positives (diagnostic)
   void runDefProbe();        // raw-dump DEF candidate PIDs to Serial (diagnostic)
@@ -170,6 +188,7 @@ class BleObdSource : public ObdSource {
   // Like probePid but drops the AT-SH "OK" residual before sending the PID and
   // uses wider deadlines — returns the RAW (unescaped) PID reply for parsing.
   std::string probeFrame(const char* sh, const char* cmd);
+#endif
 
   // BLE transport shims used by pollQuery — the seam the templated query engine
   // writes/reads through, so it stays transport-agnostic.

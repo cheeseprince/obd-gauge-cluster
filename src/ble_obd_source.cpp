@@ -162,10 +162,12 @@ void BleObdSource::poll(uint32_t nowMs) {
       setPhase(ConnPhase::Connecting);
       return;
     }
+#if defined(OBD_DEV_CONSOLE)
     if (diagReq_) { diagReq_ = false; runDiag(); return; }   // one-shot raw dump
     if (scanReq_) { scanReq_ = false; runScan(); return; }   // one-shot range scan
     if (defProbeReq_) { defProbeReq_ = false; runDefProbe(); return; }   // one-shot DEF probe
     if (gearOilReq_)  { gearOilReq_  = false; runGearOilProbe(); return; }  // gear/oil live probe
+#endif
     pollQuery(nowMs);
     // Derived rows (economy/HP/fill) — shared engine, one impl for all sources.
     updateComputedReadouts(economy_, values_, cur_, mux_, nowMs, dieselTankGal_);
@@ -644,6 +646,20 @@ void BleObdSource::pollQuery(uint32_t nowMs) {
   pidQueryStep(q_, sched_, io, nowMs, /*replyTimeoutMs=*/400, values_, cur_, mux_);
 }
 
+// ===========================================================================
+// VEHICLE BRING-UP PROBES — DEV BUILD ONLY (crowpanel_obd_dev). See F-11.
+//
+// PR #12 gated the serial DISPATCH that reaches these, so they were already
+// unreachable in the shipped firmware. They were still COMPILED INTO it:
+// the sweep loops, the candidate DID lists and the 2200xx/2219xx ranges all
+// shipped in the release binary. Unreachable is not absent, and this is a
+// device whose OBD link is read-only by construction — so the honest state is
+// for discovery code to be in the discovery build and nowhere else.
+//
+// Everything from here to the end of the file is inside this guard.
+// ===========================================================================
+#if defined(OBD_DEV_CONSOLE)
+
 // Send one command at `sh` (AT SH header) then `cmd`, accumulate the reply to the
 // '>' prompt, and return it with CR/LF escaped for readability ("" if empty).
 // Owns the rx ring for the call. Shared by runDiag and runScan.
@@ -909,5 +925,7 @@ void BleObdSource::runScan() {
   q_.txState   = Tx::Idle;
   Serial.println("[SCAN] done");
 }
+
+#endif  // OBD_DEV_CONSOLE — vehicle bring-up probes
 
 #endif  // BLE_OBD && !MOCK_OBD
