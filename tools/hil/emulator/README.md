@@ -59,9 +59,65 @@ advertisement works unprivileged under the stock D-Bus policy.
 ## Running it
 
 ```bash
-python3 elm_server.py --scenario gm_sierra &   # protocol, TCP 35000
-python3 ble_elm.py                             # transport, advertises as vLinker MS-B
+./hilctl.sh start      # brings up both halves in the right order
+./hilctl.sh health     # is the dash actually talking?
+./hilctl.sh stop
 ```
+
+`hilctl.sh` exists because `python3 elm_server.py & python3 ble_elm.py &` leaves you
+with two orphans, no PIDs and a held port as soon as you want to stop. It also gets
+three orderings right that are easy to miss by hand:
+
+- **waits for the emulator's port** before starting the shim, which is a TCP client of
+  it and exits if it loses that race;
+- **waits for `hci0` to be `UP RUNNING`**, because a cold boot enumerates the BLE
+  dongle well after userspace and the shim exits advertising nothing;
+- **verifies the shim survived** two seconds in. It exits almost immediately if
+  something else already owns the adapter, and reporting success over a dead rig is
+  the failure this whole script is meant to avoid.
+
+It stops processes **by PID from a pidfile, never by pattern**. `pkill -f ble_elm.py`
+matches the shell running it, so it kills the caller — that has happened here.
+
+`./hilctl.sh health` is the one to run when the dash looks wrong. It checks that the
+shim log is *growing* (an LE connection alone proves nothing — the dash can hold a
+stale link and send nothing), that `bluetoothd` has not ballooned, and that the shim
+is not spinning.
+
+Overridable via the environment: `HIL_SCENARIO`, `HIL_PORT`, `HIL_PROFILE`,
+`HIL_NAME`, `HIL_ELM_LOG`, `HIL_SHIM_LOG`.
+
+Prefer to run them by hand? The two commands are still just:
+
+```bash
+python3 elm_server.py --scenario gm_sierra --port 35000   # protocol
+python3 ble_elm.py                                        # transport
+```
+
+### Autostart (optional)
+
+If you want the rig up after a reboot, install systemd **user** units for the two
+halves and enable lingering so they start without a login:
+
+```bash
+sudo loginctl enable-linger "$USER"
+systemctl --user enable --now hil-elm hil-shim
+```
+
+`hilctl.sh` detects those units and delegates `start`/`stop`/`restart` to `systemctl`,
+so the two mechanisms cannot fight over the same processes. Two things learned the
+hard way if you write your own units: give the shim the same `hci0` and port waits as
+above, and do **not** use `BindsTo=` on an umbrella unit — it propagates a stop but
+does not re-arm when the child restarts, so one supervised restart leaves the umbrella
+reading `inactive` over a perfectly healthy rig.
+
+> ⚠️ **After any shim restart the dash needs a hard reset.** It keeps the old link and
+> goes quiet — LE connected, zero GATT traffic. Pulse EN:
+> ```bash
+> python3 -c "import serial,time; s=serial.Serial('/dev/ttyUSB0',115200); \
+>             s.setDTR(False); s.setRTS(True); time.sleep(0.2); s.setRTS(False); s.close()"
+> ```
+> Merely *opening* the port does not reset it if `stty -hupcl` was set earlier.
 
 Then, in another shell, run the rig and assert that the link completes:
 
