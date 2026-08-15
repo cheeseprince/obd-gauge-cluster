@@ -264,6 +264,29 @@ void BleObdSource::recoverBleStack() {
   NimBLEDevice::setMTU(247);   // same preference as begin()
 }
 
+// Free the NimBLE stack outright so the OTA TLS handshake has room. See the
+// header for the measurements that motivated this. Mirrors recoverBleStack()'s
+// teardown half and deliberately stops there — no re-init.
+void BleObdSource::shutdownForOta() {
+  const uint32_t before = ESP.getFreeHeap();
+  // Stop discovery first: deinit(true) would tear it down anyway, but an
+  // in-flight scan callback allocating while the stack unwinds is exactly the
+  // churn this is here to end.
+  if (NimBLEDevice::isInitialized()) {
+    NimBLEScan* scan = NimBLEDevice::getScan();
+    if (scan && scan->isScanning()) scan->stop();
+    if (client_ && client_->isConnected()) client_->disconnect();
+    NimBLEDevice::deinit(true);
+  }
+  // deinit(true) frees these; leaving them dangling would arm a use-after-free
+  // for anything that runs before the restart.
+  client_ = nullptr; writeChar_ = nullptr; notifyChar_ = nullptr;
+  q_.curHeader = -1; q_.txState = Tx::Idle;
+  Serial.printf("[BLE] stack freed for OTA: heap %u -> %u (+%d)\n",
+                (unsigned)before, (unsigned)ESP.getFreeHeap(),
+                (int)(ESP.getFreeHeap() - before));
+}
+
 // Returned BY VALUE: a function-static snapshot here was a cross-core data race —
 // core-0 logTick and the core-1 render loop both call latest(), and one core's
 // copy-in rewrote the shared static while the other was still reading it (the

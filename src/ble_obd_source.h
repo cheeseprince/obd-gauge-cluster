@@ -46,6 +46,22 @@ class BleObdSource : public ObdSource {
   // self-corrects on the next poll, so it does not earn a critical section.
   void setDieselTankGal(float gal) { dieselTankGal_ = gal; }
 
+  // Free the entire NimBLE stack before the OTA/portal flows take the radio.
+  //
+  // WHY, measured on the truck 2026-08-15: the TLS handshake failed with
+  // MBEDTLS_ERR_SSL_ALLOC_FAILED (-32512) and only ~56 KB of heap free. Boot is
+  // ~104 KB; bringing up WiFi costs ~47 KB of that, and mbedTLS then wants 16 KB
+  // in + 16 KB out + context and cert parsing. Suspending OBD polling is NOT
+  // enough -- NimBLE stays initialised and, with no adapter present, keeps
+  // scanning and walking the GATT database of every stranger in range (23-25
+  // BLE advertisers in a parking lot), churning and fragmenting the heap
+  // underneath the handshake.
+  //
+  // One-way on purpose: unlike recoverBleStack() this does NOT re-init, because
+  // every caller restarts immediately afterwards. Safe to call only with the
+  // OBD task idled (g_suspendObd) -- nothing else may touch the stack after it.
+  void shutdownForOta();
+
   // Called from the NimBLE host task when a notification arrives.
   void onNotify(const uint8_t* data, size_t len);
 

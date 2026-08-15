@@ -516,6 +516,14 @@ void loop() {
       // (the knob's WiFi must rejoin the adapter's AP from scratch anyway).
       g_suspendObd = true;
       delay(150);                          // let an in-flight poll() finish
+#if defined(BLE_OBD) && !defined(MOCK_OBD)
+      // Suspending the OBD task stops POLLING, not the BLE stack: NimBLE stays
+      // initialised and keeps scanning/connecting underneath the TLS handshake,
+      // which on the truck left mbedTLS unable to allocate (-32512). Free it —
+      // safe here because the task above is idled and this case always ends in
+      // ESP.restart(), which brings BLE back clean.
+      g_obd.shutdownForOta();
+#endif
       ui::hideMenu();
       auto pump = [](const char* msg) { ui::showStatus(msg, theme); display::tick(); };
       if (menuAct == MenuAction::OpenWifiSetup) {
