@@ -225,16 +225,34 @@ Gauges appear once the adapter links. From here, updates are over-the-air — no
 
 ## Updates
 
-> ### ⚡ Run the engine while updating
+> ### ⚡ If the update says the server is unreachable
 >
-> **Accessory power with the engine off is not enough.** The WiFi TLS handshake is by a wide
-> margin the highest-current thing this device does, and on a truck USB port with the engine off
-> it browns out mid-handshake. The dash reports **`Update: manifest HTTP -1`**, which looks
-> exactly like a network fault and is not one.
+> The WiFi TLS handshake is by a wide margin the highest-current, least
+> fault-tolerant thing this device does — many round trips, where everything else it does is a
+> single small exchange. So it is the first thing to fail, and it fails with a negative
+> `net` code meaning **the connection never opened**.
 >
-> Everything else works fine on accessory power — the dash joins WiFi, syncs its clock over NTP
-> and talks to the OBD adapter — because none of those draw anything like as much. So the symptom
-> appears *only* at update time. **Start the engine, then Check update.**
+> Everything else keeps working right up to that point — the dash joins WiFi, syncs its clock
+> over NTP and talks to the OBD adapter — so the symptom appears *only* at update time and looks
+> like a network fault even when it is not.
+>
+> **Three causes share that signature.** Work through them in this order:
+>
+> 1. **Supply.** Accessory power with the engine off cannot sustain the handshake — but neither
+>    can a current-limited USB port *with the engine running*. Try the other USB-C port, another
+>    cable, or a second supply.
+> 2. **Signal.** A link too weak or lossy for a multi-round-trip handshake can still carry the
+>    single UDP packet NTP needs. If the dash says the clock synced, the network is up and this
+>    is the likelier of the two.
+> 3. **Route.** An access point that associates but has no way out — a hotspot with no data, or a
+>    captive portal.
+>
+> The dash tells you which half it got to: **"WiFi OK (clock synced)"** means the network works
+> and the handshake is the problem (1 or 2). **"Joined WiFi but no traffic"** means 3.
+>
+> An earlier version of this note named the engine as *the* cause, generalised from one incident.
+> It was wrong on a truck with the engine running — and a bench board running that same firmware
+> updated over the air on the first try, which is how the firmware was ruled out.
 
 The dash updates itself over WiFi — **Settings → Check update**. It fetches the published
 manifest, refuses anything not signed by this project's key, verifies a SHA-256 of the image,

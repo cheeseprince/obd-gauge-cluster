@@ -166,7 +166,11 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
   char ssid[33];
   if (!joinKnownWifi(pump, ssid, sizeof ssid)) return;
 
-  ntpSyncRtc(geo, pump);           // best-effort clock fix; never blocks the update
+  // Keep the result. NTP is a small UDP exchange over the SAME link the
+  // manifest fetch uses, so "the clock synced" is direct evidence that the
+  // network works -- which is what tells a bare HTTPC error apart from an
+  // unreachable network. Still best-effort: it never blocks the update.
+  const bool clockSynced = ntpSyncRtc(geo, pump);
 
   WiFiClientSecure net;
   // Validate the server's certificate chain against the Mozilla root bundle
@@ -187,7 +191,10 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
   int code = http.GET();
   Serial.printf("[OTA] manifest HTTP %d, heap %u\n", code, (unsigned)ESP.getFreeHeap());
   if (code != 200) {
-    char m[96];
+    // 160, not 96: the longest branch below is 102 bytes with the code
+    // substituted, and snprintf truncates SILENTLY -- a half-written
+    // instruction is worse than the terse one this replaced.
+    char m[160];
     if (code < 0) {
       // A NEGATIVE code is not an HTTP status -- it is HTTPClient's own error,
       // and it means the connection never opened at all (-1 is
@@ -195,19 +202,39 @@ void otaCheckUpdate(void (*pump)(const char* status), const GeoLocation& geo) {
       // person standing at the vehicle nothing, and it looks like a network
       // fault even when it is not.
       //
-      // The known cause, root-caused on a real truck 2026-08-05: the TLS
-      // handshake is by a wide margin the highest-current thing this device
-      // does, and accessory power with the engine OFF cannot sustain it. The
-      // board browns out mid-handshake. Everything else keeps working on
-      // accessory power -- WiFi associates, NTP syncs the clock, the OBD link
-      // runs -- so the symptom appears only here. Say the actionable thing
-      // first; keep the code for anyone reading a bug report.
-      snprintf(m, sizeof m, "Update: no connection\nStart the engine,\nthen retry (net %d)", code);
+      // ⚠️ DO NOT NAME A SINGLE CAUSE HERE. This used to read "Start the
+      // engine, then retry", generalised from one truck on 2026-08-05 where
+      // accessory power could not sustain the TLS handshake. That is a real
+      // cause -- the handshake is by a wide margin the highest-current thing
+      // this device does -- but it is not the only one, and the message was
+      // wrong on a truck with the engine running (2026-08-15). Confirmed the
+      // same day that the firmware and the release are fine: a bench board
+      // running this exact v0.4.0 image updated to v0.4.4 over the air.
+      //
+      // Anything that stops the TLS connection OPENING lands here: a supply
+      // that sags on the handshake burst (a current-limited USB port does this
+      // with the engine running), a link too weak or lossy for a multi-round
+      // -trip handshake, or an access point with no route out.
+      //
+      // So report what is known and let the reader choose. `clockSynced` is
+      // the useful discriminator: NTP is a single small UDP exchange over the
+      // same link, so if it worked, the network is up and the problem is
+      // specific to the handshake.
+      if (clockSynced) {
+        snprintf(m, sizeof m,
+                 "Update: server unreachable\nWiFi OK (clock synced)\n"
+                 "Try another USB supply, or\nmove nearer WiFi (net %d)", code);
+      } else {
+        snprintf(m, sizeof m,
+                 "Update: no route out\nJoined WiFi but no traffic\n"
+                 "Check that network (net %d)", code);
+      }
     } else {
       snprintf(m, sizeof m, "Update: manifest\nHTTP %d", code);
     }
-    Serial.printf("[OTA] manifest fetch failed, code %d%s\n", code,
-                  code < 0 ? "  (connection never opened — check power/signal)" : "");
+    Serial.printf("[OTA] manifest fetch failed, code %d, clockSynced=%d, heap %u%s\n",
+                  code, (int)clockSynced, (unsigned)ESP.getFreeHeap(),
+                  code < 0 ? "  (connection never opened)" : "");
     http.end(); say(pump, m); return;
   }
   String manifest = http.getString();
