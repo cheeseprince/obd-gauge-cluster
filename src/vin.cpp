@@ -450,6 +450,36 @@ static const EngineRow GM_LD_ENGINES[] = {
 // table below: the 3.0L Duramax is 'T' (LM2) here and '8' (LZ0) there, and this
 // era also offers a 4.3L V6 and a second 5.3L code. Verified per model year on
 // 2019, 2020 and 2021 -- all six codes present and identical in all three.
+// K2XX-era pickups (2014-2018). TONNAGE IS vin[5] HERE TOO, but the alphabet is
+// per-MAKE and it CHANGES MID-GENERATION -- two facts that make a single shared
+// table actively dangerous:
+//
+//   GMC    MY2014-15   1500=TUVW    2500=04XYZ   3500=123
+//   GMC    MY2016-18   1500=LMNP    2500=RSTU    3500=VWXY
+//   Chevy  MY2014-18   1500=NPRST   2500=UVWX    3500=01YZ
+//
+// GMC 'T'/'U' therefore means 1500 in 2015 and 2500 in 2016 -- adjacent model
+// years, opposite meanings -- and Chevy 'U'/'V'/'W' means 2500 while GMC
+// 'T'/'U'/'V'/'W' means 1500 in the same era. Verified on THREE independent
+// seeds (different vin[3], vin[4], vin[6] and vin[7]) across MY2014-2018, so
+// the mid-generation flip is real and not a seed artefact.
+//
+// NO ENGINE TABLE, on purpose -- the same reasoning as the F-150 rows below.
+// vPIC returns the manufacturer's whole engine list for these VINs rather than
+// what a given tonnage could be ordered with (it offers the 6.6L Duramax on a
+// 1500, which never existed), so the code-to-engine mapping cannot be trusted
+// per row. Name the truck, say nothing about what is under the hood.
+static const SeriesRow GM_SIERRA_K2XX_EARLY[] = {
+  {"TUVW","GMC Sierra 1500"}, {"04XYZ","GMC Sierra 2500"}, {"123","GMC Sierra 3500"},
+};
+static const SeriesRow GM_SIERRA_K2XX_LATE[] = {
+  {"LMNP","GMC Sierra 1500"}, {"RSTU","GMC Sierra 2500"}, {"VWXY","GMC Sierra 3500"},
+};
+static const SeriesRow GM_SILVERADO_K2XX[] = {
+  {"NPRST","Chevrolet Silverado 1500"}, {"UVWX","Chevrolet Silverado 2500"},
+  {"01YZ","Chevrolet Silverado 3500"},
+};
+
 static const EngineRow GM_LD_ENGINES_T1XX[] = {
   {'T',"3.0L Duramax I6",true}, {'D',"5.3L V8",false}, {'F',"5.3L V8",false},
   {'H',"4.3L V6",false}, {'K',"2.7L I4 Turbo",false}, {'L',"6.2L V8",false},
@@ -485,6 +515,12 @@ static bool gmHeavyDuty(const char* vin) {
   return vinIs("012345", vinAt(vin,3)) && vinIs("89", vinAt(vin,4)) &&
          vinIs(GM_TONNAGE_HD, vinAt(vin,5));
 }
+
+// K2XX pickup gates. vin[4] separates the pickup from the vans and the
+// medium/heavy trucks that share these WMIs (GMC: 5/6 = Canyon, 4/6/7/8/9 =
+// medium-duty; Chevy likewise). vin[3] is NOT gated -- it carries cab/drive.
+static bool gmPickupSierraK2XX(const char* vin)    { return vinIs("12", vinAt(vin,4)); }
+static bool gmPickupSilveradoK2XX(const char* vin) { return vinIs("CK", vinAt(vin,4)); }
 
 // T1XX light duty (2019-2021). Deliberately does NOT gate vin[3]: the sweep
 // showed eleven values valid there and it carries cab/drive, not tonnage --
@@ -540,6 +576,16 @@ static const LineRow LINES[] = {
   {"3GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},
   {"1GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
   {"3GC","NPRST",gmLightDuty,-1,nullptr,0,"Chevrolet Silverado 1500",ARR(GM_LD_ENGINES)},
+  // GM K2XX pickups -- verified 2014-2018 (VEH-12). Split into two GMC rows
+  // because the tonnage alphabet changes between MY2015 and MY2016; see the
+  // tables above. Year codes E-J cannot collide with the T1XX (KLM), HD
+  // (LMNPR) or 2022+ (NPRST) rows.
+  {"1GT","EF",gmPickupSierraK2XX,5,ARR(GM_SIERRA_K2XX_EARLY),nullptr,nullptr,0},
+  {"3GT","EF",gmPickupSierraK2XX,5,ARR(GM_SIERRA_K2XX_EARLY),nullptr,nullptr,0},
+  {"1GT","GHJ",gmPickupSierraK2XX,5,ARR(GM_SIERRA_K2XX_LATE),nullptr,nullptr,0},
+  {"3GT","GHJ",gmPickupSierraK2XX,5,ARR(GM_SIERRA_K2XX_LATE),nullptr,nullptr,0},
+  {"1GC","EFGHJ",gmPickupSilveradoK2XX,5,ARR(GM_SILVERADO_K2XX),nullptr,nullptr,0},
+  {"3GC","EFGHJ",gmPickupSilveradoK2XX,5,ARR(GM_SILVERADO_K2XX),nullptr,nullptr,0},
   // GM light duty, T1XX generation -- verified 2019-2021 (VEH-12).
   //
   // These trucks were previously identified as "Sierra HD" / "Silverado HD",

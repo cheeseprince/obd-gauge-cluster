@@ -268,6 +268,38 @@ int main() {
   check(vinToProfileKey("1FT8W3BT0K2345678")==nullptr ||
         strcmp(vinToProfileKey("1FT8W3BT0K2345678"),"ford_sd_67")!=0, "2019 (6R140) still excluded");
 
+  // ---- GM K2XX pickups 2014-2018 (VEH-12) ---------------------------------
+  // The tonnage alphabet is PER-MAKE and CHANGES MID-GENERATION. These cases
+  // pin exactly that: the same vin[5] must mean different tonnages in 2015 vs
+  // 2016 (GMC), and different tonnages for GMC vs Chevy in the same year.
+  struct K2Case { const char* vin; const char* name; };
+  static const K2Case GM_K2XX[] = {
+    // GMC MY2015 (E/F era): TUVW=1500, 04XYZ=2500, 123=3500
+    {"1GTU2T0C5F2345678", "GMC Sierra 1500"},
+    {"1GTU2X0C5F2345678", "GMC Sierra 2500"},
+    {"1GTU220C5F2345678", "GMC Sierra 3500"},
+    // GMC MY2017 (G/H/J era): the SAME letters now mean something else
+    {"1GTU2L0C5H2345678", "GMC Sierra 1500"},
+    {"1GTU2T0C5H2345678", "GMC Sierra 2500"},   // 'T' was 1500 in 2015
+    {"1GTU2W0C5H2345678", "GMC Sierra 3500"},   // 'W' was 1500 in 2015
+    // Chevy MY2015: 'U' is 2500 here while GMC 'U' is 1500 the same year
+    {"1GCUKP0C5F2345678", "Chevrolet Silverado 1500"},
+    {"1GCUKU0C5F2345678", "Chevrolet Silverado 2500"},
+    {"1GCUKZ0C5F2345678", "Chevrolet Silverado 3500"},
+    {"3GCUKP0C5J2345678", "Chevrolet Silverado 1500"},   // Mexico-built, 2018
+  };
+  for (const auto& c : GM_K2XX) {
+    VinIdentity k{};
+    if (!check(vinIdentify(c.vin, &k), c.vin)) continue;
+    check(k.name && strcmp(k.name, c.name)==0, c.name);
+    // No engine table for this era on purpose — vPIC cannot be trusted to say
+    // which engine a given tonnage could be ordered with.
+    check(k.engine && k.engine[0] == '\0', "K2XX says nothing about the engine");
+    // Never the scanned LZ0 profile.
+    const char* pk = vinToProfileKey(c.vin);
+    check(pk == nullptr || strcmp(pk, "gm_sierra_lz0") != 0, "K2XX never gets gm_sierra_lz0");
+  }
+
   // ---- GM: T1XX light duty 2019-2021, and the HD misidentification --------
   // TONNAGE IS vin[5], not vin[3]/vin[4]. In this era the 1500 shares the HD's
   // vin[3]/vin[4] space, so a guard without vin[5] named 1500s "Sierra HD" --
