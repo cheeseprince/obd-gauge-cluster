@@ -9,6 +9,23 @@ VIN. (An earlier version also pinned SHA-256 hashes of specific real fragments,
 but SHA-256 of a 6-digit serial is brute-forced instantly, so those hashes were
 themselves a small leak — the allowlist needs no such data.)
 
+ENCODINGS COVERED, and the ones that are not. A guard is only as good as its
+patterns, so they are stated rather than implied:
+
+  CAUGHT  bare ASCII token                     1GT0123456789ABCD
+  CAUGHT  separator-wrapped                    log_1GT0123456789ABCD_drive.csv
+          (word boundaries treat `_` and `-` as separators, not as VIN chars)
+  CAUGHT  hex-encoded                          33475455...  <- see below
+  NOT     split across whitespace              "3GTUUEE8 6SG290597"
+  NOT     base64/other re-encodings, or a VIN reassembled from fragments
+
+WHY HEX MATTERS. tools/obd_scan stores every sweep reply as `payload_hex`, and
+the 22F1xx block covers 22F190 -- the J1979 DID whose value IS the VIN. So the
+scanner's own natural output encoding for a VIN is hex, which the original
+ASCII-only pattern could never see. Detection is structural rather than a blanket
+hex sweep: a run of hex is decoded and kept only if it yields VIN-shaped ASCII.
+A SHA-256 digest decodes to random bytes, so digests do not false-positive.
+
 Run from anywhere in the repo:  python3 scripts/check_no_pii.py
 Exit 0 = clean, 1 = a violation (prints file + the offending token).
 """
@@ -179,8 +196,50 @@ ALLOWED_VINS = {
 # check below).
 # \b-anchored so only a STANDALONE 17-char token matches, not a 17-char window
 # inside a longer run (e.g. the base64 of the OTA public key in ota_pubkey.h).
-VIN_RE = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b", re.IGNORECASE)
+# NOT \b: `_` is a word character, so \b never fires inside
+# `log_<VIN>_drive.csv` and a VIN in a filename-shaped string sailed through.
+# Requiring a non-alphanumeric neighbour keeps the original protection -- a
+# 17-char window inside a longer alphanumeric run (the base64 OTA public key in
+# ota_pubkey.h) still does not match -- while treating `_`/`-`/`.` as separators.
+VIN_RE = re.compile(r"(?<![A-Z0-9])[A-HJ-NPR-Z0-9]{17}(?![A-Z0-9])", re.IGNORECASE)
 VIN_LETTER = re.compile(r"[G-HJ-NPR-Z]", re.IGNORECASE)
+VIN_EXACT = re.compile(r"[A-HJ-NPR-Z0-9]{17}", re.IGNORECASE)
+# 34 hex chars = 17 ASCII bytes. Scanned two-char (one-byte) steps, because a
+# VIN inside a longer reply does not have to start on the run's first byte.
+HEX_RUN = re.compile(r"[0-9A-Fa-f]{34,}")
+
+
+def _allowed_hex():
+    return {v.encode().hex().upper() for v in ALLOWED_VINS}
+
+
+def vin_tokens(text: str):
+    """Every non-allowlisted VIN-shaped token in `text`, ASCII or hex-encoded.
+
+    Pure and importable so the guard itself can be tested -- it is a required CI
+    check protecting the leak class that forced two repo recreates, and until
+    2026-08-16 nothing verified it.
+    """
+    hits = []
+    for m in VIN_RE.finditer(text):
+        tok = m.group(0)
+        if VIN_LETTER.search(tok) and tok.upper() not in ALLOWED_VINS:
+            hits.append(tok)
+    allowed_hex = _allowed_hex()
+    for m in HEX_RUN.finditer(text):
+        run = m.group(0)
+        for i in range(0, len(run) - 33, 2):
+            chunk = run[i:i + 34]
+            if chunk.upper() in allowed_hex:
+                continue
+            try:
+                decoded = bytes.fromhex(chunk).decode("ascii")
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if VIN_EXACT.fullmatch(decoded) and VIN_LETTER.search(decoded) \
+                    and decoded.upper() not in ALLOWED_VINS:
+                hits.append(f"{decoded} (hex-encoded)")
+    return hits
 SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".pdf", ".bin", ".sig", ".stl",
                ".ico", ".gz", ".zip", ".woff", ".woff2", ".ttf"}
 
@@ -208,11 +267,9 @@ def main() -> int:
             text = p.read_text(errors="ignore")
         except OSError:
             continue
-        for m in VIN_RE.finditer(text):
-            tok = m.group(0)
-            if VIN_LETTER.search(tok) and tok.upper() not in ALLOWED_VINS:
-                violations.append((str(p.relative_to(root)),
-                                   f"non-allowlisted VIN token {tok!r}"))
+        for tok in vin_tokens(text):
+            violations.append((str(p.relative_to(root)),
+                               f"non-allowlisted VIN token {tok!r}"))
 
     if violations:
         print("VIN/PII guard FAILED:")

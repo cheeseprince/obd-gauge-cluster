@@ -36,6 +36,11 @@ census.json
 sweep*.json
 drive.csv
 *_drive.csv
+# `obd_scan correlate` writes these by default, and report.md's subtitle embeds
+# the SOURCE CSV FILENAME verbatim -- which is how a VIN reaches a filename in
+# the first place. Ignored for the same reason as the raw artifacts above.
+report.md
+report.pdf
 *_focus.json
 *_drive*.csv
 bmw_*.csv
