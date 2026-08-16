@@ -43,19 +43,38 @@ static float decFuelLevel(const uint8_t* d, int n, const DecodeCtx&) { return n>
 static float decNone(const uint8_t*, int, const DecodeCtx&)      { return 0.0f; }
 
 // --- enhanced / turbo decoders ----------------------------------------------
-// Oil pressure 22586F@7DF, BYTE 0. The 2026-07-25 scan proved this DID answers
-// on the functional broadcast (the 6F1/612 physical path is gateway-blocked and
-// silent). On 7DF a second module NAKs every Mode-22 read, so the assembled
-// payload is [real value byte, 0x7F, 0x22, 0x22] — decode d[0] ONLY. byte0 rose
-// monotonically with RPM over the drive (9.2 idle -> ~12 at 2000 rpm): the
-// oil-pressure signature, and 586F is the community-named oil-pressure DID.
-// SCALE UNVERIFIED — shown as raw byte == psi (identity), the same "shape
-// confirmed, magnitude is a hypothesis" doctrine as the GM decOilPsi. No cluster
-// oil-pressure readout exists on the F10 to calibrate against; a cold-start +
-// high-RPM drive refines it. Alarms OFF. Any fix lives in THIS decoder alone.
+// Oil pressure 22586F@7DF — 16-BIT MILLIBAR, big-endian. The 2026-07-25 scan
+// proved this DID answers on the functional broadcast (the 6F1/612 physical
+// path is gateway-blocked and silent).
+//
+// ⚠️ THIS WAS DECODED BYTE-0-ONLY UNTIL 2026-08-15, AND THAT WAS WRONG.
+// The old reading assumed a second module NAKs every 7DF Mode-22 read, making
+// the payload [value, 0x7F, 0x22, 0x22]. Re-checked against the drive log
+// (obd-display/bmw_drive.csv, 159 samples): every payload is EXACTLY 2 bytes,
+// NONE contains 7F2222, and the second byte is spread across 0x87-0xF9. A NAK
+// tail is a fixed constant; a byte taking 100+ distinct values is data.
+//
+// THE INSTRUCTIVE PART: the old note justified itself with "byte0 rose
+// monotonically with RPM (9.2 idle -> ~12 at 2000 rpm) — the oil-pressure
+// signature". That is true and useless, because THE HIGH BYTE OF A RISING u16
+// ALSO RISES. The shape check passed while the magnitude was wrong ~4x, and
+// byte-0 put a running engine at ~10 psi, which is a warning-light condition.
+//
+// As u16 millibar the same drive reads 2324-4776 mbar = 33.7-69.3 psi, median
+// 40.4 — textbook for an N55's map-controlled variable-displacement pump — and
+// rises monotonically by RPM band (36.7 / 40.4 / 45.3 psi), Pearson r 0.653.
+// Non-linear against RPM is expected: the pump regulates to a demand target,
+// it does not track engine speed.
+//
+// Confidence HIGH on the magnitude. Still no cluster oil-pressure readout on
+// the F10 to calibrate against, so ALARMS STAY OFF — a low-pressure limit needs
+// a sourced N55 minimum and a hot-idle sample, which is the lowest-pressure
+// state and is not in this warm-drive log. Any refinement lives in THIS decoder.
 static float decBmwOilPress(const uint8_t* d, int n, const DecodeCtx&) {
-  if (n < 1 || d[0] == 0xFF) return NAN;
-  return (float)d[0];            // psi, IDENTITY scale — UNVERIFIED (shape only)
+  if (n < 2) return NAN;                              // needs the full 16 bits
+  const uint16_t mbar = (uint16_t)((d[0] << 8) | d[1]);
+  if (mbar == 0xFFFF) return NAN;                     // all-ones = not available
+  return (float)mbar * 0.0145038f;                    // mbar -> psi
 }
 // Boost from standard MAP (010B, byte A = kPa absolute; PID confirmed present in
 // the F10 census). Gauge boost against a fixed sea-level baseline (101.325 kPa),

@@ -70,10 +70,52 @@ ISTA/TIS threshold table becomes available.
 
 | Row | Why |
 | :--- | :--- |
-| **OIL PRESSURE** | Reachable via `22586F` byte 0, but the **scale is unverified**. A threshold on a guessed scale either cries wolf or stays silent through a real loss of pressure — worse than none. Needs the cold-start drive |
+| **OIL PRESSURE** | ⚠️ **Scale RESOLVED 2026-08-15 — see "Oil pressure is 16-bit" below.** It is a u16 in millibar, not byte 0. Alarms still off: a low-pressure limit needs a sourced N55 minimum **and** a hot-idle sample (the lowest-pressure state), neither of which the warm drive provides |
 | TRANSMISSION (ATF) | Lives on the EGS module, gateway-blocked on this car |
 | OIL (temp) | Candidate DIDs never pinned — the only drive was warm-started |
 | BOOST / LOAD / INTAKE / AMBIENT | Decode is sound, but no N55-specific limits are established. Inventing a number buys nothing |
+
+## Oil pressure is 16-bit millibar, not byte 0 — corrected 2026-08-15
+
+`22586F` was decoded byte-0-only, on the theory that a second module's `7F2222` NAK was
+appended to the value byte. **That was wrong**, and it made a running engine read ~10 psi.
+
+**Evidence, from captures already on disk — no car needed:**
+
+| Source | What it shows |
+| :--- | :--- |
+| `obd-display/bmw_drive.csv` | 159 samples, **all exactly 2 bytes**, none containing `7F2222`, low byte spread across `0x87`–`0xF9` (a NAK is a fixed constant; a byte taking 100+ values is data) |
+| `sweep.json` | `"raw": "62586F03FF\r7F2222\r\r"` — the NAK is **its own line**, after a **two-byte** value |
+| Distinctness | 144 distinct values in 159 samples — the resolution of a 16-bit sensor, not of a byte |
+
+Read as **u16 millibar** the same drive gives **2324–4776 mbar (33.7–69.3 psi), median 40.4**,
+rising monotonically by RPM band — **36.7 / 40.4 / 45.3 psi** across idle / 900–1500 / 1500–2500
+— with Pearson **r = 0.653**. Non-linearity against RPM is expected: the N55's map-controlled
+variable-displacement pump regulates to a demand target rather than tracking engine speed.
+
+**Why the original reasoning passed its own check.** It justified byte-0 with *"byte0 rose
+monotonically with RPM — the oil-pressure signature."* True, and useless: **the high byte of a
+rising 16-bit value also rises.** The shape test passed while the magnitude was wrong ~4×. A
+shape check cannot validate a scale.
+
+### ⚠️ Still open: absolute or gauge?
+
+The sweep sample is `03FF` = **1023 mbar ≈ 1 atmosphere**. If that reading was taken key-on /
+engine-off, this sensor reports **absolute** pressure — an engine-off gauge sensor would read
+~0. Absolute would also put warm idle at ~1.5 bar gauge, which matches BMW's documented
+low-demand pump target better than 2.5 bar gauge does. But the sweep captured no RPM anchor and
+the drive log contains no engine-off sample (602–2146 rpm throughout), so **this is unresolved
+and the displayed value may be ~15 psi high.**
+
+**It is settled by ONE sample, and needs no drive:** with the key on and the engine OFF, read
+`22586F`.
+
+| Reading | Meaning | Fix |
+| :--- | :--- | :--- |
+| ~`03E8`–`0410` (≈1000 mbar) | **Absolute** | Subtract ambient baro in `decBmwOilPress` |
+| ~`0000`–`0100` (≈0) | **Gauge** | Current decode is already correct |
+
+Do that before spending a drive on it.
 
 ## Next step to finish the profile
 
