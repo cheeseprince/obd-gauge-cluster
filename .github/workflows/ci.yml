@@ -108,5 +108,20 @@ jobs:
       - name: gitleaks (no keys/tokens/passwords committed)
         run: |
           VER=8.21.2
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
+          # SHA-256 of gitleaks_8.21.2_linux_x64.tar.gz, taken from the release's
+          # own gitleaks_${VER}_checksums.txt and re-verified against an
+          # independent download 2026-08-16.
+          #
+          # WHY THIS IS PINNED AND NOT JUST VERSIONED. Every Action in this repo
+          # is SHA-pinned and every pip install uses --require-hashes; this was
+          # the one unpinned executable in the pipeline, and it is the SECRET
+          # SCANNER. A substituted binary's most valuable move is not to do
+          # something loud -- it is to exit 0, silently blinding the check meant
+          # to stop a committed key. Version-pinning alone does not prevent a
+          # release asset being replaced.
+          SHA=5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+          curl -sSL --retry 3 -o gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz"
+          echo "${SHA}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
           ./gitleaks detect --no-git --source . --redact --exit-code 1
