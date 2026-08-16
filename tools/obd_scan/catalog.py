@@ -259,6 +259,20 @@ FORD_67 = VehiclePreset(
                    "sub-zero cold start. MY2020+ is a 10R140, MY2019 and earlier a 6R140 — the "
                    "generation break is 2019->2020, NOT the 2023 facelift."),
         Block("2200xx", 0x2200, note="does Ford mirror generic PIDs the way GM does?"),
+        # NEVER PROBED ON ANY VEHICLE until now. F1xx is the UDS *identification*
+        # range -- F190 is the VIN by standard, and manufacturers put build and
+        # configuration data around it. Cheap to add: one more block on a sweep
+        # that already runs, and the only range with a published meaning that
+        # this tool has never looked at.
+        #
+        # ⚠️ It does NOT reopen the tank-capacity decision. Even if capacity is
+        # readable here it is the FACTORY value, and a truck with a replacement
+        # tank would report a confidently wrong number -- which is exactly why
+        # capacity is a user setting. Same class of error as 22F41C reading as
+        # "34 gal": a real number attached to the wrong thing.
+        Block("22F1xx", 0x22F1,
+              note="UDS identification range, NEVER probed. F190 = VIN by standard; "
+                   "expect As-Built/config data. Read-only like every other block."),
     ],
     # Two enhanced go/no-go probes, not one. 22F446 comes from the 2013 list
     # whose claims mostly did not survive verification, so a silent F446 is
