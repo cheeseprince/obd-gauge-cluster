@@ -36,6 +36,42 @@ int main() {
   assert(std::strcmp(READOUTS[(int)StatId::Boost].cmd, "010B") == 0);
   assert(READOUTS[(int)StatId::Boost].header == 0);
 
+  // --- Oil pressure is a 16-bit millibar value, NOT byte 0 -----------------
+  //
+  // 22586F was decoded byte-0-only on the theory that a second module NAKs
+  // every 7DF Mode-22 read, making the payload [value, 0x7F, 0x22, 0x22].
+  // The 2026-07-25 drive log refutes that for this DID: all 159 samples are
+  // EXACTLY 2 bytes, NONE contains 7F2222, and the second byte is spread
+  // across 0x87-0xF9 — the low byte of a 16-bit value, not a fixed NAK.
+  //
+  // The original reasoning failed in an instructive way: the HIGH BYTE of a
+  // rising u16 also rises monotonically with RPM, so "shape confirmed by the
+  // RPM correlation" looked right while the magnitude was wrong ~4x.
+  //
+  // Payloads below are verbatim from obd-display/bmw_drive.csv.
+  {
+    auto oilp = READOUTS[(int)StatId::OilP].decode;
+    DecodeCtx ctx{nullptr};
+    auto psi = [&](uint16_t raw) {
+      const uint8_t d[2] = {(uint8_t)(raw >> 8), (uint8_t)(raw & 0xFF)};
+      return oilp(d, 2, ctx);
+    };
+    // Observed span of the drive: 2324 mbar (idle) .. 4776 mbar (loaded).
+    assert(std::fabs(psi(0x0914) - 33.71f) < 0.2f);   // 2324 mbar -> 33.7 psi
+    assert(std::fabs(psi(0x12A8) - 69.27f) < 0.2f);   // 4776 mbar -> 69.3 psi
+    // A byte-0 decode would have called the idle sample 9 psi. Anything under
+    // 20 psi on a running engine is an oil-pressure-warning condition, so this
+    // is the assertion that would have caught the original bug.
+    assert(psi(0x0914) > 25.0f);
+
+    // 0xFF in the HIGH byte was the old sentinel check; a 16-bit read must not
+    // inherit it, because 0xFFxx is simply an out-of-range pressure. Reject the
+    // all-ones frame instead.
+    assert(std::isnan(psi(0xFFFF)));
+    // Short frame: one byte can no longer be decoded at all.
+    { const uint8_t d[1] = {0x09}; assert(std::isnan(oilp(d, 1, ctx))); }
+  }
+
   // Oil temp and ATF are STUBBED post-scan: DA25/DA12 @ 6F1/618 are silent
   // (gateway-blocked), and the 7DF temp candidates need a cold-start drive.
   assert(READOUTS[(int)StatId::Oil].cmd == nullptr);
@@ -55,20 +91,28 @@ int main() {
   }
   assert(readoutPageCount() == 3);
 
-  // Oil-pressure decode: byte 0 == psi (identity, UNVERIFIED scale). The
-  // critical property is byte-0-only: on 7DF a second module appends "7F2222"
-  // after the positive frame, so the decoder must read ONLY d[0] and ignore the
-  // NAK tail. Same value with and without the tail proves it.
+  // Oil-pressure NAK tolerance, against the SHAPES ACTUALLY OBSERVED.
+  //
+  // The old version of this test asserted [0x0C, 0x7F, 0x22, 0x22] — a ONE-byte
+  // value followed by the NAK — and that shape never occurs. The real value is
+  // two bytes. Verbatim evidence:
+  //
+  //   sweep.json  "raw": "62586F03FF\r7F2222\r\r"   (NAK on its own line)
+  //   drive log   62586F09B6                        (159 samples, no NAK)
+  //
+  // parseObdResponse does NOT strip the NAK when it shares the buffer — it
+  // returns [03 FF 7F 22 22]. So the decoder must take the FIRST TWO bytes and
+  // ignore anything after, which is what makes it tolerant of both shapes.
   {
     DecodeCtx ctx{nullptr};
-    const uint8_t clean[]   = {0x0C};                    // 12
-    const uint8_t withNak[] = {0x0C, 0x7F, 0x22, 0x22};  // 12 + appended NAK
-    float a = READOUTS[(int)StatId::OilP].decode(clean, 1, ctx);
-    float b = READOUTS[(int)StatId::OilP].decode(withNak, 4, ctx);
-    assert(!std::isnan(a) && a == 12.0f);
-    assert(a == b);                                      // NAK tail ignored
-    const uint8_t bad[] = {0xFF};
-    assert(std::isnan(READOUTS[(int)StatId::OilP].decode(bad, 1, ctx)));
+    auto dec = READOUTS[(int)StatId::OilP].decode;
+    const uint8_t clean[]   = {0x03, 0xFF};                    // drive-log shape
+    const uint8_t withNak[] = {0x03, 0xFF, 0x7F, 0x22, 0x22};  // parser output
+    float a = dec(clean, 2, ctx);
+    float b = dec(withNak, 5, ctx);
+    assert(!std::isnan(a));
+    assert(a == b);                                    // NAK tail ignored
+    assert(std::fabs(a - 14.84f) < 0.05f);             // 1023 mbar
   }
   // Boost decode: MAP 201 kPa vs 101.325 baseline -> ~14 psi gauge; vacuum
   // (40 kPa) clamps to 0 (boostPsi floors negative diff).
