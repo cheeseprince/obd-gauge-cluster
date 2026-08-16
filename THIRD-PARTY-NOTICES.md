@@ -14,7 +14,7 @@ below are the versions that were linked.
 | :--- | :--- | :--- | :--- |
 | Arduino core for ESP32 | 3.1.3 | **LGPL-2.1-or-later** | <https://github.com/espressif/arduino-esp32> |
 | ESP-IDF | 5.3.0 | Apache-2.0 | <https://github.com/espressif/esp-idf> |
-| NimBLE-Arduino | 2.5.0 | Apache-2.0 | <https://github.com/h2zero/NimBLE-Arduino> |
+| NimBLE-Arduino | 2.5.1 | Apache-2.0 | <https://github.com/h2zero/NimBLE-Arduino> |
 | LovyanGFX | 1.2.26 | FreeBSD/BSD-2, with retained MIT and BSD notices | <https://github.com/lovyan03/LovyanGFX> |
 | Modulino | `1f40e45` | MPL-2.0 | <https://github.com/arduino-libraries/Modulino> |
 | LVGL | 8.4.0 | MIT | <https://github.com/lvgl/lvgl> |

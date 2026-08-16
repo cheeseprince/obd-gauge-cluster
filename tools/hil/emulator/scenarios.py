@@ -59,10 +59,9 @@ GENERIC = Scenario(
 # of bug a single-ECU fixture would hide.
 # ONE REAL MOMENT, NOT A PILE OF PLAUSIBLE NUMBERS.
 #
-# The values below are a single row of Alan's own 2026-07-17 drive
-# (obd-display/csv_logs/20260717_095729.csv): 2142 rpm, 73 mph, 8.3 psi boost,
-# 53% EGR, 7.2 gph, CAC 246 F, coolant 219 F, 55% load — a loaded pull, not
-# idle. Every payload was produced by INVERTING the shipped decoder in
+# The values below are a single row of a real logged drive on the reference
+# truck — a loaded pull rather than idle, so every stat here is non-zero.
+# Every payload was produced by INVERTING the shipped decoder in
 # src/vehicles/gm_sierra_lz0.cpp (brute-force search over the byte space with
 # the real decoder as the oracle), so no formula is duplicated here and no byte
 # is hand-typed. Residual error is the log's own rounding: worst case 0.3 mph.
