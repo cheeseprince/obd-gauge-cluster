@@ -370,6 +370,41 @@ is shared with Jeep**, so without it a Grand Cherokee would be captioned as a pi
 
 The 1500 is a **set** of series codes, not one. Verified span: **2013–2024**.
 
+### Pre-2013 (Dodge Ram) — a different WMI and a colliding alphabet
+
+The Ram brand split from Dodge for MY2013. Before that the WMIs are **`1D7` / `3D7`** — `1C6`
+and `3C6` decode to nothing before 2013 — and tonnage sits at **the same position, `vin[5]`,
+with different codes**:
+
+| `vin[5]` | Tonnage |
+| :--- | :--- |
+| `1` | Ram 1500 |
+| `2` | Ram 2500 |
+| `3`, `4` | Ram 3500 |
+
+⚠️ **The alphabets collide, so the model-year gate is load-bearing.** In the 2013+ table `2`
+and `3` mean 3500; here `2` means 2500. A pre-2013 truck decoded with the modern codes is
+named one size too big. The eras are kept apart by year code alone — `D`–`R` versus `6`–`B`.
+
+**`vin[4]` is an allowlist per model year, not a fixed rule.** Its meaning moves:
+
+| Years | Ram lines at `vin[4]` |
+| :--- | :--- |
+| 2006–07 | `A R S U` — the same four codes serve 1500, 2500 *and* 3500, so `vin[4]` carries no tonnage at all |
+| 2008–09 | `A B R S U V` |
+| 2010 | `B P T V` |
+| 2011 | `6 B P T V` |
+
+An allowlist is required rather than a Dakota exclusion because `1D7` is shared with several
+non-pickups whose codes collide across years: Dakota `E`/`W`, Grand Caravan `N`, Journey
+`5`/`G`/`H`, Nitro `9`/`U`. **`U` is a Ram in 2006–09 and a Nitro in 2011.**
+
+**Not claimed, deliberately:** MY2012 (vPIC answers "No detailed data available currently" for
+every combination on every candidate WMI — a data gap, not a missing pattern); 3500 after 2007
+(the rows stop agreeing on Model and Series); and **any engine**, because sweeping `vin[7]`
+returns Chrysler's entire make-wide alphabet for every tonnage — including a 1.8 L four and an
+8.4 L V10 for a 3500. Same call as the F-150 rows: name the truck, say nothing about the engine.
+
 ## Chevrolet / GMC (beyond the profiled Sierra)
 
 The Sierra 1500 3.0L Duramax has a full profile (above). Every other GM pickup in the verified

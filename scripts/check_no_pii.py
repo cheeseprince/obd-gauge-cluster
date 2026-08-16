@@ -20,6 +20,15 @@ import pathlib
 # Synthetic test VINs — the ONLY VIN-shaped 17-char tokens allowed in the tree.
 ALLOWED_VINS = {
     "1GT0123456789ABCD",   # GM (test_vin, framework)
+    "1D70P2800A2345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70R380062345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70S280062345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70T2800B2345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70U180062345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70U1800B2345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70U480072345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70V180092345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
+    "1D70W1800A2345678",   # pre-2013 Dodge Ram sweep, synthetic (test_vin)
     "1FT7W2BT0N2345678",   # Ford F-250 6.7 (test_vin)
     "1FT8W3BT0N2345678",   # Ford F-350 6.7 (test_vin)
     "3FT7W2BT0N2345678",   # Ford F-250 6.7, 3FT WMI (test_vin)
