@@ -16,6 +16,7 @@
 #include "fw_git.h"
 #include "ota_pubkey.h"
 #include "ntp_time.h"
+#include "semver.h"   // parseSemver — extracted so the host suite can pin it
 
 // Release channel (overridable per-env via build flags).
 #ifndef OTA_BASE_URL
@@ -85,28 +86,6 @@ static bool otaVerifyManifest(const uint8_t* manifest, size_t mlen, const uint8_
 extern void otaPersistStackMins();
 
 // Join the first stored credential whose SSID is visible. True once connected.
-// Parse a "vX.Y.Z" release string into one monotonically-comparable value.
-// Non-release strings ("local", "dev-<hash>") parse to 0 (oldest), so a USB/dev
-// build still updates to any signed release. Each field is clamped to 10 bits.
-static uint32_t parseSemver(const char* v) {
-  if (!v) return 0;
-  if (*v == 'v' || *v == 'V') v++;
-  unsigned f[3] = {0, 0, 0};
-  int idx = 0;
-  bool sawDigit = false;
-  for (; *v && idx < 3; v++) {
-    if (*v >= '0' && *v <= '9') {
-      f[idx] = f[idx] * 10 + (unsigned)(*v - '0');
-      if (f[idx] > 1023) f[idx] = 1023;
-      sawDigit = true;
-    } else if (*v == '.') {
-      idx++;
-    } else {
-      break;   // stop at any non-version char ("-rc1", etc.)
-    }
-  }
-  return sawDigit ? ((f[0] << 20) | (f[1] << 10) | f[2]) : 0;
-}
 
 // Largest CONTIGUOUS free internal block. Total free heap is the wrong number
 // to debug a TLS failure with: mbedTLS asks for 16 KB record buffers in one
