@@ -7,7 +7,7 @@ Every drive becomes a free tuning pass: point this at a directory of
 
   1. Data inventory        — files, rows, schema (old logs w/o probe cols are skipped)
   2. Threshold audit       — per alarmed stat: observed distribution vs warn/crit,
-                             margin analysis (nuisance risk / dead-threshold detection)
+                             margin analysis (nuisance risk, hi-side headroom)
   3. Alarm reconstruction  — replays the firmware's alarm logic (4s holdoff, 10s
                              startup grace, OIL P 20s running-arm-delay) against the
                              data and lists every alarm that WOULD have fired
@@ -198,9 +198,14 @@ def main():
             if s.max() >= t['warnHi']: verdict = "**CROSSED warn-hi**"
             elif head < 0.1 * t['warnHi']: verdict = f"tight hi headroom ({head:.0f})"
         if not math.isnan(t['warnLo']):
-            # dead-threshold check: can the sensor even reach the trigger?
-            if s.min() > t['warnLo'] and name != 'OIL P':
-                pass                                   # never dipped — fine
+            # NO LO-SIDE HEADROOM VERDICT, deliberately. The hi side reports
+            # "tight headroom" because approaching an upper limit is a real
+            # signal. The lo side is not symmetric: never dipping toward a lo
+            # threshold is the HEALTHY case -- VOLTS warnLo is 11.0 V and a good
+            # system sits at 13.5-14.5 V, so a "never approached" verdict would
+            # fire on every clean log and train the reader to ignore the column.
+            # OIL P's lo behaviour is genuinely interesting and gets its own
+            # engine-off/RPM-band analysis in section 4.
             if s.min() <= t['warnLo']: verdict = "**CROSSED warn-lo**"
         hi = "—" if math.isnan(t['warnHi']) else f"{t['warnHi']:g}/{t['critHi']:g}"
         lo = "—" if math.isnan(t['warnLo']) else f"{t['warnLo']:g}/{t['critLo']:g}"
