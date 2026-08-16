@@ -122,3 +122,30 @@ def test_whitespace_split_vin_is_a_known_miss():
     fails and tells them to update the docstring.
     """
     assert guard.vin_tokens(f"{FOREIGN[:8]} {FOREIGN[8:]}") == []
+
+
+# --- the guard must scan ITSELF -------------------------------------------
+# It used to exempt itself. That exemption meant the one file the guard could
+# not inspect was the one most likely to accumulate VIN-shaped examples -- and
+# on 2026-08-16 a docstring added a REAL VIN as an illustration, the guard
+# reported OK, CI agreed, and it reached the public repo. These tests exist so
+# the exemption cannot come back silently.
+
+def test_guard_does_not_exempt_itself():
+    src = _GUARD.read_text()
+    assert "never scan the guard itself" not in src, \
+        "the self-exemption is back; it is what let a real VIN reach the public repo"
+
+
+def test_guards_own_source_is_clean_under_its_own_rules():
+    """The guard's own file must pass the guard. Belt and braces: even if the
+    file-walk regressed, this asserts the CONTENT directly."""
+    assert guard.vin_tokens(_GUARD.read_text()) == [], \
+        "the guard's own source contains a non-allowlisted VIN-shaped token"
+
+
+def test_docstring_examples_are_allowlisted():
+    """Every VIN-shaped example in the docstring must be a permitted synthetic."""
+    doc = guard.__doc__ or ""
+    for tok in guard.VIN_RE.findall(doc):
+        assert tok.upper() in guard.ALLOWED_VINS, f"docstring example {tok!r} is not allowlisted"

@@ -15,9 +15,13 @@ patterns, so they are stated rather than implied:
   CAUGHT  bare ASCII token                     1GT0123456789ABCD
   CAUGHT  separator-wrapped                    log_1GT0123456789ABCD_drive.csv
           (word boundaries treat `_` and `-` as separators, not as VIN chars)
-  CAUGHT  hex-encoded                          33475455...  <- see below
-  NOT     split across whitespace              "3GTUUEE8 6SG290597"
+  CAUGHT  hex-encoded                          314754303132...
+  NOT     split across whitespace              "1GT01234 56789ABCD"
   NOT     base64/other re-encodings, or a VIN reassembled from fragments
+
+EVERY EXAMPLE ABOVE IS AN ALLOWLISTED SYNTHETIC, and must stay that way. A real
+VIN was used here once (commit dcbc093) and reached the public repo, because at
+that time this file exempted itself from scanning. It no longer does.
 
 WHY HEX MATTERS. tools/obd_scan stores every sweep reply as `payload_hex`, and
 the 22F1xx block covers 22F190 -- the J1979 DID whose value IS the VIN. So the
@@ -258,11 +262,16 @@ def tracked_files(root: str):
 def main() -> int:
     root = subprocess.check_output(
         ["git", "rev-parse", "--show-toplevel"], text=True).strip()
-    self_path = pathlib.Path(__file__).resolve()
     violations = []
     for p in tracked_files(root):
-        if p.resolve() == self_path:      # never scan the guard itself
-            continue
+        # THE GUARD SCANS ITSELF. It used to exempt itself, which was harmless
+        # while it held only an allowlist -- but the exemption meant the one file
+        # the guard could not inspect was the one most likely to accumulate
+        # VIN-shaped examples. On 2026-08-16 a docstring added a REAL VIN as an
+        # illustration and the guard reported OK; CI agreed, and it reached the
+        # public repo. Nothing about the allowlist needs the exemption: every
+        # permitted VIN passes by definition, so scanning itself costs nothing
+        # and closes the blind spot for good.
         try:
             text = p.read_text(errors="ignore")
         except OSError:
