@@ -443,6 +443,60 @@ static const EngineRow RAM_ENGINES[] = {
   {'T',"5.7L HEMI V8",false}, {'L',"6.7L Cummins I6",true}, {'G',"3.6L V6",false},
   {'J',"6.4L HEMI V8",false}, {'9',"6.2L HEMI V8",false}, {'M',"3.0L EcoDiesel V6",true},
 };
+
+// --- Pre-2013 DODGE Ram (the Ram brand split off for MY2013) ---------------
+//
+// Different WMI (1D7/3D7, not 1C6/3C6 — those decode to NOTHING before 2013)
+// and a different code alphabet, but by luck the SAME position: tonnage is
+// vin[5], exactly where the modern table reads its series.
+//
+// ⚠️ THE CODE SETS COLLIDE, WHICH IS WHY THE YEAR GATE IS LOAD-BEARING.
+// Modern vin[5]='2' or '3' means 3500; here '2' means 2500 and '3' means 3500.
+// A pre-2013 truck read by the modern table would be named one size too big.
+// The two are kept apart by year code alone: modern rows take D-R (2013-2024),
+// these take 6-B (2006-2011). Never merge them.
+//
+// Verified against vPIC 2026-08-16, per model year, requiring Model=="Ram" AND
+// a Series carrying the tonnage — vPIC happily returns one without the other on
+// an under-specified partial VIN, and treating that as data is how a wrong rule
+// ships. The digit is perfectly consistent everywhere it verified:
+//   vin[5] 1 -> 1500   2 -> 2500   3 or 4 -> 3500
+//
+// 3500 SPLIT OUT: it only verified for MY2006-2007. From 2008 the 3500 rows
+// come back with a blank or "Ram Chassis Cab" Model, which fails the agreement
+// check, so those years get a table WITHOUT 3500 and such a truck falls through
+// unidentified. Fail closed, the same call MY2010 GMC got in the GMT900 work.
+static const SeriesRow RAM_PRE2013_SERIES[] = {
+  {"1","Ram 1500"}, {"2","Ram 2500"}, {"34","Ram 3500"},
+};
+static const SeriesRow RAM_PRE2013_SERIES_NO35[] = {
+  {"1","Ram 1500"}, {"2","Ram 2500"},
+};
+
+// vin[4] is the model line, and ITS MEANING MOVES YEAR TO YEAR — this is the
+// whole reason a single pattern could not be shipped for the span:
+//
+//   2006-07  A R S U      2008-09  A B R S U V      2010  B P T V   2011  6 B P T V
+//
+// In 2006-07 the same four codes serve 1500, 2500 AND 3500, so vin[4] carries
+// no tonnage at all there; by 2010 it does. A rule derived from the 2010 seed
+// alone matched only 26 of 60 line/tonnage pairs across the span.
+//
+// It is an ALLOWLIST, not a Dakota denylist, because 1D7 is shared with several
+// non-pickups whose codes collide across years: Dakota E/W, Grand Caravan N,
+// Journey 5/G/H, Nitro 9/U. 'U' is a Ram in 2006-2009 and a Nitro in 2011;
+// 'G'/'H' are Ram 3500 in 2007-2010 and a Journey in 2011. Only an
+// admit-what-was-verified list survives that. '5' is excluded from 2011: it
+// decoded as BOTH a Ram 1500 and a Journey, so it is contradictory, not data.
+static bool ramPre2013(const char* vin) {
+  switch (vinAt(vin, 9)) {                       // model-year code
+    case '6': case '7': return vinIs("ARSU",   vinAt(vin, 4));   // 2006-2007
+    case '8': case '9': return vinIs("ABRSUV", vinAt(vin, 4));   // 2008-2009
+    case 'A':           return vinIs("BPTV",   vinAt(vin, 4));   // 2010
+    case 'B':           return vinIs("6BPTV",  vinAt(vin, 4));   // 2011
+  }
+  return false;
+}
 static const EngineRow GM_LD_ENGINES[] = {
   {'8',"3.0L Duramax I6",true}, {'D',"5.3L V8",false}, {'K',"2.7L I4 Turbo",false}, {'L',"6.2L V8",false},
 };
@@ -601,6 +655,21 @@ static const LineRow LINES[] = {
   // Ram -- verified 2013-2024.
   {"1C6","DEFGHJKLMNPR",ramBrand,5,ARR(RAM_SERIES),nullptr,ARR(RAM_ENGINES)},
   {"3C6","DEFGHJKLMNPR",ramBrand,5,ARR(RAM_SERIES),nullptr,ARR(RAM_ENGINES)},
+  // Pre-2013 Dodge Ram. 1D7 and 3D7 were swept independently and behave
+  // IDENTICALLY, so they share tables. NO ENGINE TABLE ON PURPOSE: sweeping
+  // vin[7] returns Chrysler's whole make-wide alphabet regardless of line or
+  // tonnage -- the identical 18-entry list came back for 1500, 2500 and 3500,
+  // including a 1.8L four and an 8.4L V10. That is vPIC decoding an
+  // under-specified VIN against a global table, not the engines a Ram could
+  // have. Same call, same reason, as the F-150 rows above: name the truck and
+  // say nothing about what is under the hood.
+  // MY2012 is ABSENT deliberately -- vPIC answers ErrorCode 8 ("No detailed
+  // data available currently") for every 2012 combination on every candidate
+  // WMI, so the year is a data gap, not a pattern we failed to find.
+  {"1D7","67",ramPre2013,5,ARR(RAM_PRE2013_SERIES),nullptr,nullptr,0},
+  {"3D7","67",ramPre2013,5,ARR(RAM_PRE2013_SERIES),nullptr,nullptr,0},
+  {"1D7","89AB",ramPre2013,5,ARR(RAM_PRE2013_SERIES_NO35),nullptr,nullptr,0},
+  {"3D7","89AB",ramPre2013,5,ARR(RAM_PRE2013_SERIES_NO35),nullptr,nullptr,0},
   // GM light duty -- verified 2022-2026.
   {"1GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},
   {"3GT","NPRST",gmLightDuty,-1,nullptr,0,"GMC Sierra 1500",ARR(GM_LD_ENGINES)},

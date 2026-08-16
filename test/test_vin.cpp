@@ -441,6 +441,53 @@ int main() {
   }
   check(!vinIdentify("1C6SJ6FT0L2345678", &id), "1C6 with vin[4]!='R' (Jeep) -> not a Ram");
 
+  // ---- Pre-2013 Dodge Ram: same position, different alphabet --------------
+  // Tonnage is vin[5] here too, but 1/2/3 instead of 67BEF/45/23, and the line
+  // gate at vin[4] CHANGES MEANING BY YEAR. Verified against vPIC 2026-08-16
+  // requiring Model=="Ram" AND a Series carrying the tonnage.
+  struct OldRamCase { const char* vin; const char* name; };
+  static const OldRamCase RAM_OLD[] = {
+    {"1D70A180062345678", "Ram 1500"},   // 2006, line A
+    {"1D70S280062345678", "Ram 2500"},   // 2006, line S
+    {"1D70R380062345678", "Ram 3500"},   // 2006, line R -- 3500 verified 2006-07
+    {"1D70U480072345678", "Ram 3500"},   // 2007, tonnage digit 4 is also 3500
+    {"3D70B180082345678", "Ram 1500"},   // 2008, 3D7 behaves identically to 1D7
+    {"1D70V180092345678", "Ram 1500"},   // 2009, line V admitted from 2008
+    {"1D70P2800A2345678", "Ram 2500"},   // 2010, line P
+    {"1D70T2800B2345678", "Ram 2500"},   // 2011, line T
+  };
+  for (const auto& c : RAM_OLD) {
+    VinIdentity r{};
+    check(vinIdentify(c.vin, &r) && strcmp(r.name, c.name)==0, c.vin);
+    // No engine table for this era on purpose -- vPIC returns Chrysler's whole
+    // make-wide alphabet for any tonnage, so nothing about the engine is known.
+    check(r.engine[0] == '\0', "pre-2013 Ram names no engine");
+  }
+
+  // The year gate is load-bearing: vin[5]='2' is a 2500 here and a 3500 in the
+  // modern table. Reading a 2006 truck with the modern codes names it one size
+  // too big, so the eras must never be merged.
+  { VinIdentity a{}, b{};
+    vinIdentify("1D70S280062345678", &a);          // 2006 -> 2500
+    vinIdentify("1C6SR2FL0L2345678", &b);        // 2013+ -> 3500
+    check(strcmp(a.name,"Ram 2500")==0 && strcmp(b.name,"Ram 3500")==0,
+          "vin[5]='2' means 2500 pre-2013 and 3500 after"); }
+
+  // vin[4] is an ALLOWLIST per year, not a Dakota denylist, because the codes
+  // collide across years. 'U' is a Ram 2006-2009 and a Nitro in 2011; 'G'/'H'
+  // are a Ram 3500 2007-2010 and a Journey in 2011.
+  check(!vinIdentify("1D70U1800B2345678", &id), "2011 line U (Nitro) -> not a Ram");
+  check( vinIdentify("1D70U180062345678", &id), "2006 line U IS a Ram");
+  check(!vinIdentify("1D70E180062345678", &id), "line E (Dakota) -> not a Ram");
+  check(!vinIdentify("1D70W1800A2345678", &id), "line W (Dakota) -> not a Ram");
+  // '5' in 2011 decoded as BOTH a Ram 1500 and a Journey -- contradictory, so
+  // it is excluded rather than guessed.
+  check(!vinIdentify("1D7051800B2345678", &id), "2011 line 5 is contradictory -> excluded");
+  // MY2012 ('C') is a vPIC data gap, not a pattern we missed: fail closed.
+  check(!vinIdentify("1D70B1800C2345678", &id), "MY2012 is unverified -> not identified");
+  // 3500 only verified 2006-07; later years fall through rather than guess.
+  check(!vinIdentify("1D70B3800A2345678", &id), "2010 tonnage 3 unverified -> not identified");
+
   // ---- GM: series from vin[3]+vin[4], engine at vin[7] --------------------
   struct GmCase { const char* vin; const char* name; const char* engine; };
   static const GmCase GM[] = {
