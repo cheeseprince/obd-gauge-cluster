@@ -81,6 +81,12 @@ SRC_ENC   = test_encoder_logic.cpp ../src/encoder_logic.cpp
 BIN_BRANK = test_ble_rank
 SRC_BRANK = test_ble_rank.cpp ../src/ble_rank.cpp
 
+# htmlEscape (the F-03 XSS control) and parseSemver (decides whether an OTA
+# installs). Header-only: both were extracted from .cpp files that no test
+# links, so they had zero coverage until 2026-08-16.
+BIN_PSEM  = test_portal_semver
+SRC_PSEM  = test_portal_semver.cpp
+
 BIN_RING  = test_byte_ring
 SRC_RING  = test_byte_ring.cpp ../src/byte_ring.cpp
 
@@ -134,7 +140,7 @@ BIN_LFUZZ = fuzz_obd_harness
 SRC_LFUZZ = fuzz_obd_libfuzzer.cpp fuzz_obd_driver.cpp ../src/obd_parse.cpp ../src/readouts.cpp ../src/vehicles/gm_sierra_lz0.cpp ../src/pid_decode.cpp ../src/gauge_model.cpp ../src/vehicle_active.cpp
 
 .PHONY: test clean fuzz test-ota-sign
-test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_PROFF) $(BIN_PROFFX) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH) $(BIN_WDTHB)
+test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_PROFF) $(BIN_PROFFX) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_PSEM) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH) $(BIN_WDTHB)
 	./$(BIN_PID)
 	./$(BIN_PARSE)
 	./$(BIN_GAUGE)
@@ -170,6 +176,7 @@ test: $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(B
 	./$(BIN_VREG)
 	./$(BIN_NTP)
 	./$(BIN_BRANK)
+	./$(BIN_PSEM)
 	./$(BIN_VIN)
 	./$(BIN_FUZZ)
 	./$(BIN_LFUZZ)
@@ -280,6 +287,9 @@ $(BIN_ENC): $(SRC_ENC) ../src/encoder_logic.h
 $(BIN_BRANK): $(SRC_BRANK) ../src/ble_rank.h
 	$(CXX) $(CXXFLAGS) $(SRC_BRANK) -o $(BIN_BRANK)
 
+$(BIN_PSEM): $(SRC_PSEM) ../src/html_escape.h ../src/semver.h
+	$(CXX) $(CXXFLAGS) $(SRC_PSEM) -o $(BIN_PSEM)
+
 $(BIN_RING): $(SRC_RING) ../src/byte_ring.h
 	$(CXX) $(CXXFLAGS) $(SRC_RING) -o $(BIN_RING)
 
@@ -311,4 +321,4 @@ $(BIN_BOOT): $(SRC_BOOT) ../src/boot_banner.h
 	$(CXX) $(CXXFLAGS) $(SRC_BOOT) -o $(BIN_BOOT)
 
 clean:
-	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_PROFF) $(BIN_PROFFX) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH)
+	rm -f $(BIN_PID) $(BIN_PARSE) $(BIN_GAUGE) $(BIN_MOCK) $(BIN_NAV) $(BIN_BTN) $(BIN_HIST) $(BIN_SCHED) $(BIN_RDT) $(BIN_HOLD) $(BIN_ENC) $(BIN_RING) $(BIN_ECON) $(BIN_ACK) $(BIN_LAYOUT) $(BIN_SET) $(BIN_MENU) $(BIN_CONN) $(BIN_RTC) $(BIN_SDLOG) $(BIN_SOLAR) $(BIN_CREDS) $(BIN_OTAC) $(BIN_PROF) $(BIN_ADDR) $(BIN_OQ) $(BIN_PROFB) $(BIN_PROFG) $(BIN_PROFA) $(BIN_PROFJ) $(BIN_PROFF) $(BIN_PROFFX) $(BIN_VREG) $(BIN_NTP) $(BIN_BRANK) $(BIN_PSEM) $(BIN_VIN) $(BIN_FUZZ) $(BIN_LFUZZ) $(BIN_BOOT) $(BIN_SWATCH)

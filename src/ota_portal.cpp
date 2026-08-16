@@ -10,6 +10,7 @@
 #include <esp_random.h>
 #include "wifi_cred_store.h"
 #include "solar.h"
+#include "html_escape.h"   // htmlEscape — extracted so the host suite can pin it
 
 // SoftAP password — random per DEVICE, generated on the first WiFi-setup run
 // and persisted in NVS; shown on the device screen while the portal runs so
@@ -71,24 +72,6 @@ static bool isNumericField(const String& s) {
     else return false;
   }
   return digit;
-}
-
-// HTML-escape untrusted text (scanned/saved SSIDs) before placing it in the
-// portal page — a crafted SSID must not be able to inject markup or script.
-static String htmlEscape(const String& s) {
-  String o; o.reserve(s.length() + 8);
-  for (unsigned i = 0; i < s.length(); i++) {
-    char c = s[i];
-    switch (c) {
-      case '&':  o += "&amp;";  break;
-      case '<':  o += "&lt;";   break;
-      case '>':  o += "&gt;";   break;
-      case '"':  o += "&quot;"; break;
-      case '\'': o += "&#39;";  break;
-      default:   o += c;
-    }
-  }
-  return o;
 }
 
 static WebServer*   g_srv  = nullptr;
