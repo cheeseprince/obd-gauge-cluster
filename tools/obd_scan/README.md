@@ -1,7 +1,8 @@
 # obd_scan
 
 A host-side OBD-II discovery scanner: point it at an unknown vehicle over a
-WiFi ELM327 adapter and it works out which CAN headers answer, which PID
+WiFi ELM327 adapter (or a BLE one, via `ble_bridge` below) and it works out
+which CAN headers answer, which PID
 blocks exist, logs a drive, and statistically ranks which decoded byte
 offsets correlate with known reference signals (RPM, speed, coolant, etc.) —
 the same reasoning that identified GM oil pressure by hand, automated.
@@ -60,6 +61,34 @@ scripted ELM327 over a real loopback TCP socket (`tests/fake_elm.py`).
    ```
    python3 -m obd_scan --host 192.168.0.10 --port 35000 census --vehicle ford
    ```
+
+### BLE adapters — `ble_bridge`
+
+The scanner speaks TCP only. A **BLE** adapter (vLinker MS, and the `fff0` /
+`ffe0` / Nordic-UART clones) is reached by running a bridge that fronts it with
+a local TCP port, so the scanner itself needs no changes and no new flags
+beyond `--host`:
+
+```
+pip install bleak                                   # optional extra, BLE only
+python3 -m obd_scan.ble_bridge --name vlinker       # terminal 1
+python3 -m obd_scan --host 127.0.0.1 census         # terminal 2
+```
+
+The bridge carries the same profile table and the same ranking rules as the
+firmware (`src/ble_obd_source.cpp`, `src/ble_rank.cpp`): a service-UUID match
+outranks a name, a name outranks signal strength. It picks
+write-without-response when the adapter advertises it, chunks writes to the
+negotiated MTU, and accepts one client at a time.
+
+`bleak` rather than BlueZ D-Bus because field scanning happens from a Mac, and
+only bleak works on CoreBluetooth. It is an optional dependency: everything
+else in `obd_scan` imports and tests without it.
+
+**Not yet run against a real BLE adapter.** The pure logic (ranking, profile
+binding, MTU chunking) and the full byte path against a stub client are
+host-tested in `tests/test_ble_bridge.py`; GATT discovery on real hardware is
+not, because it cannot be. Treat the first use on a car as bring-up.
 
 ## Session flow
 
