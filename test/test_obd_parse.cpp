@@ -50,8 +50,40 @@ int main() {
   std::printf("mode 22 (7DF functional + NAK tail):\n");
   check("pos-then-nak", parseObdResponse("62 58 6F 09\r7F 22 22\r\r", 0x22, 0x586F, d), true);
   checkbyte("pos-then-nak-A", d.size() >= 1 ? d[0] : -1, 0x09);   // real value; trailing NAK ignored by byte-0 decode
-  // NAK-first: byte 0 is 0x7F != 0x62 -> whole reply rejected -> caller keeps last good value.
-  check("nak-then-pos", parseObdResponse("7F 22 22\r62 58 6F 09\r\r", 0x22, 0x586F, d), false);
+  // NAK-FIRST. The order the two frames arrive in is NOT stable: a 2026-08-24
+  // sweep of an F10 on 7DF (462 answering DIDs) saw the NAK land ahead of the
+  // positive frame on 4 of them, 0.9%. Concatenating puts 0x7F at byte 0, which
+  // the service check rejects -- so those reads used to be dropped outright and
+  // the caller held its previous value. parseObdResponse now falls back to a
+  // per-line scan and finds the positive frame wherever it sits in the buffer.
+  check("nak-then-pos", parseObdResponse("7F 22 22\r62 58 6F 09\r\r", 0x22, 0x586F, d), true);
+  checkbyte("nak-then-pos-A", d.size() >= 1 ? d[0] : -1, 0x09);
+  // The real 2-byte shape, both orderings, must yield the SAME payload -- this is
+  // the pair that matters for decBmwOilPress (a u16 read of 0x0A72 = 2674 mbar).
+  check("oilp-pos-then-nak", parseObdResponse("62 58 6F 0A 72\r7F 22 22\r\r", 0x22, 0x586F, d), true);
+  checkbyte("oilp-pos-then-nak-A", d.size() >= 2 ? d[0] : -1, 0x0A);
+  checkbyte("oilp-pos-then-nak-B", d.size() >= 2 ? d[1] : -1, 0x72);
+  check("oilp-nak-then-pos", parseObdResponse("7F 22 22\r62 58 6F 0A 72\r\r", 0x22, 0x586F, d), true);
+  checkbyte("oilp-nak-then-pos-A", d.size() >= 2 ? d[0] : -1, 0x0A);
+  checkbyte("oilp-nak-then-pos-B", d.size() >= 2 ? d[1] : -1, 0x72);
+  // Oil temp 224402, NAK first -- the wire shape, frames separated by \r.
+  check("oiltemp-nak-first", parseObdResponse("7F 22 22\r62 44 02 00 BA\r\r>", 0x22, 0x4402, d), true);
+  checkbyte("oiltemp-nak-first-A", d.size() >= 2 ? d[0] : -1, 0x00);
+  checkbyte("oiltemp-nak-first-B", d.size() >= 2 ? d[1] : -1, 0xBA);
+  // The SAME reply with no separator between the two frames. NOT AN OBSERVED WIRE
+  // SHAPE -- every capture in hand is \r-separated, and this form is how a sweep
+  // log rendered it. It exercises fallback 2, which exists because a coalesced
+  // buffer would otherwise be discarded silently, and a silently dropped reading
+  // is close to undiagnosable from the field. Six lines of insurance with no
+  // false-positive surface: only an exact 7F <service> <NRC> triple is skipped,
+  // and only from the front.
+  check("oiltemp-nak-no-separator", parseObdResponse("7F2222 62440200BA  >", 0x22, 0x4402, d), true);
+  checkbyte("oiltemp-nak-no-sep-A", d.size() >= 2 ? d[0] : -1, 0x00);
+  checkbyte("oiltemp-nak-no-sep-B", d.size() >= 2 ? d[1] : -1, 0xBA);
+  // A NAK with no positive frame anywhere is still a rejection, not a value.
+  check("nak-only", parseObdResponse("7F 22 22\r\r", 0x22, 0x586F, d), false);
+  // ...and a positive frame for a DIFFERENT DID must not be mistaken for ours.
+  check("nak-then-other-did", parseObdResponse("7F 22 22\r62 44 02 00 BA\r\r", 0x22, 0x586F, d), false);
   // Two positive responders concatenated: first one wins (byte-0 decoders read d[0]).
   check("two-positive", parseObdResponse("62 58 6F 09\r62 58 6F 11\r\r", 0x22, 0x586F, d), true);
   checkbyte("two-positive-A", d.size() >= 1 ? d[0] : -1, 0x09);
