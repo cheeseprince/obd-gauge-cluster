@@ -52,18 +52,27 @@ int main() {
   // Payloads below are verbatim from obd-display/bmw_drive.csv.
   {
     auto oilp = READOUTS[(int)StatId::OilP].decode;
-    DecodeCtx ctx{nullptr};
+    // A live context, not {nullptr}: with a real BARO value this exercises the path
+    // the dash actually runs. The fallback path is covered separately below.
+    float vals[(int)StatId::COUNT] = {0};
+    vals[IDX_BARO] = 100.0f;                          // kPa, as logged on the drive
+    DecodeCtx ctx{vals};
     auto psi = [&](uint16_t raw) {
       const uint8_t d[2] = {(uint8_t)(raw >> 8), (uint8_t)(raw & 0xFF)};
       return oilp(d, 2, ctx);
     };
     // Observed span of the drive: 2324 mbar (idle) .. 4776 mbar (loaded).
-    assert(std::fabs(psi(0x0914) - 33.71f) < 0.2f);   // 2324 mbar -> 33.7 psi
-    assert(std::fabs(psi(0x12A8) - 69.27f) < 0.2f);   // 4776 mbar -> 69.3 psi
+    // GAUGE, not absolute: the sensor reports absolute and the decoder now
+    // subtracts baro. With the drive's logged 100 kPa these become:
+    assert(std::fabs(psi(0x0914) - 19.20f) < 0.2f);   // 2324 mbar abs -> 19.2 psi gauge
+    assert(std::fabs(psi(0x12A8) - 54.77f) < 0.2f);   // 4776 mbar abs -> 54.8 psi gauge
     // A byte-0 decode would have called the idle sample 9 psi. Anything under
     // 20 psi on a running engine is an oil-pressure-warning condition, so this
     // is the assertion that would have caught the original bug.
-    assert(psi(0x0914) > 25.0f);
+    assert(psi(0x0914) > 15.0f);
+    // The actual key-on/engine-OFF capture: 0x0422 = 1058 mbar against 100 kPa baro
+    // must read ~0. This is the assertion that proves the sensor is ABSOLUTE.
+    assert(psi(0x0422) < 2.0f);
 
     // 0xFF in the HIGH byte was the old sentinel check; a 16-bit read must not
     // inherit it, because 0xFFxx is simply an out-of-range pressure. Reject the
@@ -133,8 +142,11 @@ int main() {
     DecodeCtx ctx{nullptr};
     const uint8_t rail[2] = {0x02, 0xE6};              // probe: 412302E6
     assert(std::fabs(READOUTS[(int)StatId::Rail].decode(rail, 2, ctx) - 1076.2f) < 1.0f);
+    // MAF (0110) is live on this car, but the row is deliberately INACTIVE: FUEL
+    // RATE already polls 0110 and obd_schedule does not dedupe by command, so a
+    // second row on the same PID would cost a wasted round trip every cycle.
+    assert(READOUTS[(int)StatId::Maf].cmd == nullptr);
     const uint8_t maf[2] = {0x02, 0xCC};               // probe: 411002CC
-    assert(std::fabs(READOUTS[(int)StatId::Maf].decode(maf, 2, ctx) - 7.16f) < 0.01f);
     const uint8_t ped[1] = {0x23};                     // probe: 414923
     assert(std::fabs(READOUTS[(int)StatId::Pedal].decode(ped, 1, ctx) - 13.73f) < 0.05f);
 
@@ -183,7 +195,11 @@ int main() {
     float b = dec(withNak, 5, ctx);
     assert(!std::isnan(a));
     assert(a == b);                                    // NAK tail ignored
-    assert(std::fabs(a - 14.84f) < 0.05f);             // 1023 mbar
+    // 1023 mbar is essentially a key-on/engine-off reading, so on the
+    // std-atmosphere fallback path it must land at ~0 psi. That demonstrates the
+    // absolute->gauge conversion far better than the old 14.84 ever did.
+    assert(std::fabs(a - 0.14f) < 0.10f);
+
   }
   // Boost decode: MAP 201 kPa vs 101.325 baseline -> ~14 psi gauge; vacuum
   // (40 kPa) clamps to 0 (boostPsi floors negative diff).

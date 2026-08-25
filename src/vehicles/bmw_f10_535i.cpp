@@ -70,20 +70,41 @@ static float decNone(const uint8_t*, int, const DecodeCtx&)      { return 0.0f; 
 // the F10 to calibrate against, so ALARMS STAY OFF — a low-pressure limit needs
 // a sourced N55 minimum and a hot-idle sample, which is the lowest-pressure
 // state and is not in this warm-drive log. Any refinement lives in THIS decoder.
-static float decBmwOilPress(const uint8_t* d, int n, const DecodeCtx&) {
+// ⚠️ THE SENSOR IS ABSOLUTE, so the raw value must have barometric subtracted.
+// Measured three ways on 2026-08-23: ignition-on/engine-OFF it reads 1057-1058
+// mbar against a baro of 1000; the engine-off rows inside the drive read 0.3 psi
+// once corrected (14.7 psi uncorrected, which is impossible with the engine
+// stopped); and the final row as the engine died reads 982 mbar, straight back to
+// atmospheric. Median overstatement without this correction: 14.5 psi -- which is
+// exactly the offset that would mask a genuine loss of pressure.
+static float decBmwOilPress(const uint8_t* d, int n, const DecodeCtx& ctx) {
   if (n < 2) return NAN;                              // needs the full 16 bits
   const uint16_t mbar = (uint16_t)((d[0] << 8) | d[1]);
   if (mbar == 0xFFFF) return NAN;                     // all-ones = not available
-  return (float)mbar * 0.0145038f;                    // mbar -> psi
+  float baroMbar = 1013.25f;                          // std-atmosphere fallback
+  if (ctx.values) {
+    const float kpa = ctx.values[IDX_BARO];           // NaN fails both comparisons
+    if (kpa >= 60.0f && kpa <= 115.0f) baroMbar = kpa * 10.0f;
+  }
+  float gauge = (float)mbar - baroMbar;
+  if (gauge < 0.0f) gauge = 0.0f;                     // clamp, as fBoostPsi does
+  return gauge * 0.0145038f;                          // mbar -> psi
 }
 // Boost from standard MAP (010B, byte A = kPa absolute; PID confirmed present in
 // the F10 census). Gauge boost against a fixed sea-level baseline (101.325 kPa),
 // the same no-baro-reference approach as the Audi skeleton. Clean Mode-01
 // single-frame reply — only Mode-22 draws the 7DF NAK tail — so a normal byte-0
 // read is safe. boostPsi() converts (map - baro) kPa to psi.
-static float decBmwBoostPsi(const uint8_t* d, int n, const DecodeCtx&) {
+static float decBmwBoostPsi(const uint8_t* d, int n, const DecodeCtx& ctx) {
   if (n < 1 || d[0] == 0xFF) return NAN;   // 0xFF = ELM "no data" pad; hold last good, not a bogus ~22 psi
-  return boostPsi(decodeMapKpa(d[0]), 101.325f);
+  // Was a hardcoded 101.325 kPa sea-level baseline. The 2026-08-23 drive logged
+  // baro at 99-100 kPa, so the fixed value overstated boost by ~0.2 psi at rest.
+  float baroKpa = 101.325f;
+  if (ctx.values) {
+    const float kpa = ctx.values[IDX_BARO];
+    if (kpa >= 60.0f && kpa <= 115.0f) baroKpa = kpa;
+  }
+  return boostPsi(decodeMapKpa(d[0]), baroKpa);
 }
 
 // Oil temperature 224402@7DF — the community "oil temp after filter" DID, in
@@ -174,14 +195,23 @@ static float decBmwFuelGphFromMaf(const uint8_t* d, int n, const DecodeCtx&) {
 // calibration value) BUT THE MAGNITUDES WILL NOT: a stock car will read lower, and
 // its reference torque should be checked before any threshold is set. Alarms are
 // off on all three rows for exactly this reason.
-static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx&) {
+static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx& ctx) {
   if (n < 2) return NAN;
   const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
   if (raw == 0xFFFF) return NAN;
-  // Percent of THIS DME's reference torque (224517 = 4013 raw, measured constant
-  // across all 486 rows). Expressed as a ratio of raw counts so it stays correct
-  // whatever the Nm scale turns out to be -- and it is what computeHorsepower wants.
-  return (float)raw * (100.0f / 4013.0f);
+  // Percent of THIS DME's OWN reference torque, read live from 224517 rather than
+  // hardcoded. The donor car is tuned and reports 501.6 Nm where a stock N55
+  // reference is ~400 Nm (raw ~3200); a fixed 4013 denominator would make a stock
+  // car under-read by ~25%, and computeHorsepower then multiplies that by the LIVE
+  // reference -- so the two errors COMPOUND rather than cancel. This PR's own
+  // framing is that the scale transfers and the magnitudes do not, so the
+  // denominator must not be a magnitude measured on one car.
+  float refCounts = 4013.0f;                     // fallback: this car's measured value
+  if (ctx.values) {
+    const float refNm = ctx.values[(int)StatId::RefTq];
+    if (refNm > 100.0f && refNm < 1000.0f) refCounts = refNm / 0.125f;
+  }
+  return (float)raw * (100.0f / refCounts);
 }
 static float decBmwRefTorqueNm(const uint8_t* d, int n, const DecodeCtx&) {
   if (n < 2) return NAN;
@@ -192,7 +222,6 @@ static float decBmwRefTorqueNm(const uint8_t* d, int n, const DecodeCtx&) {
 
 // Straight legislated reads; the helpers already exist in pid_decode.cpp.
 static float decBmwRailPsi(const uint8_t* d, int n, const DecodeCtx&) { return n>1 ? decodeRailPsi(d[0], d[1]) : NAN; }
-static float decBmwMafGps(const uint8_t* d, int n, const DecodeCtx&)  { return n>1 ? decodeMafGps(d[0], d[1]) : NAN; }
 static float decBmwPedalPct(const uint8_t* d, int n, const DecodeCtx&){ return n>0 ? decodeLoadPct(d[0]) : NAN; }  // 49: A*100/255, same form as load
 
 #define T(wh,ch,wl,cl) Thresholds{wh,ch,wl,cl}
@@ -244,7 +273,7 @@ static const ReadoutDef BMW_READOUTS[] = {
   {"MPG AVG",   "",             1,   T(NA,NA,NA,NA),  40,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
   {"GAL/100",   "",             1,   T(NA,NA,NA,NA),  10,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
   {"L/100km",   "",             1,   T(NA,NA,NA,NA),  15,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
-  {"RAIL",      "psi",          0,   T(NA,NA,NA,NA),  2500,  "0123",    0,  0,  decBmwRailPsi,   Quantity::PressHi},             // ACTIVE Mode-01; gasoline DI ~1076 psi at idle, so full-scale 2500 not the diesel 36000
+  {"RAIL",      "psi",          0,   T(NA,NA,NA,NA),  2500,  "0123",    0,  1,  decBmwRailPsi,   Quantity::PressHi},             // ACTIVE Mode-01; gasoline DI ~1076 psi at idle, so full-scale 2500 not the diesel 36000
   {"HP",        "hp",           0,   T(NA,NA,NA,NA),  400,   nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},   // COMPUTED — now valid: computeHorsepower(ActTq%, RefTq Nm, rpm)
   {"DEF",       "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  1,  decNone,         Quantity::None},                // diesel
   {"FUEL%",     "%",            0,   T(NA,NA,NA,NA),  100,   "012F",    0,  1,  decFuelLevel,    Quantity::None},                // ACTIVE Mode-01
@@ -253,7 +282,7 @@ static const ReadoutDef BMW_READOUTS[] = {
   {"TORQUE",    "%",            0,   T(NA,NA,NA,NA),  100,   "2258BA",  0,  0,  decBmwTorquePct, Quantity::None},                // ACTIVE 2258BA@7DF — crank torque, % of this DME reference; UNNAMED in every community table
   {"RefTq",     "",             0,   T(NA,NA,NA,NA),  1000,  "224517",  0,  2,  decBmwRefTorqueNm, Quantity::None},              // ACTIVE 224517@7DF — constant 4013 = 501.6 Nm (tuned car; stock ref ~400)
   {"BARO",      "kPa",          0,   T(NA,NA,NA,NA),  110,   "0133",    0,  2,  decBaro,         Quantity::None},                // ACTIVE Mode-01
-  {"MAF",       "g/s",          0,   T(NA,NA,NA,NA),  300,   "0110",    0,  0,  decBmwMafGps,    Quantity::None},                // ACTIVE Mode-01; boost still from MAP — this is its own tile
+  {"MAF",       "g/s",          0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  1,  decNone,         Quantity::None},                // 0110 IS live, but FUEL RATE already polls it and obd_schedule does not dedupe by cmd — one PID, one request
   {"AMBIENT",   "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  150,   "0146",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01
   {"EGR",       "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  1,  decNone,         Quantity::None},                // unsupported
   {"PEDAL",     "%",            0,   T(NA,NA,NA,NA),  100,   "0149",    0,  0,  decBmwPedalPct,  Quantity::None},                // ACTIVE Mode-01 accelerator pedal D
@@ -292,7 +321,7 @@ static const StatId PAGES[][4] = {
   { StatId::Rpm,     StatId::Speed,    StatId::Intake, StatId::Ambient },// DRIVE
   { StatId::Baro,    StatId::FuelLevel, StatId::Volts, _ },              // MISCELLANEOUS
   { StatId::MpgInst, StatId::MpgAvg,   StatId::Gal100mi, StatId::L100km },// TRIP — all four computed off FuelRate
-  { StatId::Oil,     StatId::Rail,     StatId::Maf,   StatId::FuelRate },  // FLUIDS & FUEL
+  { StatId::Oil,     StatId::Rail,     StatId::FuelRate, _ },             // FLUIDS & FUEL
   { StatId::ActTq,   StatId::RefTq,    StatId::Hp,    StatId::Pedal },     // POWER — demand next to delivery
 };
 #undef _

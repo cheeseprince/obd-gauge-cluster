@@ -23,9 +23,18 @@ nothing swept. The candidate this project was hunting was never in a candidate l
 | `224418` oil condition | 0 | unpopulated, or another scale |
 
 **The `×0.75 − 48` scale is no longer assumed.** Two DIDs from the same blocks land on
-physically forced values. ⚠️ But `224402` is **one warm-idle sample** — there is no cold→hot
-ramp for it, so alarms stay OFF and this is a strong candidate, not a confirmed
-identification. One cold start logging `224402` closes it.
+physically forced values.
+
+**And it is no longer a single sample.** The 2026-08-24 drive (486 rows) gives it shape:
+`224402` spans **93.0–115.5 °C**, and `224408` — which decodes on a *different* scale family
+(**×0.1**, raw 936–1155; on ×0.75−48 the same raw would read 654–818 °C) — tracks it at
+**r = 0.9986**, mean offset 0.37 °C. Thermal lag is visible and correct: oil sits 3.2 °C
+*below* coolant over the first three minutes, crosses over as load heats it, and settles ~11 °C
+*above*. Coolant is thermostatically held; oil is heated by load and carries the larger thermal
+mass.
+
+⚠️ What is still missing is only the **cold end below 93 °C** — every drive so far started
+warm. Alarms stay OFF: a threshold needs that range plus a sourced N55 limit.
 
 **The drive's own candidates are closed out.** `225817` and `2258EB` are byte-identical on
 99.51 % of 1427 rows, span only 9 distinct values while coolant moved 30 → 107 °C, and
