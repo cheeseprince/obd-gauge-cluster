@@ -168,11 +168,19 @@ bool parseObdResponse(const std::string& resp, uint8_t mode, uint16_t pid,
   // another module's 7F NAK ahead of the positive reply). See the note above.
   if (parseFirstPositiveLine(resp, mode, pid, data)) return true;
 
-  // Fallback 2: the same situation, but with the frames NOT separated by \r --
-  // some adapters/log captures render a multi-responder buffer as one run of hex.
-  // Strip well-formed negative-response frames (7F <service> <NRC>, exactly three
-  // bytes) off the FRONT and retry. Only that exact shape is skipped, so this
-  // cannot walk into payload data looking for a match.
+  // Fallback 2: the same situation with the frames NOT separated by \r.
+  //
+  // ⚠️ THIS SHAPE HAS NOT BEEN OBSERVED ON THE WIRE. Every capture in hand is
+  // \r-separated (fallback 1 covers all four NAK-first DIDs the F10 sweep found);
+  // this form is how a sweep log RENDERED them. It is defensive, kept because the
+  // failure it prevents -- a coalesced buffer discarded whole -- costs a silently
+  // dropped reading, which is close to undiagnosable from the field, and the guard
+  // has no false-positive surface: only a well-formed negative-response frame
+  // (7F <service> <NRC>, exactly three bytes) is stripped, and only from the FRONT,
+  // so it cannot walk into payload data hunting for a match.
+  //
+  // If a future capture shows frames are always \r-separated on every adapter this
+  // project supports, delete this block and its two tests -- fallback 1 stands alone.
   std::string rest = s;
   while (rest.size() >= 6 && rest[0] == '7' && rest[1] == 'F') {
     rest.erase(0, 6);

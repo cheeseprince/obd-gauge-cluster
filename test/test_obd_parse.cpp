@@ -66,10 +66,20 @@ int main() {
   check("oilp-nak-then-pos", parseObdResponse("7F 22 22\r62 58 6F 0A 72\r\r", 0x22, 0x586F, d), true);
   checkbyte("oilp-nak-then-pos-A", d.size() >= 2 ? d[0] : -1, 0x0A);
   checkbyte("oilp-nak-then-pos-B", d.size() >= 2 ? d[1] : -1, 0x72);
-  // Verbatim from the sweep: oil temp 224402, NAK first, prompt on the same line.
-  check("oiltemp-nak-first", parseObdResponse("7F2222 62440200BA  >", 0x22, 0x4402, d), true);
+  // Oil temp 224402, NAK first -- the wire shape, frames separated by \r.
+  check("oiltemp-nak-first", parseObdResponse("7F 22 22\r62 44 02 00 BA\r\r>", 0x22, 0x4402, d), true);
   checkbyte("oiltemp-nak-first-A", d.size() >= 2 ? d[0] : -1, 0x00);
   checkbyte("oiltemp-nak-first-B", d.size() >= 2 ? d[1] : -1, 0xBA);
+  // The SAME reply with no separator between the two frames. NOT AN OBSERVED WIRE
+  // SHAPE -- every capture in hand is \r-separated, and this form is how a sweep
+  // log rendered it. It exercises fallback 2, which exists because a coalesced
+  // buffer would otherwise be discarded silently, and a silently dropped reading
+  // is close to undiagnosable from the field. Six lines of insurance with no
+  // false-positive surface: only an exact 7F <service> <NRC> triple is skipped,
+  // and only from the front.
+  check("oiltemp-nak-no-separator", parseObdResponse("7F2222 62440200BA  >", 0x22, 0x4402, d), true);
+  checkbyte("oiltemp-nak-no-sep-A", d.size() >= 2 ? d[0] : -1, 0x00);
+  checkbyte("oiltemp-nak-no-sep-B", d.size() >= 2 ? d[1] : -1, 0xBA);
   // A NAK with no positive frame anywhere is still a rejection, not a value.
   check("nak-only", parseObdResponse("7F 22 22\r\r", 0x22, 0x586F, d), false);
   // ...and a positive frame for a DIFFERENT DID must not be mistaken for ours.
