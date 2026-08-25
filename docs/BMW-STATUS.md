@@ -4,6 +4,64 @@ subtitle: "Where the port stands, and why the reachability question is largely a
 date: "2026-07-23"
 ---
 
+# ⚠ 2026-08-23 — OIL TEMPERATURE FOUND, in a block the preset never swept
+
+A cold-start drive plus a targeted probe on the same F10 535i. **The oil-temperature
+question is answered, and the reason it stayed open for a month is structural.**
+
+`BMW_F10.blocks` swept `22DAxx`, `2258xx`, `2242xx`, `2245xx`. The community table further
+down this document names oil temp (after filter) as **`4402`** — block **`0x2244`**, which
+nothing swept. The candidate this project was hunting was never in a candidate list.
+
+| DID | Reads | Cross-check at the same moment |
+| :--- | ---: | :--- |
+| **`224402` oil temp** | **91.5 °C** | coolant `0105` = 99 °C — oil 7.5 °C below, correct sign at warm idle |
+| `224300` "coolant" | 94.5 °C | legislated `0105` = 99 °C — **anchors the ×0.75−48 scale** |
+| `224AB0` boost setpoint | 1004 hPa | idling, no boost — it *must* be atmospheric. Validates ×0.0390625 hPa |
+| `224421` oil-press regulator P | 93 | — |
+| `224307` electric water pump | 4 | state enum |
+| `224418` oil condition | 0 | unpopulated, or another scale |
+
+**The `×0.75 − 48` scale is no longer assumed.** Two DIDs from the same blocks land on
+physically forced values. ⚠️ But `224402` is **one warm-idle sample** — there is no cold→hot
+ramp for it, so alarms stay OFF and this is a strong candidate, not a confirmed
+identification. One cold start logging `224402` closes it.
+
+**The drive's own candidates are closed out.** `225817` and `2258EB` are byte-identical on
+99.51 % of 1427 rows, span only 9 distinct values while coolant moved 30 → 107 °C, and
+`correlate` ranks both against **ambient**. Air-side, not oil. `22587E` ramps genuinely but
+scores r = 0.972 against coolant — by this project's own rule, evidence of *another
+coolant-circuit sensor*.
+
+## Addressing, settled by the ECU's own bitmaps
+
+| Header | Result |
+| :--- | :--- |
+| **`7DF`** | **42 PIDs supported** — matching the "42 confirmed live" figure below |
+| **`7E0`** | **silent.** No bitmap; every probe NO DATA, including DIDs known-good on `7DF` |
+| **`7E1`** | **13 PIDs** — a second reachable module, not previously recorded |
+| `7E2` | nothing |
+
+**Do not enable the DME's physical address on an F10 without probing it.** OBDb's crowd map
+showing ~44 PIDs at `7E0` and 3 at `7DF` is inverted for this car.
+
+## Fuel: no fuel-rate PID, but MPG works anyway
+
+`015E` and `019D` both return NO DATA, and **`015E` is absent from the DME's own supported
+bitmap** — the ECU stating it, not a probe failure. MAF (`0110`) is live (1426/1427 rows on
+the drive, r = +0.873 vs load), so fuel rate is derived from it at stoichiometry: **24.0 mpg
+over a 13.6-mile cold mixed drive**, against an EPA 19 city / 29 hwy car, idle 1.57 L/h.
+⚠️ λ=1 breaks under boost, so it over-reads mpg at high load. `0144` EQ_RAT answers on this
+car (λ 0.9978 at idle) and is the correction, not yet applied.
+
+## Oil pressure: ABSOLUTE, confirmed
+
+Engine off it reads **1058 mbar** against baro 1000; engine-off rows inside the drive read
+**0.3 psi** once corrected; the final row as the engine died reads `03D6` = 982 mbar.
+`decBmwOilPress` must subtract ambient baro — the overstatement is **14.5 psi**.
+
+---
+
 # ⚠ SCAN RESULTS — supersedes the pre-scan research below
 
 An F10 535i was scanned on-car (census + sweep + a ~15 min warm drive,

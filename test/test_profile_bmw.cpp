@@ -72,10 +72,49 @@ int main() {
     { const uint8_t d[1] = {0x09}; assert(std::isnan(oilp(d, 1, ctx))); }
   }
 
-  // Oil temp and ATF are STUBBED post-scan: DA25/DA12 @ 6F1/618 are silent
-  // (gateway-blocked), and the 7DF temp candidates need a cold-start drive.
-  assert(READOUTS[(int)StatId::Oil].cmd == nullptr);
+  // OIL TEMP is now ACTIVE on 224402@7DF (probe, 2026-08-23). Block 0x2244 had
+  // never been swept, so the candidate BMW-STATUS.md itself names was never in a
+  // candidate list. ATF stays stubbed — the EGS is still gateway-blocked.
+  assert(strcmp(READOUTS[(int)StatId::Oil].cmd, "224402") == 0);
   assert(READOUTS[(int)StatId::Trans].cmd == nullptr);
+
+  // Decode against the ACTUAL probe sample, taken at warm idle with the
+  // legislated coolant PID reading 99 C at the same moment.
+  {
+    DecodeCtx ctx{nullptr};
+    auto oilt = READOUTS[(int)StatId::Oil].decode;
+    const uint8_t d[2] = {0x00, 0xBA};                 // probe: 62440200BA
+    const float f = oilt(d, 2, ctx);
+    assert(std::fabs(f - 196.7f) < 0.5f);              // 186*0.75-48 = 91.5 C
+    // Oil must read BELOW coolant at warm idle. Coolant was 99 C = 210.2 F.
+    // A decode that put oil ABOVE coolant at idle would be the wrong scale.
+    assert(f < 210.2f);
+    // Same NAK tolerance as oil pressure: take the first two bytes, ignore any
+    // 7F2222 the parser leaves in the buffer.
+    const uint8_t withNak[5] = {0x00, 0xBA, 0x7F, 0x22, 0x22};
+    assert(oilt(withNak, 5, ctx) == f);
+    assert(std::isnan(oilt(d, 1, ctx)));               // short frame
+  }
+
+  // The legislated rows added from the same probe, each against its sample.
+  {
+    DecodeCtx ctx{nullptr};
+    const uint8_t rail[2] = {0x02, 0xE6};              // probe: 412302E6
+    assert(std::fabs(READOUTS[(int)StatId::Rail].decode(rail, 2, ctx) - 1076.2f) < 1.0f);
+    const uint8_t maf[2] = {0x02, 0xCC};               // probe: 411002CC
+    assert(std::fabs(READOUTS[(int)StatId::Maf].decode(maf, 2, ctx) - 7.16f) < 0.01f);
+    const uint8_t ped[1] = {0x23};                     // probe: 414923
+    assert(std::fabs(READOUTS[(int)StatId::Pedal].decode(ped, 1, ctx) - 13.73f) < 0.05f);
+
+    // FUEL RATE is DERIVED from MAF — this DME publishes neither 015E nor 019D,
+    // and 015E is absent from its own supported-PID bitmap. Economy::update()
+    // takes gal/hr, so that is what the decoder must return.
+    const float gph = READOUTS[(int)StatId::FuelRate].decode(maf, 2, ctx);
+    assert(std::fabs(gph - 0.62f) < 0.02f);            // 7.16 g/s air -> 0.62 gal/hr
+    // Sanity: a 3.0 L six at idle burns well under 2 gal/hr. A decoder that
+    // returned air mass instead of fuel mass would be ~14.7x this.
+    assert(gph > 0.1f && gph < 2.0f);
+  }
   // Diesel-only stats are inactive.
   for (StatId s : {StatId::Egt, StatId::DpfDp, StatId::Def, StatId::Nox})
     assert(READOUTS[(int)s].cmd == nullptr);
@@ -89,7 +128,7 @@ int main() {
       assert(READOUTS[idx].cmd != nullptr || (READOUTS[idx].flags & RF_COMPUTED));
     }
   }
-  assert(readoutPageCount() == 3);
+  assert(readoutPageCount() == 5);   // + TRIP and FLUIDS & FUEL
 
   // Oil-pressure NAK tolerance, against the SHAPES ACTUALLY OBSERVED.
   //

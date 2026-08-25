@@ -86,6 +86,71 @@ static float decBmwBoostPsi(const uint8_t* d, int n, const DecodeCtx&) {
   return boostPsi(decodeMapKpa(d[0]), 101.325f);
 }
 
+// Oil temperature 224402@7DF — the community "oil temp after filter" DID, in
+// block 0x2244. That block had NEVER BEEN SWEPT: BMW_F10.blocks covered 22DAxx,
+// 2258xx, 2242xx and 2245xx only, so the candidate docs/BMW-STATUS.md itself
+// names was never in any candidate list. Probed directly 2026-08-23, it answers.
+//
+// Scale is the community BMW temperature form, raw*0.75-48 (C) — and unlike every
+// previous use of that formula on this car, it is now ANCHORED rather than assumed.
+// Two DIDs from the same newly-swept blocks land on physically forced values in the
+// same probe:
+//   224300 ("coolant")      -> 94.5 C, against legislated 0105 reading 99 C
+//   224AB0 (boost setpoint) -> 1004 hPa at idle, where it MUST be ~atmospheric
+// Both confirm the family. At the probe moment this read 91.5 C with coolant at
+// 99 C — oil 7.5 C BELOW coolant at warm idle, the correct sign and a plausible
+// magnitude for an N55.
+//
+// ⚠️ ONE WARM-IDLE SAMPLE. There is no cold->hot ramp for it yet, which is the
+// shape evidence that would make this an identification rather than a strong
+// candidate. ALARMS STAY OFF until a cold-start drive logs it. Note the lesson
+// from decBmwOilPress directly above: a shape check cannot validate a scale, and
+// the converse holds too — an anchored scale is not a confirmed identity.
+//
+// Read as u16: the raws show the second module's 7F2222 arriving on its OWN line
+// BEFORE the positive frame (7F2222 62440200BA), not appended to it, so the
+// payload handed to this decoder is the clean two bytes.
+static float decBmwOilTempF(const uint8_t* d, int n, const DecodeCtx&) {
+  if (n < 2) return NAN;
+  const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
+  if (raw == 0xFFFF) return NAN;
+  return cToF((float)raw * 0.75f - 48.0f);
+}
+
+// Fuel rate DERIVED FROM MAF (0110), because this DME does not publish one.
+//
+// 015E and 019D both return NO DATA, and 015E is absent from the DME's own
+// supported-PID bitmap — so that is the ECU stating it, not a probe failure.
+// Without a fuel rate the four computed economy tiles have nothing to integrate,
+// which is why they have always been blank on this car.
+//
+// MAF gives one anyway: at stoichiometry, fuel mass = air mass / 14.7. Converting
+// to US gal/hr is all Economy::update() needs (it takes gal/hr and mph).
+// Validated on the 2026-08-23 cold drive: 24.0 mpg over 13.6 mixed miles against
+// an EPA 19 city / 29 hwy car, with idle fuel rate 1.57 L/h for a 3.0 L six.
+//
+// ⚠️ THE ASSUMPTION IS lambda = 1, AND IT BREAKS EXACTLY WHERE IT MATTERS. Under
+// boost the DME enriches for knock and thermal protection, so this UNDER-reads
+// fuel and OVER-reads mpg when the most fuel is being used. It is a good cruise
+// and trip-average number, not a wide-open-throttle one.
+//
+// The correction exists and is reachable: 0144 EQ_RAT answers on this car
+// (lambda 0.9978 at idle, textbook closed loop). Applying it needs a decoder that
+// can see a second PID's value, which the one-row-one-command model does not
+// provide — so it is left as a follow-up rather than bodged in here.
+static float decBmwFuelGphFromMaf(const uint8_t* d, int n, const DecodeCtx&) {
+  if (n < 2) return NAN;
+  const float gps = decodeMafGps(d[0], d[1]);          // reuse: 0110 == ((A*256)+B)/100
+  if (!(gps > 0.0f) || gps > 655.0f) return NAN;
+  const float fuelGps = gps / 14.7f;                   // stoichiometric gasoline
+  return fuelGps * 3600.0f / 2830.0f;                  // g/s -> g/hr -> US gal/hr
+}
+
+// Straight legislated reads; the helpers already exist in pid_decode.cpp.
+static float decBmwRailPsi(const uint8_t* d, int n, const DecodeCtx&) { return n>1 ? decodeRailPsi(d[0], d[1]) : NAN; }
+static float decBmwMafGps(const uint8_t* d, int n, const DecodeCtx&)  { return n>1 ? decodeMafGps(d[0], d[1]) : NAN; }
+static float decBmwPedalPct(const uint8_t* d, int n, const DecodeCtx&){ return n>0 ? decodeLoadPct(d[0]) : NAN; }  // 49: A*100/255, same form as load
+
 #define T(wh,ch,wl,cl) Thresholds{wh,ch,wl,cl}
 static const float NA = NAN;
 
@@ -120,7 +185,7 @@ static const float NA = NAN;
 static const ReadoutDef BMW_READOUTS[] = {
   // name        unit           dec  thr              full   cmd        hdr tier decode           quantity        flags
   {"TRANS",     "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  1,  decNone,         Quantity::Temp},                // ATF: EGS unreachable via plain ELM327 (gateway) — stub
-  {"OIL",       "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  1,  decNone,         Quantity::Temp},                // DA25@618 silent; 7DF candidates 225817/2258EB — cold-start pending
+  {"OIL",       "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  300,   "224402",  0,  1,  decBmwOilTempF,  Quantity::Temp},                // ACTIVE 224402@7DF — block 0x2244, never swept until 2026-08-23; ONE warm-idle sample, alarms off
   {"BOOST",     "psi",          1,   T(NA,NA,NA,NA),  30,    "010B",    0,  0,  decBmwBoostPsi,  Quantity::Press},               // ACTIVE — MAP (010B) gauge vs fixed baseline
   {"COOLANT",   "\xC2\xB0""F",  0,   T(239,248,NA,NA),300,   "0105",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01; thresholds sourced 2026-07-26, see note above
   {"VOLTS",     "V",            1,   T(NA,NA,11.0f,10.2f),18,"0142",    0,  1,  decVolts,        Quantity::None},                // ACTIVE Mode-01; universal low-12V floor (generic_obd.cpp precedent)
@@ -129,13 +194,13 @@ static const ReadoutDef BMW_READOUTS[] = {
   {"SPEED",     "mph",          0,   T(NA,NA,NA,NA),  160,   "010D",    0,  0,  decSpeed,        Quantity::Speed},               // ACTIVE Mode-01
   {"EGT",       "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  1500,  nullptr,   0,  1,  decNone,         Quantity::Temp},                // diesel — unsupported
   {"DPF dP",    "kPa",          1,   T(NA,NA,NA,NA),  70,    nullptr,   0,  1,  decNone,         Quantity::None},                // diesel
-  {"FUEL",      "gph",          1,   T(NA,NA,NA,NA),  15,    nullptr,   0,  1,  decNone,         Quantity::Flow},                // gas fuel rate deferred
+  {"FUEL",      "gph",          1,   T(NA,NA,NA,NA),  15,    "0110",    0,  1,  decBmwFuelGphFromMaf, Quantity::Flow},           // ACTIVE — DERIVED from MAF (no 015E/019D on this DME); lambda=1, see decoder
   {"LOAD",      "%",            0,   T(NA,NA,NA,NA),  100,   "0104",    0,  1,  decLoad,         Quantity::None},                // ACTIVE Mode-01
   {"MPG",       "",             1,   T(NA,NA,NA,NA),  40,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},   // computed (deferred; invalid w/o fuel rate)
   {"MPG AVG",   "",             1,   T(NA,NA,NA,NA),  40,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
   {"GAL/100",   "",             1,   T(NA,NA,NA,NA),  10,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
   {"L/100km",   "",             1,   T(NA,NA,NA,NA),  15,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
-  {"RAIL",      "psi",          0,   T(NA,NA,NA,NA),  36000, nullptr,   0,  0,  decNone,         Quantity::PressHi},             // scan target (HPFP)
+  {"RAIL",      "psi",          0,   T(NA,NA,NA,NA),  2500,  "0123",    0,  0,  decBmwRailPsi,   Quantity::PressHi},             // ACTIVE Mode-01; gasoline DI ~1076 psi at idle, so full-scale 2500 not the diesel 36000
   {"HP",        "hp",           0,   T(NA,NA,NA,NA),  400,   nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},   // needs torque PIDs — invalid for now
   {"DEF",       "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  1,  decNone,         Quantity::None},                // diesel
   {"FUEL%",     "%",            0,   T(NA,NA,NA,NA),  100,   "012F",    0,  1,  decFuelLevel,    Quantity::None},                // ACTIVE Mode-01
@@ -144,10 +209,10 @@ static const ReadoutDef BMW_READOUTS[] = {
   {"TORQUE",    "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  0,  decNone,         Quantity::None},                // scan target
   {"RefTq",     "",             0,   T(NA,NA,NA,NA),  1000,  nullptr,   0,  2,  decNone,         Quantity::None},                // scan target
   {"BARO",      "kPa",          0,   T(NA,NA,NA,NA),  110,   "0133",    0,  2,  decBaro,         Quantity::None},                // ACTIVE Mode-01
-  {"MAF",       "g/s",          0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  0,  decNone,         Quantity::None},                // N55 uses MAP for boost; MAF tile off
+  {"MAF",       "g/s",          0,   T(NA,NA,NA,NA),  300,   "0110",    0,  0,  decBmwMafGps,    Quantity::None},                // ACTIVE Mode-01; boost still from MAP — this is its own tile
   {"AMBIENT",   "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  150,   "0146",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01
   {"EGR",       "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  1,  decNone,         Quantity::None},                // unsupported
-  {"PEDAL",     "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  0,  decNone,         Quantity::None},                // unsupported
+  {"PEDAL",     "%",            0,   T(NA,NA,NA,NA),  100,   "0149",    0,  0,  decBmwPedalPct,  Quantity::None},                // ACTIVE Mode-01 accelerator pedal D
   {"CAC",       "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  400,   nullptr,   0,  1,  decNone,         Quantity::Temp},                // scan target (charge-air temp)
   {"NOx",       "ppm",          0,   T(NA,NA,NA,NA),  2000,  nullptr,   0,  1,  decNone,         Quantity::None},                // diesel
   {"OIL P",     "psi",          0,   T(NA,NA,NA,NA),  80,    "22586F",  0,  0,  decBmwOilPress,  Quantity::Press},               // ACTIVE 22586F@7DF byte0 — UNVERIFIED scale, alarms off
@@ -181,7 +246,9 @@ static constexpr int BMW_ADDRESSING_COUNT =
 static const StatId PAGES[][4] = {
   { StatId::Coolant, StatId::OilP,     StatId::Boost, StatId::Load },    // ENGINE
   { StatId::Rpm,     StatId::Speed,    StatId::Intake, StatId::Ambient },// DRIVE
-  { StatId::Baro,    StatId::FuelLevel, StatId::Volts, _ },              // MISCELLANEOUS
+  { StatId::Baro,    StatId::FuelLevel, StatId::Volts, StatId::Pedal },   // MISCELLANEOUS
+  { StatId::MpgInst, StatId::MpgAvg,   StatId::Gal100mi, StatId::L100km },// TRIP — all four computed off FuelRate
+  { StatId::Oil,     StatId::Rail,     StatId::Maf,   StatId::FuelRate },  // FLUIDS & FUEL
 };
 #undef _
 static const StatId HELPERS[] = {};   // boost uses a fixed baseline — no BARO helper needed
@@ -189,7 +256,7 @@ static const StatId HELPERS[] = {};   // boost uses a fixed baseline — no BARO
 static constexpr int LAYOUT_PAGE_COUNT   = (int)(sizeof(PAGES) / sizeof(PAGES[0]));
 static constexpr int LAYOUT_HELPER_COUNT = (int)(sizeof(HELPERS) / sizeof(HELPERS[0]));
 
-static const char* const PAGE_NAMES[] = { "ENGINE", "DRIVE", "MISCELLANEOUS" };
+static const char* const PAGE_NAMES[] = { "ENGINE", "DRIVE", "MISCELLANEOUS", "TRIP", "FLUIDS & FUEL" };
 static_assert(sizeof(PAGE_NAMES)/sizeof(PAGE_NAMES[0]) == (size_t)LAYOUT_PAGE_COUNT,
               "PAGE_NAMES must have one entry per PAGES row");
 

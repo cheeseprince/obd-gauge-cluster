@@ -299,12 +299,28 @@ BMW_F10 = VehiclePreset(
     note="2013 BMW 535i (F10, N55). DA25 oil temp @ 618 is confirmed-decodable; "
          "DA12 (ATF @ 618) and 586F (oil pressure @ 612) are confirmed DIDs whose "
          "SCALE is unverified — priority confirm-on-car targets. 42xx/45xx/58xx are "
-         "UNVERIFIED community combustion blocks — nothing here is a claim.",
+         "UNVERIFIED community combustion blocks — nothing here is a claim. "
+         "2026-08-23: 2243xx/2244xx/224Axx added after an on-car probe found oil temp "
+         "at 224402 — a block this preset had never swept. The x0.75-48 temperature "
+         "scale is now ANCHORED on this car: 224300 reads 94.5 C against the "
+         "legislated coolant PID's 99 C, and 224AB0 reads atmospheric at idle.",
     blocks=[
         Block("22DAxx", 0x22DA, note="OBDb block: oil temp DA25, ATF DA12"),
         Block("2258xx", 0x2258, note="oil pressure 586F (unverified scale); community lambda 582C"),
         Block("2242xx", 0x2242, note="UNVERIFIED community: boost 4205, coolant 4300"),
         Block("2245xx", 0x2245, note="UNVERIFIED community: VANOS 4506/4507"),
+        # Added 2026-08-23 after a targeted probe on an F10. These three blocks were
+        # NEVER SWEPT, and the note above this preset names 4402 as the oil-temp
+        # candidate -- so the DID this project has been hunting sat in a block
+        # nothing looked at. All three answer on 7DF.
+        Block("2243xx", 0x2243, note="CONFIRMED on an F10: coolant 4300 (94.5 C vs "
+                                     "legislated 0105 at 99 C), electric water pump 4307"),
+        Block("2244xx", 0x2244, note="CONFIRMED on an F10: OIL TEMP 4402 (91.5 C at warm "
+                                     "idle, coolant 99 C), oil condition 4418, "
+                                     "oil-pressure regulator 4421"),
+        Block("224Axx", 0x224A, note="CONFIRMED on an F10: boost setpoint 4AB0 = 1004 hPa "
+                                     "at idle, where it must be ~atmospheric -- which "
+                                     "validates the community x0.0390625 hPa scale"),
     ],
     probes=["0100", "22DA25"],
     headers=BMW_HEADERS,
