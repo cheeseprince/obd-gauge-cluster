@@ -146,6 +146,50 @@ static float decBmwFuelGphFromMaf(const uint8_t* d, int n, const DecodeCtx&) {
   return fuelGps * 3600.0f / 2830.0f;                  // g/s -> g/hr -> US gal/hr
 }
 
+// --- TORQUE, and horsepower from it ----------------------------------------
+// 2258BA is CRANK TORQUE. It is named in none of the six community BMW engine
+// tables (n55/b48/b58/n63/s55/s63) -- it was found by sweeping 0x2258xx and then
+// identified by behaviour, on the 2026-08-24 drive (486 rows, 28 min, to 6354 rpm).
+//
+// THE IDENTIFICATION IS SCALE-INDEPENDENT, which is what makes it trustworthy:
+//   * It reads EXACTLY ZERO on 168 rows, every one of them moving at 22-119 km/h
+//     with load 7-18% and MAF 3.6-47 g/s -- closed throttle, deceleration fuel cut.
+//     Crank torque collapses to zero on overrun. Nothing else logged does this:
+//     load bottoms out at 7%, MAF at 3.6, neither reaches zero.
+//   * Peak POWER (torque x rpm) falls at 5940 rpm. Peak TORQUE falls at 3800 rpm,
+//     inside the turbo plateau. Where a peak OCCURS does not depend on any scale.
+//   * r = +0.938 against an independent MAF-derived power model, on shape alone.
+//
+// THE SCALE, 0.125 Nm/count, comes from two methods sharing NO assumptions:
+//   MAF -> fuel -> power (thermodynamic, ~32% BTE) fitted 0.1263
+//   vehicle acceleration F=ma (Newtonian; mass, CdA, 15% driveline) gave 0.1273
+// They agree within 1% of each other and 2% of a clean 1/8. Cross-checked against
+// road-load power at the two hardest pulls: 291 hp and 280 hp measured from
+// acceleration, against 298 hp from this decoder at the same samples.
+//
+// ⚠️ MEASURED ON A MODIFIED CAR. The donor F10 carries an aftermarket ECU tune.
+// 224517 (reference torque) reads a CONSTANT 4013 -> 501.6 Nm at this scale, where
+// a stock N55 reference is ~400 Nm -- so the tune has raised the DME's own
+// reference map. THE SCALE SHOULD TRANSFER (it is a DME unit convention, not a
+// calibration value) BUT THE MAGNITUDES WILL NOT: a stock car will read lower, and
+// its reference torque should be checked before any threshold is set. Alarms are
+// off on all three rows for exactly this reason.
+static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx&) {
+  if (n < 2) return NAN;
+  const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
+  if (raw == 0xFFFF) return NAN;
+  // Percent of THIS DME's reference torque (224517 = 4013 raw, measured constant
+  // across all 486 rows). Expressed as a ratio of raw counts so it stays correct
+  // whatever the Nm scale turns out to be -- and it is what computeHorsepower wants.
+  return (float)raw * (100.0f / 4013.0f);
+}
+static float decBmwRefTorqueNm(const uint8_t* d, int n, const DecodeCtx&) {
+  if (n < 2) return NAN;
+  const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
+  if (raw == 0xFFFF || raw == 0) return NAN;
+  return (float)raw * 0.125f;                 // same unit convention as 2258BA
+}
+
 // Straight legislated reads; the helpers already exist in pid_decode.cpp.
 static float decBmwRailPsi(const uint8_t* d, int n, const DecodeCtx&) { return n>1 ? decodeRailPsi(d[0], d[1]) : NAN; }
 static float decBmwMafGps(const uint8_t* d, int n, const DecodeCtx&)  { return n>1 ? decodeMafGps(d[0], d[1]) : NAN; }
@@ -201,13 +245,13 @@ static const ReadoutDef BMW_READOUTS[] = {
   {"GAL/100",   "",             1,   T(NA,NA,NA,NA),  10,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
   {"L/100km",   "",             1,   T(NA,NA,NA,NA),  15,    nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},
   {"RAIL",      "psi",          0,   T(NA,NA,NA,NA),  2500,  "0123",    0,  0,  decBmwRailPsi,   Quantity::PressHi},             // ACTIVE Mode-01; gasoline DI ~1076 psi at idle, so full-scale 2500 not the diesel 36000
-  {"HP",        "hp",           0,   T(NA,NA,NA,NA),  400,   nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},   // needs torque PIDs — invalid for now
+  {"HP",        "hp",           0,   T(NA,NA,NA,NA),  400,   nullptr,   0,  1,  decNone,         Quantity::None, RF_COMPUTED},   // COMPUTED — now valid: computeHorsepower(ActTq%, RefTq Nm, rpm)
   {"DEF",       "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  1,  decNone,         Quantity::None},                // diesel
   {"FUEL%",     "%",            0,   T(NA,NA,NA,NA),  100,   "012F",    0,  1,  decFuelLevel,    Quantity::None},                // ACTIVE Mode-01
   {"DSL+",      "gal",          1,   T(NA,NA,NA,NA),  24,    nullptr,   0,  1,  decNone,         Quantity::Vol,  RF_COMPUTED},   // computed (not shown)
   {"DEF+",      "gal",          1,   T(NA,NA,NA,NA),  6,     nullptr,   0,  1,  decNone,         Quantity::Vol,  RF_COMPUTED},
-  {"TORQUE",    "%",            0,   T(NA,NA,NA,NA),  100,   nullptr,   0,  0,  decNone,         Quantity::None},                // scan target
-  {"RefTq",     "",             0,   T(NA,NA,NA,NA),  1000,  nullptr,   0,  2,  decNone,         Quantity::None},                // scan target
+  {"TORQUE",    "%",            0,   T(NA,NA,NA,NA),  100,   "2258BA",  0,  0,  decBmwTorquePct, Quantity::None},                // ACTIVE 2258BA@7DF — crank torque, % of this DME reference; UNNAMED in every community table
+  {"RefTq",     "",             0,   T(NA,NA,NA,NA),  1000,  "224517",  0,  2,  decBmwRefTorqueNm, Quantity::None},              // ACTIVE 224517@7DF — constant 4013 = 501.6 Nm (tuned car; stock ref ~400)
   {"BARO",      "kPa",          0,   T(NA,NA,NA,NA),  110,   "0133",    0,  2,  decBaro,         Quantity::None},                // ACTIVE Mode-01
   {"MAF",       "g/s",          0,   T(NA,NA,NA,NA),  300,   "0110",    0,  0,  decBmwMafGps,    Quantity::None},                // ACTIVE Mode-01; boost still from MAP — this is its own tile
   {"AMBIENT",   "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  150,   "0146",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01
@@ -246,9 +290,10 @@ static constexpr int BMW_ADDRESSING_COUNT =
 static const StatId PAGES[][4] = {
   { StatId::Coolant, StatId::OilP,     StatId::Boost, StatId::Load },    // ENGINE
   { StatId::Rpm,     StatId::Speed,    StatId::Intake, StatId::Ambient },// DRIVE
-  { StatId::Baro,    StatId::FuelLevel, StatId::Volts, StatId::Pedal },   // MISCELLANEOUS
+  { StatId::Baro,    StatId::FuelLevel, StatId::Volts, _ },              // MISCELLANEOUS
   { StatId::MpgInst, StatId::MpgAvg,   StatId::Gal100mi, StatId::L100km },// TRIP — all four computed off FuelRate
   { StatId::Oil,     StatId::Rail,     StatId::Maf,   StatId::FuelRate },  // FLUIDS & FUEL
+  { StatId::ActTq,   StatId::RefTq,    StatId::Hp,    StatId::Pedal },     // POWER — demand next to delivery
 };
 #undef _
 static const StatId HELPERS[] = {};   // boost uses a fixed baseline — no BARO helper needed
@@ -256,7 +301,7 @@ static const StatId HELPERS[] = {};   // boost uses a fixed baseline — no BARO
 static constexpr int LAYOUT_PAGE_COUNT   = (int)(sizeof(PAGES) / sizeof(PAGES[0]));
 static constexpr int LAYOUT_HELPER_COUNT = (int)(sizeof(HELPERS) / sizeof(HELPERS[0]));
 
-static const char* const PAGE_NAMES[] = { "ENGINE", "DRIVE", "MISCELLANEOUS", "TRIP", "FLUIDS & FUEL" };
+static const char* const PAGE_NAMES[] = { "ENGINE", "DRIVE", "MISCELLANEOUS", "TRIP", "FLUIDS & FUEL", "POWER" };
 static_assert(sizeof(PAGE_NAMES)/sizeof(PAGE_NAMES[0]) == (size_t)LAYOUT_PAGE_COUNT,
               "PAGE_NAMES must have one entry per PAGES row");
 

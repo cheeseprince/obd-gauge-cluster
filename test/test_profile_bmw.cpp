@@ -11,6 +11,7 @@
 #include <cstring>
 #include <initializer_list>
 #include "../src/readouts.h"
+#include "../src/pid_decode.h"
 #include "../src/app_types.h"
 #include "../src/vehicle_profile.h"
 #include "../src/vehicle_active.h"
@@ -96,6 +97,37 @@ int main() {
     assert(std::isnan(oilt(d, 1, ctx)));               // short frame
   }
 
+  // TORQUE — 2258BA, identified by BEHAVIOUR on the 2026-08-24 drive and named in
+  // none of the six community BMW engine tables.
+  {
+    DecodeCtx ctx{nullptr};
+    auto tq  = READOUTS[(int)StatId::ActTq].decode;
+    auto ref = READOUTS[(int)StatId::RefTq].decode;
+    assert(strcmp(READOUTS[(int)StatId::ActTq].cmd, "2258BA") == 0);
+    assert(strcmp(READOUTS[(int)StatId::RefTq].cmd, "224517") == 0);
+
+    // Reference torque was CONSTANT 4013 across all 486 rows of the drive.
+    const uint8_t r[2] = {0x0F, 0xAD};                       // 4013
+    assert(std::fabs(ref(r, 2, ctx) - 501.6f) < 0.5f);       // x0.125 Nm/count
+
+    // Peak actual torque seen: 3087 at 3800 rpm = 76.9% of reference.
+    const uint8_t pk[2] = {0x0C, 0x0F};
+    assert(std::fabs(tq(pk, 2, ctx) - 76.9f) < 0.3f);
+    assert(tq(pk, 2, ctx) < 100.0f);       // actual must not exceed the reference
+
+    // ZERO ON OVERRUN is the identifying behaviour: 168 rows read exactly 0 while
+    // moving at 22-119 km/h on 7-18% load. A decode unable to return 0 here would
+    // destroy the one signature separating torque from engine load.
+    const uint8_t zero[2] = {0x00, 0x00};
+    assert(tq(zero, 2, ctx) == 0.0f);
+
+    // Horsepower must reconcile with the figure measured from VEHICLE ACCELERATION:
+    // raw 2861 at 5940 rpm gave 291 hp from F=ma on the same drive.
+    const uint8_t s2[2] = {0x0B, 0x2D};                      // 2861
+    const float hp = computeHorsepower(tq(s2, 2, ctx), 501.6f, 5940.0f);
+    assert(hp > 270.0f && hp < 320.0f);
+  }
+
   // The legislated rows added from the same probe, each against its sample.
   {
     DecodeCtx ctx{nullptr};
@@ -128,7 +160,7 @@ int main() {
       assert(READOUTS[idx].cmd != nullptr || (READOUTS[idx].flags & RF_COMPUTED));
     }
   }
-  assert(readoutPageCount() == 5);   // + TRIP and FLUIDS & FUEL
+  assert(readoutPageCount() == 6);   // + TRIP, FLUIDS & FUEL, POWER
 
   // Oil-pressure NAK tolerance, against the SHAPES ACTUALLY OBSERVED.
   //
