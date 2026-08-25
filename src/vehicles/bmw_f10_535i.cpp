@@ -195,6 +195,14 @@ static float decBmwFuelGphFromMaf(const uint8_t* d, int n, const DecodeCtx&) {
 // calibration value) BUT THE MAGNITUDES WILL NOT: a stock car will read lower, and
 // its reference torque should be checked before any threshold is set. Alarms are
 // off on all three rows for exactly this reason.
+// ONE definition of the torque unit, shared by both decoders below. It must be
+// shared: decBmwRefTorqueNm multiplies by it and decBmwTorquePct divides by it to
+// recover raw counts, so a change applied to only one of them would silently skew
+// the torque percentage -- and therefore horsepower -- while looking like a
+// calibration drift rather than a units bug. That risk is live, not theoretical:
+// this figure rests on 19 rows above 60% load and is expected to be refined.
+static constexpr float BMW_TQ_NM_PER_COUNT = 0.125f;
+
 static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx& ctx) {
   if (n < 2) return NAN;
   const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
@@ -209,7 +217,10 @@ static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx& ctx) {
   float refCounts = 4013.0f;                     // fallback: this car's measured value
   if (ctx.values) {
     const float refNm = ctx.values[(int)StatId::RefTq];
-    if (refNm > 100.0f && refNm < 1000.0f) refCounts = refNm / 0.125f;
+    // Round-trips Nm back to raw counts. NOTE the scale CANCELS here -- the
+    // percentage is raw_act/raw_ref and is scale-invariant. The constant appears
+    // only to undo the display conversion, which is why it must be the shared one.
+    if (refNm > 100.0f && refNm < 1000.0f) refCounts = refNm / BMW_TQ_NM_PER_COUNT;
   }
   return (float)raw * (100.0f / refCounts);
 }
@@ -217,7 +228,7 @@ static float decBmwRefTorqueNm(const uint8_t* d, int n, const DecodeCtx&) {
   if (n < 2) return NAN;
   const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
   if (raw == 0xFFFF || raw == 0) return NAN;
-  return (float)raw * 0.125f;                 // same unit convention as 2258BA
+  return (float)raw * BMW_TQ_NM_PER_COUNT;    // same unit convention as 2258BA
 }
 
 // Straight legislated reads; the helpers already exist in pid_decode.cpp.

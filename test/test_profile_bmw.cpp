@@ -130,6 +130,22 @@ int main() {
     const uint8_t zero[2] = {0x00, 0x00};
     assert(tq(zero, 2, ctx) == 0.0f);
 
+    // THE SCALE MUST CANCEL. decBmwTorquePct divides by the same constant that
+    // decBmwRefTorqueNm multiplies by, so the percentage is scale-invariant: feed
+    // the reference in through ctx and the same raw must give the same percent no
+    // matter what the Nm-per-count figure is. This is the assertion that catches a
+    // future scale refinement being applied to only one of the two decoders.
+    {
+      float v[(int)StatId::COUNT] = {0};
+      v[(int)StatId::RefTq] = ref(r, 2, ctx);          // whatever the scale yields
+      DecodeCtx live{v};
+      assert(std::fabs(tq(pk, 2, live) - tq(pk, 2, ctx)) < 0.01f);
+      // And a DIFFERENT reference must move the percentage: a stock F10 reads
+      // ~400 Nm (raw ~3200), on which the same raw is ~96%, not 76.9%.
+      v[(int)StatId::RefTq] = 400.0f;
+      assert(tq(pk, 2, live) > 90.0f);
+    }
+
     // Horsepower must reconcile with the figure measured from VEHICLE ACCELERATION:
     // raw 2861 at 5940 rpm gave 291 hp from F=ma on the same drive.
     const uint8_t s2[2] = {0x0B, 0x2D};                      // 2861
