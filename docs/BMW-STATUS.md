@@ -25,16 +25,48 @@ nothing swept. The candidate this project was hunting was never in a candidate l
 **The `×0.75 − 48` scale is no longer assumed.** Two DIDs from the same blocks land on
 physically forced values.
 
-**And it is no longer a single sample.** The 2026-08-24 drive (486 rows) gives it shape:
-`224402` spans **93.0–115.5 °C**, and `224408` — which decodes on a *different* scale family
-(**×0.1**, raw 936–1155; on ×0.75−48 the same raw would read 654–818 °C) — tracks it at
-**r = 0.9986**, mean offset 0.37 °C. Thermal lag is visible and correct: oil sits 3.2 °C
-*below* coolant over the first three minutes, crosses over as load heats it, and settles ~11 °C
-*above*. Coolant is thermostatically held; oil is heated by load and carries the larger thermal
-mass.
+**CONFIRMED ACROSS THE FULL RANGE (cold start, 2026-08-25).** A genuine cold start — 24 °C
+coolant against 17 °C ambient — gives `224402` a **49.5 °C ramp, 24.8 → 74.2 °C** over 1.6
+miles, 147 of 147 rows answered. Combined with the warm drive's 93.0–115.5 °C, the DID is now
+observed from cold soak to full operating temperature.
 
-⚠️ What is still missing is only the **cold end below 93 °C** — every drive so far started
-warm. Alarms stay OFF: a threshold needs that range plus a sourced N55 limit.
+**Two DIDs on unrelated scale families agree to half a degree across that ramp.** `224408`
+decodes as **×0.1** (raw 936–1155 warm; on ×0.75−48 the same raw would read 654–818 °C), and
+against `224402` over the 50 °C cold swing: **r = 0.99978, mean offset 0.44 °C, sd 0.33**.
+Two different formulas cannot track each other that closely across 50 °C unless both the
+identity and the scale are right.
+
+**The thermal lag is textbook, in both directions:**
+
+| | oil − coolant |
+| :--- | ---: |
+| cold start, minute 0 | −4.9 °C |
+| cold start, minute 5 (maximum lag) | **−17.4 °C** |
+| cold start, minute 7 (gap closing) | −16.0 °C |
+| warm drive, under sustained load | **+11 °C** |
+
+Coolant is thermostatically held, so it reaches target first; oil is heated by load and
+carries the larger thermal mass, so it lags on warm-up and overtakes under sustained load.
+Nothing but an engine-oil temperature behaves that way against a thermostatted coolant.
+
+⚠️ Alarms stay OFF regardless: a threshold needs a **sourced N55 limit**, which no amount of
+our own data supplies. What is no longer missing is the evidence of identity.
+
+### `010F` is the charge-air (post-intercooler) sensor
+
+The N55 has one intake-air sensor and on an F10 it sits after the intercooler, so there is no
+separate `Cac` DID to find. The cold drive demonstrates it rather than assuming it: `010F`
+held **20–21 °C for the whole drive** against 17 °C ambient — but read **59 °C at warm idle**
+in the 2026-08-23 probe. Same sensor: heat-soaked when stationary, near-ambient once airflow
+starts. The existing INTAKE tile is already the reading people ask for.
+
+### `22582F` / `225896` are modelled CATALYST temperature, not gas temperature
+
+From cold, `22582F` rose 23 → 125 raw over seven minutes, tracking coolant. Real exhaust gas
+heats in seconds; a catalyst has large thermal mass and warms over minutes. The community name
+— "exhaust gas temperature according to KAT **from model**" — matches that behaviour. At ×2
+the range is ~46 → 250 °C, consistent with the 235 °C read warm. Worth knowing before anyone
+wires it to an `Egt` tile expecting live exhaust temperature.
 
 **The drive's own candidates are closed out.** `225817` and `2258EB` are byte-identical on
 99.51 % of 1427 rows, span only 9 distinct values while coolant moved 30 → 107 °C, and
