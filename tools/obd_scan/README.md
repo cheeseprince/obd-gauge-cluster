@@ -160,7 +160,9 @@ revalidated against the read-only whitelist, exactly like a preset is.
 `correlate` report is most of what a new `VehiclePreset` needs.
 
 **Why a few offsets and not all 65536.** A blind full sweep is 65536 requests,
-about 6 hours at the ~3 probes/s a real ELM327 link sustains. Discovery probes
+about 1.5 hours at the ~10 probes/s an ELM327 link sustains under ATAT2
+adaptive timing (the same 60-100 ms round trip the sweep section quotes; three
+BMW F10 BLE logs measured 11.9-12.1/s). Discovery probes
 7 offsets per block instead. The offsets are not uniform because real DID blocks
 are bottom-anchored: on the BMW F10 sweep of 2026-08-24 (462 answering DIDs in 6
 blocks) every populated block had a hit below `0x08`, `2242xx` was contiguous

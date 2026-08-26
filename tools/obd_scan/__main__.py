@@ -83,7 +83,13 @@ def _report_abort(res: dict) -> None:
 # A run whose errors clear this fraction of its probes/polls is not a
 # negative finding -- it is a transport that could not be trusted, and must
 # be flagged with the same urgency as an outright abort (IMPORTANT 1).
-DISCOVER_PROBE_WARN = 10_000   # ~1 h at 3 probes/s: warn before starting, not after
+# Probe rate used only to turn a probe COUNT into a human estimate. ~10/s is
+# this repo's own documented figure -- the sweep section of README.md measures a
+# NO DATA round trip at 60-100 ms under ATAT2 adaptive timing -- and it matches
+# three BMW F10 BLE logs of 2026-08 independently at 11.9-12.1 probes/s. Kept
+# slightly conservative: a positive reply carries more bytes than a NO DATA.
+PROBES_PER_SEC = 10.0
+DISCOVER_PROBE_WARN = 10_000   # ~17 min at PROBES_PER_SEC: warn before starting, not after
 ERROR_FRACTION_ALARM = 0.5
 
 
@@ -254,6 +260,12 @@ def cmd_sweep(args):
     print(f"wrote {args.out}")
 
 
+def _eta(probes: int) -> str:
+    """Probe count as a human duration. Minutes below an hour, hours above."""
+    secs = probes / PROBES_PER_SEC
+    return f"{secs / 60:.0f} min" if secs < 3600 else f"{secs / 3600:.1f} h"
+
+
 def _parse_offsets(text: str) -> "tuple[int, ...]":
     """Parse "00,01,40" into (0x00, 0x01, 0x40). Hex without 0x, like every
     other PID the tool prints."""
@@ -306,12 +318,12 @@ def cmd_discover(args):
         # Price it honestly BEFORE the link opens. A run this size is measured
         # in hours, and a driver who starts one without knowing that will kill
         # it partway -- producing a truncated result that looks like a finding.
-        print(f"*** {total} probes is roughly {total / 3.0 / 3600:.1f} h at 3 probes/s. "
+        print(f"*** {total} probes is roughly {_eta(total)} at ~{PROBES_PER_SEC:.0f} probes/s. "
               f"Narrow it with --headers (alive: {names}) or fewer --offsets, "
               f"or plan to leave it running. ***")
     print(f"discovering {len(offsets)} offsets x 256 blocks x {len(scoped)} header(s) "
           f"[{scope}: {names}] = {total} probes "
-          f"(~{total / 3.0 / 60:.0f} min at 3 probes/s)")
+          f"(~{_eta(total)} at ~{PROBES_PER_SEC:.0f} probes/s)")
     s = _session(args)
 
     def progress(header, block, req, cls, found):

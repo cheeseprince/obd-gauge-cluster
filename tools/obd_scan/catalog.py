@@ -405,9 +405,10 @@ GENERIC = VehiclePreset(
 
 
 # --- Blind Mode-22 discovery -------------------------------------------------
-# Sweeping the whole 16-bit DID space is 65536 requests -- about 6 hours at the
-# ~3 probes/s a real ELM327 link sustains, which is not something anyone will
-# run sitting in a parked car. `discover` instead probes a few offsets in each
+# Sweeping the whole 16-bit DID space is 65536 requests -- about 1.5 hours at
+# the ~10 probes/s an ELM327 link sustains under ATAT2 adaptive timing (see
+# README.md's sweep timing; three BMW F10 BLE logs measured 11.9-12.1/s), which
+# is still not something anyone will run sitting in a parked car. `discover` instead probes a few offsets in each
 # of the 256 possible blocks and then lets a normal sweep target only the blocks
 # that answered.
 #
