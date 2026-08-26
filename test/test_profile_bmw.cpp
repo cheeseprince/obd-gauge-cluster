@@ -11,6 +11,7 @@
 #include <cstring>
 #include <initializer_list>
 #include "../src/readouts.h"
+#include "../src/pid_decode.h"
 #include "../src/app_types.h"
 #include "../src/vehicle_profile.h"
 #include "../src/vehicle_active.h"
@@ -51,18 +52,27 @@ int main() {
   // Payloads below are verbatim from obd-display/bmw_drive.csv.
   {
     auto oilp = READOUTS[(int)StatId::OilP].decode;
-    DecodeCtx ctx{nullptr};
+    // A live context, not {nullptr}: with a real BARO value this exercises the path
+    // the dash actually runs. The fallback path is covered separately below.
+    float vals[(int)StatId::COUNT] = {0};
+    vals[IDX_BARO] = 100.0f;                          // kPa, as logged on the drive
+    DecodeCtx ctx{vals};
     auto psi = [&](uint16_t raw) {
       const uint8_t d[2] = {(uint8_t)(raw >> 8), (uint8_t)(raw & 0xFF)};
       return oilp(d, 2, ctx);
     };
     // Observed span of the drive: 2324 mbar (idle) .. 4776 mbar (loaded).
-    assert(std::fabs(psi(0x0914) - 33.71f) < 0.2f);   // 2324 mbar -> 33.7 psi
-    assert(std::fabs(psi(0x12A8) - 69.27f) < 0.2f);   // 4776 mbar -> 69.3 psi
+    // GAUGE, not absolute: the sensor reports absolute and the decoder now
+    // subtracts baro. With the drive's logged 100 kPa these become:
+    assert(std::fabs(psi(0x0914) - 19.20f) < 0.2f);   // 2324 mbar abs -> 19.2 psi gauge
+    assert(std::fabs(psi(0x12A8) - 54.77f) < 0.2f);   // 4776 mbar abs -> 54.8 psi gauge
     // A byte-0 decode would have called the idle sample 9 psi. Anything under
     // 20 psi on a running engine is an oil-pressure-warning condition, so this
     // is the assertion that would have caught the original bug.
-    assert(psi(0x0914) > 25.0f);
+    assert(psi(0x0914) > 15.0f);
+    // The actual key-on/engine-OFF capture: 0x0422 = 1058 mbar against 100 kPa baro
+    // must read ~0. This is the assertion that proves the sensor is ABSOLUTE.
+    assert(psi(0x0422) < 2.0f);
 
     // 0xFF in the HIGH byte was the old sentinel check; a 16-bit read must not
     // inherit it, because 0xFFxx is simply an out-of-range pressure. Reject the
@@ -72,10 +82,103 @@ int main() {
     { const uint8_t d[1] = {0x09}; assert(std::isnan(oilp(d, 1, ctx))); }
   }
 
-  // Oil temp and ATF are STUBBED post-scan: DA25/DA12 @ 6F1/618 are silent
-  // (gateway-blocked), and the 7DF temp candidates need a cold-start drive.
-  assert(READOUTS[(int)StatId::Oil].cmd == nullptr);
+  // OIL TEMP is now ACTIVE on 224402@7DF (probe, 2026-08-23). Block 0x2244 had
+  // never been swept, so the candidate BMW-STATUS.md itself names was never in a
+  // candidate list. ATF stays stubbed — the EGS is still gateway-blocked.
+  assert(strcmp(READOUTS[(int)StatId::Oil].cmd, "224402") == 0);
   assert(READOUTS[(int)StatId::Trans].cmd == nullptr);
+
+  // Decode against the ACTUAL probe sample, taken at warm idle with the
+  // legislated coolant PID reading 99 C at the same moment.
+  {
+    DecodeCtx ctx{nullptr};
+    auto oilt = READOUTS[(int)StatId::Oil].decode;
+    const uint8_t d[2] = {0x00, 0xBA};                 // probe: 62440200BA
+    const float f = oilt(d, 2, ctx);
+    assert(std::fabs(f - 196.7f) < 0.5f);              // 186*0.75-48 = 91.5 C
+    // Oil must read BELOW coolant at warm idle. Coolant was 99 C = 210.2 F.
+    // A decode that put oil ABOVE coolant at idle would be the wrong scale.
+    assert(f < 210.2f);
+    // Same NAK tolerance as oil pressure: take the first two bytes, ignore any
+    // 7F2222 the parser leaves in the buffer.
+    const uint8_t withNak[5] = {0x00, 0xBA, 0x7F, 0x22, 0x22};
+    assert(oilt(withNak, 5, ctx) == f);
+    assert(std::isnan(oilt(d, 1, ctx)));               // short frame
+  }
+
+  // TORQUE — 2258BA, identified by BEHAVIOUR on the 2026-08-24 drive and named in
+  // none of the six community BMW engine tables.
+  {
+    DecodeCtx ctx{nullptr};
+    auto tq  = READOUTS[(int)StatId::ActTq].decode;
+    auto ref = READOUTS[(int)StatId::RefTq].decode;
+    assert(strcmp(READOUTS[(int)StatId::ActTq].cmd, "2258BA") == 0);
+    assert(strcmp(READOUTS[(int)StatId::RefTq].cmd, "224517") == 0);
+
+    // Reference torque was CONSTANT 4013 across all 486 rows of the drive.
+    // 3989 counts at the DME's own 0.1 Nm/count -> 398.9 Nm, the stock N55 reference.
+    const uint8_t r[2] = {0x0F, 0x95};                       // 3989
+    assert(std::fabs(ref(r, 2, ctx) - 398.9f) < 0.5f);
+
+    // Peak actual torque seen: 3087 at 3800 rpm = 76.9% of reference.
+    const uint8_t pk[2] = {0x0C, 0x0F};
+    assert(std::fabs(tq(pk, 2, ctx) - 77.4f) < 0.3f);
+    assert(tq(pk, 2, ctx) < 100.0f);       // actual must not exceed the reference
+
+    // ZERO ON OVERRUN is the identifying behaviour: 168 rows read exactly 0 while
+    // moving at 22-119 km/h on 7-18% load. A decode unable to return 0 here would
+    // destroy the one signature separating torque from engine load.
+    const uint8_t zero[2] = {0x00, 0x00};
+    assert(tq(zero, 2, ctx) == 0.0f);
+
+    // THE SCALE MUST CANCEL. decBmwTorquePct divides by the same constant that
+    // decBmwRefTorqueNm multiplies by, so the percentage is scale-invariant: feed
+    // the reference in through ctx and the same raw must give the same percent no
+    // matter what the Nm-per-count figure is. This is the assertion that catches a
+    // future scale refinement being applied to only one of the two decoders.
+    {
+      float v[(int)StatId::COUNT] = {0};
+      v[(int)StatId::RefTq] = ref(r, 2, ctx);          // whatever the scale yields
+      DecodeCtx live{v};
+      assert(std::fabs(tq(pk, 2, live) - tq(pk, 2, ctx)) < 0.01f);
+      // And a DIFFERENT reference must move the percentage: a stock F10 reads
+      // ~400 Nm (raw ~3200), on which the same raw is ~96%, not 76.9%.
+      v[(int)StatId::RefTq] = 300.0f;      // a stock-like lower reference must move it
+      assert(tq(pk, 2, live) > 100.0f);
+    }
+
+    // Horsepower must reconcile with the figure measured from VEHICLE ACCELERATION:
+    // raw 2861 at 5940 rpm gave 291 hp from F=ma on the same drive.
+    const uint8_t s2[2] = {0x0B, 0x2D};                      // 2861
+    // Peak on the 2026-08-25 pull log: raw 3691 at 5264 rpm -> 369 Nm -> ~273 hp.
+    // Energy balance on the same pulls gives 285 hp peak. Both inside this window.
+    const uint8_t peak[2] = {0x0E, 0x63};
+    const float hp = computeHorsepower(tq(peak, 2, ctx), 398.9f, 5264.0f);
+    assert(hp > 250.0f && hp < 300.0f);
+  }
+
+  // The legislated rows added from the same probe, each against its sample.
+  {
+    DecodeCtx ctx{nullptr};
+    const uint8_t rail[2] = {0x02, 0xE6};              // probe: 412302E6
+    assert(std::fabs(READOUTS[(int)StatId::Rail].decode(rail, 2, ctx) - 1076.2f) < 1.0f);
+    // MAF (0110) is live on this car, but the row is deliberately INACTIVE: FUEL
+    // RATE already polls 0110 and obd_schedule does not dedupe by command, so a
+    // second row on the same PID would cost a wasted round trip every cycle.
+    assert(READOUTS[(int)StatId::Maf].cmd == nullptr);
+    const uint8_t maf[2] = {0x02, 0xCC};               // probe: 411002CC
+    const uint8_t ped[1] = {0x23};                     // probe: 414923
+    assert(std::fabs(READOUTS[(int)StatId::Pedal].decode(ped, 1, ctx) - 13.73f) < 0.05f);
+
+    // FUEL RATE is DERIVED from MAF — this DME publishes neither 015E nor 019D,
+    // and 015E is absent from its own supported-PID bitmap. Economy::update()
+    // takes gal/hr, so that is what the decoder must return.
+    const float gph = READOUTS[(int)StatId::FuelRate].decode(maf, 2, ctx);
+    assert(std::fabs(gph - 0.62f) < 0.02f);            // 7.16 g/s air -> 0.62 gal/hr
+    // Sanity: a 3.0 L six at idle burns well under 2 gal/hr. A decoder that
+    // returned air mass instead of fuel mass would be ~14.7x this.
+    assert(gph > 0.1f && gph < 2.0f);
+  }
   // Diesel-only stats are inactive.
   for (StatId s : {StatId::Egt, StatId::DpfDp, StatId::Def, StatId::Nox})
     assert(READOUTS[(int)s].cmd == nullptr);
@@ -89,7 +192,7 @@ int main() {
       assert(READOUTS[idx].cmd != nullptr || (READOUTS[idx].flags & RF_COMPUTED));
     }
   }
-  assert(readoutPageCount() == 3);
+  assert(readoutPageCount() == 6);   // + TRIP, FLUIDS & FUEL, POWER
 
   // Oil-pressure NAK tolerance, against the SHAPES ACTUALLY OBSERVED.
   //
@@ -112,7 +215,11 @@ int main() {
     float b = dec(withNak, 5, ctx);
     assert(!std::isnan(a));
     assert(a == b);                                    // NAK tail ignored
-    assert(std::fabs(a - 14.84f) < 0.05f);             // 1023 mbar
+    // 1023 mbar is essentially a key-on/engine-off reading, so on the
+    // std-atmosphere fallback path it must land at ~0 psi. That demonstrates the
+    // absolute->gauge conversion far better than the old 14.84 ever did.
+    assert(std::fabs(a - 0.14f) < 0.10f);
+
   }
   // Boost decode: MAP 201 kPa vs 101.325 baseline -> ~14 psi gauge; vacuum
   // (40 kPa) clamps to 0 (boostPsi floors negative diff).

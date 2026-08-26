@@ -17,8 +17,8 @@ DEF level — over a cheap Bluetooth adapter on a small dashboard screen.
 
 One firmware image holds **every vehicle profile** and picks the right one automatically from the
 car's **VIN** on connect (with a **Pick Vehicle** menu override). It's **validated on a 2025 GM
-Sierra 1500 3.0L Duramax** (LZ0, Global B); a BMW 535i (F10), an Audi Q5 (2.0T) and a Jeep
-Wagoneer (5.7L Hemi) are skeleton profiles. **Every major US full-size pickup back to 2003 is
+Sierra 1500 3.0L Duramax** (LZ0, Global B); a **BMW 535i (F10)** is mapped in depth from on-car
+scans, and an Audi Q5 (2.0T) and Jeep Wagoneer (5.7L Hemi) are skeleton profiles. **Every major US full-size pickup back to 2003 is
 recognized by VIN and named on the boot splash** — Ford Super Duty (2003–26) and F-150
 (2010–23), Ram 1500/2500/3500 across both the Dodge (2006–11) and Ram (2013–24) eras, and
 Chevrolet/GMC 1500, HD, 2500 and 3500 through the GMT900, K2XX, T1XX and current platforms
@@ -118,7 +118,7 @@ volts, since no thresholds have been sourced for any of these vehicles.
 | Manufacturer | Model | Engine | Years | Pages | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Audi | Q5 (typ FY) | 2.0T TFSI EA888.3 | 2018–20 | **3** — TEMPERATURES · DRIVE · AIR | 🟡 Skeleton — [details](docs/VEHICLES.md#audi) |
-| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **3** — ENGINE · DRIVE · MISCELLANEOUS | 🟢 In use — scanned on-car, no reported errors; not tested as exhaustively as the Sierra — [details](docs/BMW-STATUS.md) |
+| BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **6** — ENGINE · DRIVE · MISCELLANEOUS · TRIP · FLUIDS & FUEL · POWER | 🟢 In use — the most deeply mapped profile after the Sierra: oil temperature, fuel rate, crank torque and horsepower all measured on-car. Alarms remain off on everything but coolant and volts — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
 | Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
@@ -137,8 +137,11 @@ volts, since no thresholds have been sourced for any of these vehicles.
 | Ford | F-250/350/450/550 Super Duty | 6.0L · 6.4L Power Stroke · 5.4L · 6.8L V10 | 2003–09 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — a different engine alphabet from the 2011+ truck |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
-Gas cars have no DPF, DEF, EGT or regeneration, so the truck pages don't exist for them — a BMW
-or Audi gets three pages of what its engine actually reports.
+Gas cars have no DPF, DEF or regeneration, so those truck pages don't exist for them — a gas car
+gets pages of what its engine actually reports. The BMW is the worked example: a 1,792-probe
+sweep of its enhanced blocks took it from 3 pages to 6, including **crank torque and horsepower**
+from a DID (`2258BA`) that appears in no published BMW PID table. Its `224402` oil temperature
+sits in a block the scanner preset had never swept.
 
 Enhanced (Mode 22 / UDS) PIDs are manufacturer-specific and undocumented, so adding a vehicle
 means discovering its PID map on the actual vehicle. Standard OBD-II parameters (RPM, speed,
