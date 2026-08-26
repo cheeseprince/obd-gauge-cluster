@@ -181,7 +181,12 @@ is _not_ reachable through a plain ELM327 on this vehicle.**
   working core of the dash and needs no enhanced data.
 - **BOOST** is derived from standard **MAP `010B`** (gauge vs a fixed
   101.325 kPa baseline), not an enhanced DID.
-- **OIL PRESSURE = `22586F` byte 0 — ACTIVE but UNVERIFIED scale.** Over the
+- **OIL PRESSURE = `22586F` byte 0 — ACTIVE but UNVERIFIED scale.** ⚠️ *TWICE
+  SUPERSEDED — kept as the historical record. It is a **u16 in millibar** (see "Oil
+  pressure is 16-bit millibar" below, 2026-08-15) and the sensor reads **ABSOLUTE**,
+  so barometric must be subtracted (see the top of this document, 2026-08-23). The
+  byte-0 identity-psi decode described here understates a running engine ~4x and
+  overstates a stopped one by 14.7 psi.* Over the
   drive byte 0 rose monotonically with RPM (9.2 @ idle → ~12 @ 2000 rpm): the
   oil-pressure signature, and `586F` is the community-named EOP DID. Shown as
   raw byte == psi (identity), alarms OFF — the magnitude is a hypothesis (no
