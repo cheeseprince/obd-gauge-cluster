@@ -291,12 +291,28 @@ def run_discover(sess: ElmSession, census: dict,
     reports every block where at least one probe drew a response. The caller
     then runs a normal sweep over those blocks only.
 
-    A block counts as PRESENT on the same evidence a census header counts as
-    alive: a positive reply OR a negative one. `7F 22 31` means a real module
-    received the request and rejected that particular DID, which proves the
-    block's address space is being decoded even though no data came back --
-    exactly the distinction run_census documents. Treating only positives as
-    evidence would miss a block whose first four DIDs happen to be unimplemented.
+    A block counts as PRESENT only on a POSITIVE reply. This is deliberately NOT
+    the rule run_census uses for header liveness, and the difference matters.
+
+    For a HEADER, a `7F 22 31` is decisive: something received the request, so
+    the addressing is right. For a BLOCK it proves nothing, because a module
+    that implements Mode 22 answers `7F 22 31` to every unsupported DID across
+    the whole 16-bit space -- the NAK says "this module speaks Mode 22", not
+    "this block is populated".
+
+    An earlier version of this function scored negatives as block evidence, by
+    analogy to the census rule. A Subaru run on 2026-08-25 falsified it flatly:
+    256 of 256 candidate blocks were reported present, while only 4 held any
+    data. The full sweep then chased 252 phantom blocks -- 65536 probes rather
+    than 1024 -- and was killed before it reached the real ones.
+
+    The cost of requiring a positive is recall: a populated block whose probed
+    offsets are all unimplemented is missed. DISCOVER_OFFSETS is what keeps that
+    small, and the same Subaru run supports it -- all four real blocks had a hit
+    at 0x00, and 0x00-0x03 alone would have found every one.
+
+    Negatives are still counted and reported, but as a per-header fact
+    ("speaks_mode22"), which is what they actually establish.
 
     By DEFAULT this probes every alive header, because whether enhanced Mode 22
     answers a functional broadcast is vehicle-specific -- see discover_headers()
@@ -336,6 +352,7 @@ def run_discover(sess: ElmSession, census: dict,
     alive, scope = discover_headers(census, headers)
     hits: list[Hit] = []
     found: dict[str, set[str]] = {}     # block name -> header names that saw it
+    speaks: set[str] = set()            # headers that NAKed, i.e. implement Mode 22
     negatives = 0
     errors = 0
     probes = 0
@@ -357,7 +374,9 @@ def run_discover(sess: ElmSession, census: dict,
                         present = True
                     elif r.cls in _NEG:
                         negatives += 1
-                        present = True              # a rejection still proves the module
+                        # Evidence about the MODULE, not this block -- see the
+                        # docstring. Recorded per header, never as a block hit.
+                        speaks.add(row.header.name)
                     elif r.cls is Cls.ELM_ERROR:
                         # Counted, never inferred from -- same reasoning as
                         # run_sweep: without this an ELM_ERROR would inflate
@@ -378,6 +397,12 @@ def run_discover(sess: ElmSession, census: dict,
     return {"blocks": blocks, "hits": hits, "probes": probes,
             "negatives": negatives, "errors": errors,
             "block_headers": {k: sorted(v) for k, v in found.items()},
+            # Headers that answered a Mode-22 request with a negative response.
+            # They implement the service; it says nothing about which blocks are
+            # populated. An empty list next to 0 blocks means something quite
+            # different from a full one: the former is "nothing spoke Mode 22",
+            # the latter "Mode 22 works here but these offsets found nothing".
+            "speaks_mode22": sorted(speaks),
             # "_targeted", not "_reached" -- the full set discovery MEANT to
             # cover, regardless of how far it got. Same convention as run_sweep;
             # detect truncation via "aborted", never via these lengths.

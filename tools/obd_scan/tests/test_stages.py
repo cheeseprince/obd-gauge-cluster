@@ -768,21 +768,38 @@ def test_discover_finds_a_block_from_a_positive():
     s.close(); fake.stop()
 
 
-def test_discover_counts_a_negative_as_evidence_of_the_block():
-    # THE distinction this stage rests on. `7F 22 31` is a real module saying
-    # "I decode that address space, that particular DID is not implemented" --
-    # the same evidence run_census accepts for a header being alive. A block
-    # whose first probed offsets are all unimplemented is still a block, and
-    # scoring only positives would drop it. 2243xx on the F10 is exactly this
-    # shape: 8 hits in 256, none guaranteed to land on a probed offset.
+def test_discover_does_not_count_a_negative_as_a_block():
+    # THE rule this stage rests on, and the one that was wrong first time.
+    #
+    # A module implementing Mode 22 answers `7F 22 31` to EVERY unsupported DID
+    # in the whole 16-bit space, so a NAK proves the module speaks Mode 22 --
+    # not that this block holds anything. Scoring it as block evidence reported
+    # 256 of 256 blocks present on a Subaru (2026-08-25) where only 4 had data,
+    # and sent the follow-up sweep after 252 phantoms.
+    #
+    # The NAK is still recorded, as a per-header fact, which is what it is.
     fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811",
                         "224300": "7F2231"})
     census = _discover_census(s)
     res = run_discover(s, census, offsets=(0x00,), lo=0x42, hi=0x44)
 
-    assert [b.name for b in res["blocks"]] == ["2243xx"]
-    assert res["hits"] == []                        # a rejection is not a hit
-    assert res["negatives"] == 1                    # but it IS evidence
+    assert res["blocks"] == []                      # NOT a block
+    assert res["negatives"] == 1                    # but counted
+    assert res["speaks_mode22"] == ["7E0"]          # and attributed to the module
+    s.close(); fake.stop()
+
+
+def test_discover_reports_no_mode22_speaker_when_nothing_naks():
+    # "0 blocks, nothing speaks Mode 22" and "0 blocks, but the module does
+    # speak it" are different findings: the first points at addressing or the
+    # wrong service (Toyota's enhanced data is largely Mode 21), the second says
+    # Mode 22 works and these offsets simply found nothing.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811"})
+    census = _discover_census(s)
+    res = run_discover(s, census, offsets=(0x00,), lo=0x42, hi=0x44)
+
+    assert res["blocks"] == []
+    assert res["speaks_mode22"] == []
     s.close(); fake.stop()
 
 

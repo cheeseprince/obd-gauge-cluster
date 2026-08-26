@@ -350,10 +350,20 @@ def cmd_discover(args):
                   f'note="{b.note}"),')
         print("    ],")
         print("\nThen run `sweep` to read every DID in those blocks.")
+    elif res["speaks_mode22"]:
+        # Mode 22 works here -- the offsets just found nothing. Widening is the
+        # right next move, and the vehicle is NOT ruled out.
+        print(f"\nNo blocks answered, but {', '.join(res['speaks_mode22'])} answered Mode-22 "
+              "requests with a negative response, so the service IS implemented. Widen "
+              "with --offsets before concluding this vehicle has no enhanced data.")
     else:
-        print("\nNo blocks answered. Either this module exposes no Mode-22 data at "
-              "these offsets, or the census found the wrong header. Widen with "
-              "--offsets before concluding the vehicle has nothing.")
+        # Nothing NAKed either: the service itself never got a reply. Widening
+        # offsets cannot help, and pointing that out saves an hour of probing.
+        print("\nNo blocks answered, and nothing replied to a Mode-22 request at all -- "
+              "not even a negative response. More --offsets will not help. Either the "
+              "census found the wrong header, or this make does not use Mode 22 for "
+              "enhanced data (Toyota's is largely Mode 21, which is not a service this "
+              "tool is permitted to send).")
 
     res["preset"] = vehicle
     with open(args.out, "w") as fh:
