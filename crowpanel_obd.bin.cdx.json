@@ -1,18 +1,18 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:9b1edfa2-bb6f-5e8a-a294-b570c7fb7743",
+  "serialNumber": "urn:uuid:761d27bf-ce10-511c-b0c6-c5f59b6c9b6f",
   "version": 1,
   "metadata": {
     "component": {
       "type": "firmware",
       "name": "crowpanel_obd",
-      "version": "v0.4.8",
+      "version": "v0.4.9",
       "description": "ESP32-S3 OBD-II gauge cluster firmware",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "974a75ecaf957fcf2b03a9b1204d7eed516f46b5b4681124a849e1e9e026d955"
+          "content": "2701c2243827972adb329905512968d0c06a585944cb93a3061a40e03530e32e"
         }
       ],
       "externalReferences": [
@@ -311,7 +311,7 @@
     {
       "type": "library",
       "name": "Arduino_HS300x",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "scope": "required",
       "properties": [
         {
@@ -338,7 +338,7 @@
     {
       "type": "library",
       "name": "Arduino_LPS22HB",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "scope": "required",
       "properties": [
         {
