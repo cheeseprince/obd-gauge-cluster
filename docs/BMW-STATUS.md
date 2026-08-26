@@ -74,6 +74,61 @@ wires it to an `Egt` tile expecting live exhaust temperature.
 scores r = 0.972 against coolant — by this project's own rule, evidence of *another
 coolant-circuit sensor*.
 
+## CRANK TORQUE — `2258BA`, named in no published BMW table
+
+Found by sweeping `0x2258xx` and identified by **behaviour**, because no source names it: not
+the six engine tables in `Shooooooooo/bmw_pid_data`, not any of the 38 OBDb BMW model repos.
+
+**The identification is scale-independent**, which is what makes it safe:
+
+- It reads **exactly zero on 168 rows**, every one moving at 22–119 km/h on 7–18 % load —
+  closed-throttle deceleration fuel cut, where crank torque collapses. Nothing else logged does
+  this: load bottoms out at 7 %, MAF at 3.6 g/s, neither reaches zero.
+- Peak **power** falls at 5940 rpm and peak **torque** at 3800 rpm. Where a peak *occurs* does
+  not depend on any scale.
+- r = **+0.938** against an independent MAF-derived power model, on shape alone.
+
+`224517` is the matching **reference torque**, and actual reached **92.5 %** of it at full
+throttle (3691 / 3989) — approaching without exceeding, which is what a self-consistent DME
+torque model should do.
+
+### The scale is 0.1 Nm/count, from the DME's own calibration
+
+An earlier revision of the profile carried 0.125, fitted from vehicle physics on a drive with 19
+rows above 60 % load. It was out by 25 %. The correction comes from the **MEVD17.2 XDF** —
+TunerPro's definition of the DME's own flash binary, carrying BMW's internal calibration variable
+names:
+
+| evidence | |
+| :--- | :--- |
+| Torque quantities in the XDF | **`X*0.1`, units Nm — 21 uses.** `X*0.125` appears on none |
+| Its own torque ceilings, read at 0.1 | **410–425 Nm.** At 0.125 the same bytes give 513–531 Nm |
+| Energy balance on two WOT pulls | **k = 0.1023** — 2 % from 0.1, 18 % from 0.125 |
+| `224517` at 0.1 | **398.9 Nm** = the stock N55 reference, inside the ceiling above |
+
+The same file independently confirms the `×0.75−48` temperature scale anchored on-car here.
+
+**Why the wrong value survived:** 0.125 puts peak power at 356 hp on a car whose tune is
+advertised at ~350, while 0.1 gives 285 hp against a 300 hp stock rating. The wrong answer looked
+plausible and the right one looked impossible. Plausibility is not evidence.
+
+⚠️ **`224517` is not constant.** It moves 3985–3989 within a drive (r = +0.862 vs coolant) and
+read 4013 on 2026-08-24 against 3989 on 2026-08-25. A 0.6 % drift, sensible since torque
+capability depends on engine temperature — and the reason the profile reads it live rather than
+hardcoding it.
+
+⚠️ **The donor car is tuned.** The scale is a DME unit convention and should transfer to any
+MEVD17.2; the magnitudes are this car's. A stock F10's `224517` would settle whether its tune
+raised anything — one reading, no software required.
+
+### Other identifications from the same sweep
+
+| DID | is | evidence |
+| :--- | :--- | :--- |
+| `224A2E` | **rev limiter**, constant 6800 | the pull log reached exactly 6800 rpm |
+| `224303` | a coolant temperature on the **SAE** scale (`×1−40`) | r = 0.999 vs the legislated PID, slope 0.979, +3.4 °C offset — a different measuring point |
+| `224A4B` | **engine load %** (`/2.55`) | slope 0.976, offset +0.3 |
+
 ## Addressing, settled by the ECU's own bitmaps
 
 | Header | Result |
@@ -216,12 +271,16 @@ and the displayed value may be ~15 psi high.**
 
 Do that before spending a drive on it.
 
-## Next step to finish the profile
+## Next step to finish the profile — DONE 2026-08-25, see the top of this document
 
-A **cold-start focused drive** (`log --pids 22586F,225817,2258EB,22587E,…`,
-cold → warm, with a couple of 3–4k-rpm pulls) is the one thing that converts the
-oil-temp candidates into a formula and confirms the oil-pressure magnitude and
-its high-RPM curve. Everything else the profile can carry today.
+*(Historical: this section called for a cold-start focused drive to pin the oil-temp candidates
+and confirm the oil-pressure magnitude. Both were done. The candidates it names — `225817`,
+`2258EB`, `22587E` — turned out to be two air-side signals and a modelled engine temperature;
+the actual oil temperature was `224402`, in a block this preset had never swept.)*
+
+**What remains open:** a sourced N55 alarm threshold, which no measurement supplies; a stock
+F10's `224517` reading, to separate this car's tune from the DME convention; and roughly 170
+swept DIDs that no published source names.
 
 ---
 
