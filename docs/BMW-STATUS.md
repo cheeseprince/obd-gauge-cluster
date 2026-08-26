@@ -298,6 +298,11 @@ swept DIDs that no published source names.
 
 # Short version
 
+> ⚠️ **THIS SECTION IS PRE-SCAN (July 2026) AND ITS HEADLINE IS NO LONGER TRUE.** The profile
+> now ships **6 pages / 23 tiles**, every row measured on an F10, and the car has run this
+> firmware. Kept because the reasoning below is still a useful record of what was expected
+> versus what the car actually did. Read the top of this document for the current position.
+
 **BMW is not supported yet. No F10 has ever run this firmware.**
 
 Everything in the screenshots is a 2025 GMC Sierra 1500 3.0L Duramax (LZ0, Global B).
@@ -361,9 +366,14 @@ reverse-engineering write-up.)
 | :--- | :--- | :--- |
 | BMW enhanced addressing = tester `0x6F1` / response `0x600+addr` (DME `0x612`, EGS `0x618`, cluster `0x60D`); **not** `7E0/7E8` | High | OBDb signalsets + spoolas + ediabaslib, independent agreement |
 | Enhanced reads are **UDS `0x22`, 2-byte DID, over classic 11-bit CAN** — no ENET needed. Some signals use legacy `0x21` | High | OBDb signalsets + UDS/ISO 14229 |
-| **Confirmed OBDb DIDs**: engine oil temp `22 DA25` (16-bit signed, `°C = raw − 48`); ATF/transmission fluid temp `22 DA12` at `rax 618`; engine oil pressure (EOP) at `rax 612` | High | OBDb BMW-5-Series `default.json` |
+| ~~**Confirmed OBDb DIDs**: engine oil temp `22 DA25`; ATF `22 DA12` at `rax 618`; EOP at `rax 612`~~ ⚠️ **REFUTED ON THE CAR.** A 256-probe sweep of `22DAxx` returned **zero** answers — the block is absent, not merely unanswered. Oil temp is `224402`; oil pressure is `22586F` on `7DF` | ~~High~~ **refuted** | OBDb BMW-5-Series `default.json` |
 | A plain ELM327 is **D-CAN only** — which is exactly what the F10 OBD port exposes. It cannot reach BMW's other proprietary protocols (DS1/DS2/BMW-FAST) | High | ediabaslib |
 | Some DIDs are **session-gated**: a read-only tool that never sends `0x10` will get a negative response (`NRC serviceNotSupportedInActiveSession`) for those. Default-session DIDs still read | High | ISO 14229-1 |
+
+> ⚠️ **BOTH HALVES OF THIS PARAGRAPH ARE NOW WRONG.** The OBDb `DAxx` set gives you *nothing* on
+> this car — the block returned zero. And the combustion signals it says OBDb lacks were found on
+> `7DF` by sweeping: boost `224205`, rail pressure `2258EF`, lambda `22582C`, VANOS
+> `224506`/`224507`, and charge-air temperature is the legislated `010F`.
 
 Note what the confirmed OBDb set gives you cleanly: **oil temp, oil pressure, coolant, and
 transmission fluid temp** — with real, verified 2-byte BMW DIDs. That already covers the
@@ -381,6 +391,10 @@ Our scanner is read-only by construction (services 01/03/09/22 only) and **will 
 people's vehicles. Per ISO 14229 a UDS server boots into the default session, and BMW may
 gate some DIDs behind the *extended* session. Any gated DID returns a negative response to
 our tool.
+
+> ⚠️ **THE TEST BELOW WOULD NOW GIVE A FALSE NEGATIVE.** `6F1`→`612` is silent on this car and
+> `22DA25` does not answer, yet the default-session read path is *proven* — 462 DIDs answered on
+> the plain `7DF` broadcast. Use `22586F` or `224402` on `7DF` as the go/no-go probe instead.
 
 **This is settled empirically, cheaply, in the first minute of a scan:** set the BMW DME
 header (`AT SH 6F1`, listen on `0x612`), send **one `22 DA25`** (oil temp — a confirmed
@@ -438,6 +452,14 @@ Every one of these is a scan-session (or a separate-research) question.
    or only through BMW-proprietary (non-`0x22`) services our tool won't reach.
 
 # The path forward
+
+> ⚠️ **THIS PLAN WAS FOLLOWED AND THE CAR CHANGED IT.** The method (census → sweep → log →
+> correlate) was sound and is what produced everything at the top of this document. The
+> *addressing* in step 1 was not: `6F1`→`612`/`618` is silent, and a `22DA25` first probe returns
+> nothing, so a scan run exactly as written below concludes the car is unreachable. What actually
+> works is the plain **`7DF` functional broadcast**, where 462 DIDs answered. Step 2's block list
+> also missed the productive ones — `0x2243`, `0x2244` and `0x224A`, since added to the preset —
+> and the `DAxx` sweep it recommends returned zero of 256.
 
 Same method that produced the working GM table, with the BMW addressing baked in from the
 start:
