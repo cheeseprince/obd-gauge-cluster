@@ -194,7 +194,13 @@ is _not_ reachable through a plain ELM327 on this vehicle.**
   the GM `decOilPsi`). **Decoded byte-0-only on purpose:** on `7DF` a second
   module appends a `7F2222` NAK after the positive frame, which
   `obd_parse.cpp` concatenates — a `u16` read would ingest the NAK.
-- **OIL TEMP and ATF/gearbox TEMP are STUBBED.** ATF needs the EGS, which is
+- **OIL TEMP and ATF/gearbox TEMP are STUBBED.** ⚠️ *HALF SUPERSEDED — kept as the
+  historical record. **OIL TEMP is now ACTIVE on `224402`** (see the top of this
+  document): it sits in block `0x2244`, which this preset had never swept, and a
+  2026-08-25 cold soak ramps it 24.8 → 74.2 °C. The two candidates named below are
+  **not** oil temperature — they are byte-identical to each other on 99.51 % of rows
+  and track ambient, not oil. **ATF remains stubbed and the reasoning below still
+  holds.*** ATF needs the EGS, which is
   gateway-blocked (likely never reachable via a plain ELM327). Oil-temp
   candidates exist on `7DF` (`225817` / `2258EB` both sat 91–98 °C, byte 0,
   tracking coolant) but the drive was **warm-started** — no
@@ -229,10 +235,11 @@ ISTA/TIS threshold table becomes available.
 
 | Row | Why |
 | :--- | :--- |
-| **OIL PRESSURE** | ⚠️ **Scale RESOLVED 2026-08-15 — see "Oil pressure is 16-bit" below.** It is a u16 in millibar, not byte 0. Alarms still off: a low-pressure limit needs a sourced N55 minimum **and** a hot-idle sample (the lowest-pressure state), neither of which the warm drive provides |
-| TRANSMISSION (ATF) | Lives on the EGS module, gateway-blocked on this car |
-| OIL (temp) | Candidate DIDs never pinned — the only drive was warm-started |
-| BOOST / LOAD / INTAKE / AMBIENT | Decode is sound, but no N55-specific limits are established. Inventing a number buys nothing |
+| **OIL PRESSURE** | ⚠️ **Scale RESOLVED 2026-08-15** (u16 millibar, not byte 0) **and the sensor confirmed ABSOLUTE 2026-08-23** — see the top of this document. Alarms still off: a low-pressure limit needs a **sourced N55 minimum**, which no measurement supplies. The hot-idle sample this row once called for has since been taken |
+| TRANSMISSION (ATF) | Lives on the EGS module, gateway-blocked on this car. Still true |
+| **OIL (temp)** | ⚠️ **SUPERSEDED — the DID is pinned and the cold start has happened.** It is `224402`, in block `0x2244`, which this preset had never swept; the candidates this row referred to (`225817`/`2258EB`) are one duplicated air-side signal, and `22587E` is a modelled engine temperature. A 2026-08-25 cold soak ramps it 24.8 → 74.2 °C, corroborated by `224408` on a different scale family at r = 0.99978. Alarms remain off for one reason only: **no sourced N55 threshold exists** |
+| BOOST / LOAD / INTAKE / AMBIENT | Decode is sound, but no N55-specific limits are established. Inventing a number buys nothing. Still true |
+| **TORQUE / RefTq / HP** | Added 2026-08-25. Scale is well founded (the DME's own calibration) but a threshold still needs a sourced limit, and the magnitudes are a tuned car's |
 
 ## Oil pressure is 16-bit millibar, not byte 0 — corrected 2026-08-15
 
