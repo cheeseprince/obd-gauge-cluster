@@ -181,27 +181,53 @@ static float decBmwFuelGphFromMaf(const uint8_t* d, int n, const DecodeCtx&) {
 //     inside the turbo plateau. Where a peak OCCURS does not depend on any scale.
 //   * r = +0.938 against an independent MAF-derived power model, on shape alone.
 //
-// THE SCALE, 0.125 Nm/count, comes from two methods sharing NO assumptions:
-//   MAF -> fuel -> power (thermodynamic, ~32% BTE) fitted 0.1263
-//   vehicle acceleration F=ma (Newtonian; mass, CdA, 15% driveline) gave 0.1273
-// They agree within 1% of each other and 2% of a clean 1/8. Cross-checked against
-// road-load power at the two hardest pulls: 291 hp and 280 hp measured from
-// acceleration, against 298 hp from this decoder at the same samples.
+// THE SCALE IS 0.1 Nm/count, FROM THE DME'S OWN CALIBRATION.
 //
-// ⚠️ MEASURED ON A MODIFIED CAR. The donor F10 carries an aftermarket ECU tune.
-// 224517 (reference torque) reads a CONSTANT 4013 -> 501.6 Nm at this scale, where
-// a stock N55 reference is ~400 Nm -- so the tune has raised the DME's own
-// reference map. THE SCALE SHOULD TRANSFER (it is a DME unit convention, not a
-// calibration value) BUT THE MAGNITUDES WILL NOT: a stock car will read lower, and
-// its reference torque should be checked before any threshold is set. Alarms are
-// off on all three rows for exactly this reason.
-// ONE definition of the torque unit, shared by both decoders below. It must be
-// shared: decBmwRefTorqueNm multiplies by it and decBmwTorquePct divides by it to
-// recover raw counts, so a change applied to only one of them would silently skew
-// the torque percentage -- and therefore horsepower -- while looking like a
-// calibration drift rather than a units bug. That risk is live, not theoretical:
-// this figure rests on 19 rows above 60% load and is expected to be refined.
-static constexpr float BMW_TQ_NM_PER_COUNT = 0.125f;
+// This file previously carried 0.125, fitted from vehicle physics. That was wrong,
+// and the correction comes from a source that needs no assumptions at all: the
+// MEVD17.2 XDF -- TunerPro's definition of the DME's own flash binary, naming BMW's
+// internal calibration variables (KF_EDA_ANZ_SPORT_MDK_IST, K_ZK_MRVVTOFF and the
+// like). In it:
+//   * EVERY torque quantity is "X*0.1" with units Nm. 21 uses. "X*0.125" appears on
+//     no torque quantity anywhere in the file.
+//   * The calibration's own torque ceilings read 410-425 Nm at that scale
+//     (Torque request ceiling Auto/Manual, Modeled torque limit 1). At 0.125 the same
+//     bytes would be 513-531 Nm, which no N55 ceiling is.
+//   * It independently confirms the temperature scale used elsewhere in this file:
+//     the rev-limit-vs-engine-temperature axis is "X*0.75-48", units tmot -- exactly
+//     the scale anchored on-car against the legislated coolant PID.
+//
+// THE PHYSICS AGREES, and did all along. A dedicated pull log (891 rows @ 510 ms, two
+// WOT pulls to the 6800 rpm limiter) analysed by ENERGY BALANCE -- which integrates
+// rather than differentiating, and so is immune to the 1 km/h quantisation of PID
+// 010D that destabilised the first estimate -- gives k = 0.1023. One pull was uphill
+// and one downhill, so the gravity term this form omits biases them oppositely and
+// cancels in the harmonic mean. That is 2% from 0.1 and 18% from 0.125.
+//
+// AND 224517 LANDS ON THE STOCK FIGURE: 3989 counts x 0.1 = 398.9 Nm, against a stock
+// N55 reference of 400 Nm, and inside the calibration's own 410-425 Nm ceiling. At
+// 0.125 it would read 498.6 Nm -- ABOVE the ceiling the ECU permits, i.e. impossible.
+//
+// WHY THE WRONG VALUE SURVIVED SO LONG: 0.125 puts peak power at 356 hp on a car whose
+// tune is advertised at ~350, while 0.1 gives 285 hp against a 300 hp stock rating. The
+// wrong answer looked plausible and the right one looked impossible. Plausibility is
+// not evidence.
+//
+// ⚠️ WITHDRAWN: an earlier revision of this comment claimed the tune had raised the
+// DME's reference torque map to 501.6 Nm. That was an artefact of the wrong scale, not
+// an observation. At 0.1 the reference is the stock figure.
+//
+// ⚠️ 224517 IS NOT CONSTANT. It moves 3985-3989 within a single drive (r = +0.862
+// against coolant) and read 4013 on 2026-08-24 against 3989 on 2026-08-25 -- a 0.6%
+// drift, sensible since maximum torque capability depends on engine temperature. Far
+// too small to matter numerically, but it is why decBmwTorquePct must read the
+// reference LIVE rather than hardcode it.
+//
+// ⚠️ THE DONOR CAR IS TUNED. The scale is a DME unit convention and should transfer to
+// any MEVD17.2, but the magnitudes are this car's. ALARMS STAY OFF on all three rows:
+// a threshold needs a sourced N55 limit, which no measurement of ours supplies.
+//
+static constexpr float BMW_TQ_NM_PER_COUNT = 0.1f;
 
 static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx& ctx) {
   if (n < 2) return NAN;
@@ -214,7 +240,7 @@ static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx& ctx) {
   // reference -- so the two errors COMPOUND rather than cancel. This PR's own
   // framing is that the scale transfers and the magnitudes do not, so the
   // denominator must not be a magnitude measured on one car.
-  float refCounts = 4013.0f;                     // fallback: this car's measured value
+  float refCounts = 3989.0f;                     // fallback: this car, 2026-08-25
   if (ctx.values) {
     const float refNm = ctx.values[(int)StatId::RefTq];
     // Round-trips Nm back to raw counts. NOTE the scale CANCELS here -- the
