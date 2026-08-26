@@ -233,21 +233,29 @@ static float decBmwTorquePct(const uint8_t* d, int n, const DecodeCtx& ctx) {
   if (n < 2) return NAN;
   const uint16_t raw = (uint16_t)((d[0] << 8) | d[1]);
   if (raw == 0xFFFF) return NAN;
-  // Percent of THIS DME's OWN reference torque, read live from 224517 rather than
-  // hardcoded. The donor car is tuned and reports 501.6 Nm where a stock N55
-  // reference is ~400 Nm (raw ~3200); a fixed 4013 denominator would make a stock
-  // car under-read by ~25%, and computeHorsepower then multiplies that by the LIVE
-  // reference -- so the two errors COMPOUND rather than cancel. This PR's own
-  // framing is that the scale transfers and the magnitudes do not, so the
-  // denominator must not be a magnitude measured on one car.
-  float refCounts = 3989.0f;                     // fallback: this car, 2026-08-25
-  if (ctx.values) {
-    const float refNm = ctx.values[(int)StatId::RefTq];
-    // Round-trips Nm back to raw counts. NOTE the scale CANCELS here -- the
-    // percentage is raw_act/raw_ref and is scale-invariant. The constant appears
-    // only to undo the display conversion, which is why it must be the shared one.
-    if (refNm > 100.0f && refNm < 1000.0f) refCounts = refNm / BMW_TQ_NM_PER_COUNT;
-  }
+  // Percent of THIS DME's OWN reference torque, read LIVE from 224517.
+  //
+  // THERE IS NO FALLBACK CONSTANT, DELIBERATELY. The percentage is definitionally
+  // raw_act / raw_ref: with no reference there is no percentage, and any constant
+  // here would be a denominator measured on one particular car. Hp is already gated
+  // on RefTq > 0 (obd_query.h updateComputedReadouts), so a fallback would put a
+  // confident TORQUE number on screen in exactly the case where HP shows nothing --
+  // two rows disagreeing about whether the reference is known. Returning NaN keeps
+  // them consistent and lets the tile show its no-data state, which is the honest
+  // reading and the same standard this profile applies to alarms: a number on a
+  // guessed basis is worse than no number.
+  //
+  // Cost is bounded: RefTq is tier 2, so TORQUE reads no-data for the first rotation
+  // through the rare bucket on a car where 224517 answers -- the same wait HP has
+  // always had. On a car where it never answers, the tile stays blank, which is true.
+  if (!ctx.values) return NAN;
+  const float refNm = ctx.values[(int)StatId::RefTq];
+  // Comparisons against NaN are all false, so an unset reference falls out here.
+  if (!(refNm > 100.0f && refNm < 1000.0f)) return NAN;
+  // Round-trips Nm back to raw counts. NOTE the scale CANCELS here -- the
+  // percentage is raw_act/raw_ref and is scale-invariant. The constant appears
+  // only to undo the display conversion, which is why it must be the shared one.
+  const float refCounts = refNm / BMW_TQ_NM_PER_COUNT;
   return (float)raw * (100.0f / refCounts);
 }
 static float decBmwRefTorqueNm(const uint8_t* d, int n, const DecodeCtx&) {
@@ -317,7 +325,7 @@ static const ReadoutDef BMW_READOUTS[] = {
   {"DSL+",      "gal",          1,   T(NA,NA,NA,NA),  24,    nullptr,   0,  1,  decNone,         Quantity::Vol,  RF_COMPUTED},   // computed (not shown)
   {"DEF+",      "gal",          1,   T(NA,NA,NA,NA),  6,     nullptr,   0,  1,  decNone,         Quantity::Vol,  RF_COMPUTED},
   {"TORQUE",    "%",            0,   T(NA,NA,NA,NA),  100,   "2258BA",  0,  0,  decBmwTorquePct, Quantity::None},                // ACTIVE 2258BA@7DF — crank torque, % of this DME reference; UNNAMED in every community table
-  {"RefTq",     "",             0,   T(NA,NA,NA,NA),  1000,  "224517",  0,  2,  decBmwRefTorqueNm, Quantity::None},              // ACTIVE 224517@7DF — constant 4013 = 501.6 Nm (tuned car; stock ref ~400)
+  {"RefTq",     "",             0,   T(NA,NA,NA,NA),  1000,  "224517",  0,  2,  decBmwRefTorqueNm, Quantity::None},              // ACTIVE 224517@7DF — 3989 = 398.9 Nm, the stock N55 reference; drifts ~0.6% with temp
   {"BARO",      "kPa",          0,   T(NA,NA,NA,NA),  110,   "0133",    0,  2,  decBaro,         Quantity::None},                // ACTIVE Mode-01
   {"MAF",       "g/s",          0,   T(NA,NA,NA,NA),  300,   nullptr,   0,  1,  decNone,         Quantity::None},                // 0110 IS live, but FUEL RATE already polls it and obd_schedule does not dedupe by cmd — one PID, one request
   {"AMBIENT",   "\xC2\xB0""F",  0,   T(NA,NA,NA,NA),  150,   "0146",    0,  1,  decTempF,        Quantity::Temp},                // ACTIVE Mode-01

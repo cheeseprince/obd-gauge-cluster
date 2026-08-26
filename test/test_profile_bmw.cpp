@@ -109,51 +109,64 @@ int main() {
   // TORQUE — 2258BA, identified by BEHAVIOUR on the 2026-08-24 drive and named in
   // none of the six community BMW engine tables.
   {
-    DecodeCtx ctx{nullptr};
+    DecodeCtx none{nullptr};
     auto tq  = READOUTS[(int)StatId::ActTq].decode;
     auto ref = READOUTS[(int)StatId::RefTq].decode;
     assert(strcmp(READOUTS[(int)StatId::ActTq].cmd, "2258BA") == 0);
     assert(strcmp(READOUTS[(int)StatId::RefTq].cmd, "224517") == 0);
 
-    // Reference torque was CONSTANT 4013 across all 486 rows of the drive.
-    // 3989 counts at the DME's own 0.1 Nm/count -> 398.9 Nm, the stock N55 reference.
+    // 3989 counts at the DME's own 0.1 Nm/count -> 398.9 Nm, the stock N55
+    // reference. 224517 is NOT constant: it moves 3985-3989 within a drive and
+    // read 4013 on 2026-08-24 against 3989 on 2026-08-25, which is one reason the
+    // percentage reads it live rather than hardcoding it.
     const uint8_t r[2] = {0x0F, 0x95};                       // 3989
-    assert(std::fabs(ref(r, 2, ctx) - 398.9f) < 0.5f);
+    assert(std::fabs(ref(r, 2, none) - 398.9f) < 0.5f);
 
-    // Peak actual torque seen: 3087 at 3800 rpm = 76.9% of reference.
-    const uint8_t pk[2] = {0x0C, 0x0F};
-    assert(std::fabs(tq(pk, 2, ctx) - 77.4f) < 0.3f);
-    assert(tq(pk, 2, ctx) < 100.0f);       // actual must not exceed the reference
+    const uint8_t pk[2] = {0x0C, 0x0F};                      // 3087
+
+    // THE PERCENTAGE REQUIRES A LIVE REFERENCE, in all three ways it can be absent.
+    // raw_act/raw_ref has no value without raw_ref, and Hp is gated on RefTq > 0
+    // the same way -- so TORQUE must not show a confident number in the one case
+    // where HP shows nothing.
+    assert(std::isnan(tq(pk, 2, none)));                     // no values array
+    {
+      float v[(int)StatId::COUNT] = {0};
+      DecodeCtx unset{v};
+      assert(std::isnan(tq(pk, 2, unset)));                  // present but never polled
+      v[(int)StatId::RefTq] = 42.0f;                         // implausible -> rejected
+      assert(std::isnan(tq(pk, 2, unset)));
+    }
+
+    float v[(int)StatId::COUNT] = {0};
+    v[(int)StatId::RefTq] = ref(r, 2, none);
+    DecodeCtx live{v};
+
+    // 3087 of 3989 counts.
+    assert(std::fabs(tq(pk, 2, live) - 77.4f) < 0.3f);
+    assert(tq(pk, 2, live) < 100.0f);      // actual must not exceed the reference
 
     // ZERO ON OVERRUN is the identifying behaviour: 168 rows read exactly 0 while
     // moving at 22-119 km/h on 7-18% load. A decode unable to return 0 here would
     // destroy the one signature separating torque from engine load.
     const uint8_t zero[2] = {0x00, 0x00};
-    assert(tq(zero, 2, ctx) == 0.0f);
+    assert(tq(zero, 2, live) == 0.0f);
 
     // THE SCALE MUST CANCEL. decBmwTorquePct divides by the same constant that
-    // decBmwRefTorqueNm multiplies by, so the percentage is scale-invariant: feed
-    // the reference in through ctx and the same raw must give the same percent no
-    // matter what the Nm-per-count figure is. This is the assertion that catches a
-    // future scale refinement being applied to only one of the two decoders.
-    {
-      float v[(int)StatId::COUNT] = {0};
-      v[(int)StatId::RefTq] = ref(r, 2, ctx);          // whatever the scale yields
-      DecodeCtx live{v};
-      assert(std::fabs(tq(pk, 2, live) - tq(pk, 2, ctx)) < 0.01f);
-      // And a DIFFERENT reference must move the percentage: a stock F10 reads
-      // ~400 Nm (raw ~3200), on which the same raw is ~96%, not 76.9%.
-      v[(int)StatId::RefTq] = 300.0f;      // a stock-like lower reference must move it
-      assert(tq(pk, 2, live) > 100.0f);
-    }
+    // decBmwRefTorqueNm multiplies by, so the percentage is the PURE COUNT RATIO
+    // 3087/3989 whatever the Nm-per-count figure turns out to be. This is the
+    // assertion that catches a future scale refinement applied to only one of the
+    // two decoders -- it pins the ratio itself, not agreement with a fallback.
+    assert(std::fabs(tq(pk, 2, live) - (3087.0f / 3989.0f * 100.0f)) < 0.01f);
 
-    // Horsepower must reconcile with the figure measured from VEHICLE ACCELERATION:
-    // raw 2861 at 5940 rpm gave 291 hp from F=ma on the same drive.
-    const uint8_t s2[2] = {0x0B, 0x2D};                      // 2861
-    // Peak on the 2026-08-25 pull log: raw 3691 at 5264 rpm -> 369 Nm -> ~273 hp.
+    // And a DIFFERENT reference must move the percentage rather than being ignored.
+    v[(int)StatId::RefTq] = 300.0f;
+    assert(tq(pk, 2, live) > 100.0f);
+    v[(int)StatId::RefTq] = ref(r, 2, none);                 // restore
+
+    // Peak on the 2026-08-25 pull log: raw 3683 at 5264 rpm -> 368.3 Nm -> ~272 hp.
     // Energy balance on the same pulls gives 285 hp peak. Both inside this window.
-    const uint8_t peak[2] = {0x0E, 0x63};
-    const float hp = computeHorsepower(tq(peak, 2, ctx), 398.9f, 5264.0f);
+    const uint8_t peak[2] = {0x0E, 0x63};                    // 3683
+    const float hp = computeHorsepower(tq(peak, 2, live), 398.9f, 5264.0f);
     assert(hp > 250.0f && hp < 300.0f);
   }
 
