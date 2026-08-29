@@ -129,7 +129,11 @@ def write_report(candidates, path: str, pdf: bool = False, meta: dict | None = N
         "correlation alone was ambiguous.",
         "",
     ]
-    Path(path).write_text("\n".join(lines))
+    # encoding is EXPLICIT: Path.write_text() otherwise uses the locale default,
+    # which is cp1252 on Windows, and this report contains "\u2192" and "\u00b0".
+    # Found by the Windows CI job -- it crashed writing a report, which is the
+    # last step of a real scan, after the drive.
+    Path(path).write_text("\n".join(lines), encoding="utf-8")
     if pdf and shutil.which("pandoc"):
         pdf_path = path[:-3] + ".pdf" if path.endswith(".md") else path + ".pdf"
         subprocess.run(["pandoc", path, "-o", pdf_path], check=False)

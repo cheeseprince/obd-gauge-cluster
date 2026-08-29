@@ -141,3 +141,30 @@ def test_a_bring_up_failure_becomes_a_sentence_not_a_traceback(monkeypatch):
     with pytest.raises(SystemExit) as e:
         _open_transport(args)
     assert "nothing answered the scan" in str(e.value)
+def test_every_text_file_open_names_its_encoding():
+    """No text I/O may inherit the locale's default encoding.
+
+    Python picks the LOCALE default for text mode when `encoding` is omitted:
+    UTF-8 on Linux and macOS, but cp1252 on a stock Windows install. The scan
+    report contains '→' and '°', neither of which cp1252 can encode, so
+    `Path.write_text()` there raised UnicodeEncodeError -- at the very last step
+    of a real scan, after the drive was already done.
+
+    This is a whole class of bug, not one line, so it is guarded as a class:
+    every text-mode open and write_text in the package must say what encoding it
+    means. Binary mode is exempt -- it has no encoding to name.
+    """
+    import re
+
+    pkg = pathlib.Path(__file__).resolve().parents[1]
+    offenders = []
+    for py in sorted(pkg.glob("*.py")):
+        for n, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if "encoding=" in code:
+                continue
+            if re.search(r"\bopen\(", code) and not re.search(r'"[rwax]b"|\'[rwax]b\'', code):
+                offenders.append(f"{py.name}:{n}: {line.strip()}")
+            elif re.search(r"\.write_text\(|\.read_text\(", code):
+                offenders.append(f"{py.name}:{n}: {line.strip()}")
+    assert not offenders, "text I/O without an explicit encoding:\n" + "\n".join(offenders)
