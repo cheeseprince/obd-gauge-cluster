@@ -93,11 +93,12 @@ not, because it cannot be. Treat the first use on a car as bring-up.
 ## Session flow
 
 Four subcommands, run in this order, each consuming the previous stage's
-output file:
+output file — plus `discover`, which is only needed for a vehicle that has no
+preset yet (see **Unlisted vehicles** below):
 
 ```
-python3 -m obd_scan census    --vehicle {audi,bmw,ford,gm,jeep} -o census.json
-python3 -m obd_scan sweep     --vehicle {audi,bmw,ford,gm,jeep} --census census.json -o sweep.json
+python3 -m obd_scan census    --vehicle {audi,bmw,ford,generic,gm,jeep} -o census.json
+python3 -m obd_scan sweep     --vehicle {audi,bmw,ford,generic,gm,jeep} --census census.json -o sweep.json
 python3 -m obd_scan log       --sweep sweep.json -o drive.csv --hz 1.0
 python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
 ```
@@ -116,6 +117,10 @@ python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
   header for a 5-block preset** (ATAT2 adaptive timing gets a NO DATA back
   in ~60–100 ms per probe, but a block is up to 256 probes). Do not kill it
   thinking it hung; the `progress` line updates every probe.
+- **`discover`** — *only for a vehicle with no preset.* Probes a few offsets
+  in each of the 256 possible Mode-22 blocks to find which blocks the vehicle
+  implements, then prints them in `catalog.py`'s `Block(...)` form. Reads
+  `census.json`, writes `discover.json`. See **Unlisted vehicles**.
 - **`log`** — round-robins the sweep's hit list plus the generic anchor PIDs
   (RPM, speed, load, coolant, MAF, baro, ambient) during an actual drive,
   writing a wide CSV. Reads `sweep.json`, writes `drive.csv`. Ctrl-C stops
@@ -133,6 +138,54 @@ python3 -m obd_scan correlate drive.csv -o report.md [--pdf]
   `too-few-samples` / `constant` / `sentinel` / `mirror-tautology` — see the report's own "How to
   read this" section for what each means and why `r` alone is not proof).
   `--workers` controls parallelism (default `min(os.cpu_count() or 1, 4)`).
+
+## Unlisted vehicles
+
+The five presets encode maps somebody already built by hand. A vehicle whose
+make is not among them has no map, so `sweep` has no blocks to target and
+`--vehicle auto` aborts. `discover` is what produces that map:
+
+```
+python3 -m obd_scan census   --vehicle generic -o census.json
+python3 -m obd_scan discover --census census.json --vehicle generic -o discover.json
+python3 -m obd_scan sweep    --census census.json --vehicle generic --blocks-from discover.json -o sweep.json
+```
+
+`--blocks-from` means the whole chain runs without editing `catalog.py`, so a
+contributor with no fork (or a phone app driving the same stages) can still get
+to a `sweep.json` and a drive log. Blocks read back from that file are
+revalidated against the read-only whitelist, exactly like a preset is.
+
+`discover` also prints the blocks as pasteable `Block(...)` lines — that plus a
+`correlate` report is most of what a new `VehiclePreset` needs.
+
+**Why a few offsets and not all 65536.** A blind full sweep is 65536 requests,
+about 1.5 hours at the ~10 probes/s an ELM327 link sustains under ATAT2
+adaptive timing (the same 60-100 ms round trip the sweep section quotes; three
+BMW F10 BLE logs measured 11.9-12.1/s). Discovery probes
+7 offsets per block instead. The offsets are not uniform because real DID blocks
+are bottom-anchored: on the BMW F10 sweep of 2026-08-24 (462 answering DIDs in 6
+blocks) every populated block had a hit below `0x08`, `2242xx` was contiguous
+`0x00-0x07`, and `2244xx`/`2245xx` held all their hits below `0x40`. Probing
+`0x00-0x03` alone found 6 blocks of 6 in 1024 probes; a uniform 8-per-block
+spread needed 2048 to match it. `0x40/0x80/0xC0` are insurance for a make whose
+layout is not bottom-anchored — that result is n=1.
+
+**Cost scales with alive headers, so read the estimate.** `discover` probes
+every header the census found alive and prints the probe count and a time
+estimate before opening the link; over 10000 probes it warns. Narrow with
+`--headers` (or fewer `--offsets`) if that is too long.
+
+It deliberately does *not* default to the functional broadcast alone. Whether
+enhanced Mode 22 answers a broadcast is vehicle-specific: the BMW F10 answered
+462 DIDs on `7DF`, while the Jeep WS's confirmed DIDs are physical-only
+(`18DA18F1`, with the 11-bit path entirely dead). Broadcast-only would find
+everything on the first car and nothing on the second — and "0 blocks" reads as
+"this vehicle has no enhanced data", which is a false negative this tool should
+never manufacture.
+
+**What it does not do.** Discovery finds *which* DIDs answer, not what they
+mean. Naming them is still `log` + `correlate` plus human work.
 
 ## In-cab runbook
 

@@ -1,4 +1,4 @@
-"""CLI: python3 -m obd_scan {census,sweep,log,correlate}"""
+"""CLI: python3 -m obd_scan {census,discover,sweep,log,correlate}"""
 import argparse
 import json
 import os
@@ -14,11 +14,13 @@ from .report import write_report
 from .stages import (
     Hit,
     default_session_gate,
+    discover_headers,
     estimate_samples_per_pid,
     filter_hits_by_pids,
     probe_bmw_capability,
     read_vin,
     run_census,
+    run_discover,
     run_log,
     run_sweep,
 )
@@ -81,6 +83,13 @@ def _report_abort(res: dict) -> None:
 # A run whose errors clear this fraction of its probes/polls is not a
 # negative finding -- it is a transport that could not be trusted, and must
 # be flagged with the same urgency as an outright abort (IMPORTANT 1).
+# Probe rate used only to turn a probe COUNT into a human estimate. ~10/s is
+# this repo's own documented figure -- the sweep section of README.md measures a
+# NO DATA round trip at 60-100 ms under ATAT2 adaptive timing -- and it matches
+# three BMW F10 BLE logs of 2026-08 independently at 11.9-12.1 probes/s. Kept
+# slightly conservative: a positive reply carries more bytes than a NO DATA.
+PROBES_PER_SEC = 10.0
+DISCOVER_PROBE_WARN = 10_000   # ~17 min at PROBES_PER_SEC: warn before starting, not after
 ERROR_FRACTION_ALARM = 0.5
 
 
@@ -170,6 +179,36 @@ def _rehydrate_alive_headers(census_raw, preset):
     return rows, skipped
 
 
+def _blocks_from_discover(path: str) -> "list[cat.Block]":
+    """Rebuild sweep-able blocks from a discover.json.
+
+    This is what lets an unlisted vehicle go census -> discover -> sweep with no
+    source edit at all, which matters for any caller that cannot patch
+    catalog.py (a phone app, a fork-less contributor).
+
+    Every rebuilt block is revalidated here rather than trusted. The file is
+    ordinary JSON on disk: it can be hand-edited, copied between machines, or
+    shared, so a prefix in it is exactly as untrusted as a preset read from a
+    shared census.json -- which cmd_sweep already refuses to take on faith.
+    Running validate_request over the block's own first request re-applies the
+    read-only whitelist, so a doctored prefix naming a write service is rejected
+    before the link opens, not after.
+    """
+    with open(path) as fh:
+        raw = json.load(fh)
+    out: list[cat.Block] = []
+    for b in raw.get("blocks", []):
+        try:
+            block = cat.Block(str(b["name"]), int(b["prefix"]),
+                              lo=int(b.get("lo", 0x00)), hi=int(b.get("hi", 0xFF)),
+                              note=str(b.get("note", "")))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SystemExit(f"sweep: {path} has an unusable block entry ({exc})") from None
+        cat.validate_request(next(iter(block.requests())))    # read-only whitelist
+        out.append(block)
+    return out
+
+
 def cmd_sweep(args):
     with open(args.census) as fh:
         census_raw = json.load(fh)
@@ -191,12 +230,20 @@ def cmd_sweep(args):
         print(f"sweep: refusing census header '{name}' -- not declared by preset "
               f"'{vehicle}' (tampered/shared census.json?); skipping it.")
     census = {"headers": census_rows}
+    blocks = None
+    if args.blocks_from:
+        blocks = _blocks_from_discover(args.blocks_from)
+        if not blocks:
+            print(f"sweep: {args.blocks_from} lists no blocks -- nothing to sweep.")
+            return
+        print(f"sweeping {len(blocks)} discovered block(s) from {args.blocks_from}: "
+              f"{', '.join(b.name for b in blocks)}")
     s = _session(args)
 
     def progress(header, block, req, cls, hits):
         print(f"\r{header} {block} {req} -> {cls:<18} hits={hits}", end="", flush=True)
 
-    res = run_sweep(s, census, preset, progress=progress)
+    res = run_sweep(s, census, preset, blocks=blocks, progress=progress)
     s.close()
     print(f"\n{len(res['hits'])} hits / {res['probes']} probes "
           f"({res['negatives']} negative responses, {res['errors']} transport errors)")
@@ -208,6 +255,117 @@ def cmd_sweep(args):
               "-- this is NOT a negative finding. Check the adapter link. ***")
     _report_abort(res)
     res["preset"] = vehicle   # record the preset so `log --vehicle auto` can scope headers safely
+    with open(args.out, "w") as fh:
+        json.dump(res, fh, indent=1, default=_json_default)
+    print(f"wrote {args.out}")
+
+
+def _eta(probes: int) -> str:
+    """Probe count as a human duration. Minutes below an hour, hours above."""
+    secs = probes / PROBES_PER_SEC
+    return f"{secs / 60:.0f} min" if secs < 3600 else f"{secs / 3600:.1f} h"
+
+
+def _parse_offsets(text: str) -> "tuple[int, ...]":
+    """Parse "00,01,40" into (0x00, 0x01, 0x40). Hex without 0x, like every
+    other PID the tool prints."""
+    out = []
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            v = int(part, 16)
+        except ValueError:
+            raise SystemExit(f"discover: --offsets got '{part}', which is not hex") from None
+        if not 0x00 <= v <= 0xFF:
+            raise SystemExit(f"discover: offset {part} is out of range (00-FF)")
+        out.append(v)
+    if not out:
+        raise SystemExit("discover: --offsets is empty")
+    return tuple(dict.fromkeys(out))          # de-dupe, keep order
+
+
+def cmd_discover(args):
+    with open(args.census) as fh:
+        census_raw = json.load(fh)
+    vehicle = census_raw.get("preset") if args.vehicle == "auto" else args.vehicle
+    if vehicle not in cat.PRESETS:
+        print(f"discover: census.json has no usable preset ('{vehicle}'); re-run census, "
+              f"or pass an explicit --vehicle ({', '.join(sorted(cat.PRESETS))}).")
+        return
+    if args.vehicle == "auto":
+        print(f"AUTO: using preset '{vehicle}' (from census.json)")
+    preset = cat.PRESETS[vehicle]
+    cat.validate_preset(preset)
+    cat.validate_headers(cat.HEADERS_11BIT + cat.HEADERS_29BIT)   # IMPORTANT 5
+    _report_upstream_incomplete(census_raw, "census")             # IMPORTANT 4
+    census_rows, skipped = _rehydrate_alive_headers(census_raw, preset)
+    for name in skipped:
+        print(f"discover: refusing census header '{name}' -- not declared by preset "
+              f"'{vehicle}' (tampered/shared census.json?); skipping it.")
+    census = {"headers": census_rows}
+    offsets = _parse_offsets(args.offsets)
+    want = [h.strip() for h in args.headers.split(",") if h.strip()] or None
+    scoped, scope = discover_headers(census, want)
+    if not scoped:
+        print("discover: no census header matches -- nothing to probe. Check "
+              "--headers against the census's alive list.")
+        return
+    names = ", ".join(r.header.name for r in scoped)
+    total = 256 * len(offsets) * len(scoped)
+    if total > DISCOVER_PROBE_WARN:
+        # Price it honestly BEFORE the link opens. A run this size is measured
+        # in hours, and a driver who starts one without knowing that will kill
+        # it partway -- producing a truncated result that looks like a finding.
+        print(f"*** {total} probes is roughly {_eta(total)} at ~{PROBES_PER_SEC:.0f} probes/s. "
+              f"Narrow it with --headers (alive: {names}) or fewer --offsets, "
+              f"or plan to leave it running. ***")
+    print(f"discovering {len(offsets)} offsets x 256 blocks x {len(scoped)} header(s) "
+          f"[{scope}: {names}] = {total} probes "
+          f"(~{_eta(total)} at ~{PROBES_PER_SEC:.0f} probes/s)")
+    s = _session(args)
+
+    def progress(header, block, req, cls, found):
+        print(f"\r{header} {block} {req} -> {cls:<18} blocks={found}", end="", flush=True)
+
+    res = run_discover(s, census, offsets=offsets, headers=want, progress=progress)
+    s.close()
+    print(f"\n{len(res['blocks'])} blocks / {res['probes']} probes "
+          f"({len(res['hits'])} hits, {res['negatives']} negative responses, "
+          f"{res['errors']} transport errors)")
+    if res["errors"] and res["probes"] and res["errors"] / res["probes"] >= ERROR_FRACTION_ALARM:
+        print(f"*** {res['errors']}/{res['probes']} probes hit a transport error "
+              "-- this is NOT a negative finding. Check the adapter link. ***")
+    _report_abort(res)
+
+    if res["blocks"]:
+        # Print the blocks in the exact shape catalog.py wants, so adding a
+        # vehicle to the repo is a paste rather than a transcription. This is
+        # the point of the stage: a preset is what an unlisted car is missing.
+        print("\nCandidate preset blocks -- paste into a VehiclePreset in catalog.py:\n")
+        print("    blocks=[")
+        for b in res["blocks"]:
+            print(f'        Block("{b.name}", 0x{b.prefix:04X}, '
+                  f'note="{b.note}"),')
+        print("    ],")
+        print("\nThen run `sweep` to read every DID in those blocks.")
+    elif res["speaks_mode22"]:
+        # Mode 22 works here -- the offsets just found nothing. Widening is the
+        # right next move, and the vehicle is NOT ruled out.
+        print(f"\nNo blocks answered, but {', '.join(res['speaks_mode22'])} answered Mode-22 "
+              "requests with a negative response, so the service IS implemented. Widen "
+              "with --offsets before concluding this vehicle has no enhanced data.")
+    else:
+        # Nothing NAKed either: the service itself never got a reply. Widening
+        # offsets cannot help, and pointing that out saves an hour of probing.
+        print("\nNo blocks answered, and nothing replied to a Mode-22 request at all -- "
+              "not even a negative response. More --offsets will not help. Either the "
+              "census found the wrong header, or this make does not use Mode 22 for "
+              "enhanced data (Toyota's is largely Mode 21, which is not a service this "
+              "tool is permitted to send).")
+
+    res["preset"] = vehicle
     with open(args.out, "w") as fh:
         json.dump(res, fh, indent=1, default=_json_default)
     print(f"wrote {args.out}")
@@ -302,8 +460,24 @@ def main(argv=None):
     w = sub.add_parser("sweep", help="sweep PID blocks at live headers")
     w.add_argument("--census", default="census.json")
     w.add_argument("--vehicle", choices=sorted([*cat.PRESETS, "auto"]), default="auto")
+    w.add_argument("--blocks-from", default="",
+                   help="sweep the blocks in a discover.json instead of the preset's "
+                        "(for a vehicle with no preset of its own)")
     w.add_argument("-o", "--out", default="sweep.json")
     w.set_defaults(func=cmd_sweep)
+
+    d = sub.add_parser("discover",
+                       help="find Mode-22 blocks on a vehicle with no preset")
+    d.add_argument("--census", default="census.json")
+    d.add_argument("--vehicle", choices=sorted([*cat.PRESETS, "auto"]), default="auto")
+    d.add_argument("--offsets",
+                   default=",".join(f"{o:02X}" for o in cat.DISCOVER_OFFSETS),
+                   help="hex offsets to probe in each block (default: %(default)s)")
+    d.add_argument("--headers", default="",
+                   help="comma-separated census header names to probe "
+                        "(default: the functional broadcasts the census found alive)")
+    d.add_argument("-o", "--out", default="discover.json")
+    d.set_defaults(func=cmd_discover)
 
     lg = sub.add_parser("log", help="log the hit list during a drive")
     lg.add_argument("--sweep", default="sweep.json")

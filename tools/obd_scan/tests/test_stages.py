@@ -2,6 +2,8 @@ import csv
 import pathlib
 import sys
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from fake_elm import FakeElm, WedgedElm
@@ -10,10 +12,12 @@ from obd_scan.elm import ElmSession
 from obd_scan.stages import (
     Hit,
     default_session_gate,
+    discover_headers,
     estimate_samples_per_pid,
     filter_hits_by_pids,
     probe_bmw_capability,
     run_census,
+    run_discover,
     run_log,
     run_sweep,
 )
@@ -742,3 +746,174 @@ def test_dead_anchor_probes_its_mirror_only_once(tmp_path):
     assert res["anchor_requests"]["ambient"] == "0146"   # unchanged
     assert seen.count("22F446") == 1
     assert all(r["ambient"] == "" for r in rows)
+
+
+# --- discover ---------------------------------------------------------------
+
+def _discover_census(s):
+    """A census restricted to 7E0, which is all the discover tests address."""
+    return run_census(s, cat.PRESETS["generic"],
+                      headers=[h for h in cat.HEADERS_11BIT if h.name == "7E0"])
+
+
+def test_discover_finds_a_block_from_a_positive():
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811",
+                        "225800": "6258000A72"})
+    census = _discover_census(s)
+    res = run_discover(s, census, offsets=(0x00,), lo=0x57, hi=0x59)
+
+    assert [b.name for b in res["blocks"]] == ["2258xx"]
+    assert res["blocks"][0].prefix == 0x2258        # usable by run_sweep as-is
+    assert {h.request for h in res["hits"]} == {"225800"}
+    s.close(); fake.stop()
+
+
+def test_discover_does_not_count_a_negative_as_a_block():
+    # THE rule this stage rests on, and the one that was wrong first time.
+    #
+    # A module implementing Mode 22 answers `7F 22 31` to EVERY unsupported DID
+    # in the whole 16-bit space, so a NAK proves the module speaks Mode 22 --
+    # not that this block holds anything. Scoring it as block evidence reported
+    # 256 of 256 blocks present on a Subaru (2026-08-25) where only 4 had data,
+    # and sent the follow-up sweep after 252 phantoms.
+    #
+    # The NAK is still recorded, as a per-header fact, which is what it is.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811",
+                        "224300": "7F2231"})
+    census = _discover_census(s)
+    res = run_discover(s, census, offsets=(0x00,), lo=0x42, hi=0x44)
+
+    assert res["blocks"] == []                      # NOT a block
+    assert res["negatives"] == 1                    # but counted
+    assert res["speaks_mode22"] == ["7E0"]          # and attributed to the module
+    s.close(); fake.stop()
+
+
+def test_discover_reports_no_mode22_speaker_when_nothing_naks():
+    # "0 blocks, nothing speaks Mode 22" and "0 blocks, but the module does
+    # speak it" are different findings: the first points at addressing or the
+    # wrong service (Toyota's enhanced data is largely Mode 21), the second says
+    # Mode 22 works and these offsets simply found nothing.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811"})
+    census = _discover_census(s)
+    res = run_discover(s, census, offsets=(0x00,), lo=0x42, hi=0x44)
+
+    assert res["blocks"] == []
+    assert res["speaks_mode22"] == []
+    s.close(); fake.stop()
+
+
+def test_discover_does_not_invent_a_silent_block():
+    # FakeElm answers unmapped requests "NO DATA": a clean non-answer, which
+    # must leave the block out entirely rather than reporting it empty.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811"})
+    census = _discover_census(s)
+    res = run_discover(s, census, offsets=(0x00, 0x01), lo=0x00, hi=0x03)
+
+    assert res["blocks"] == []
+    assert res["probes"] == 8                       # 4 blocks x 2 offsets
+    assert res["negatives"] == 0
+    s.close(); fake.stop()
+
+
+def test_discover_sets_header_once_per_header_not_per_block():
+    # The performance property, guarded the way test_sweep_sets_header_once_
+    # per_block guards sweep's: spy on the METHOD, because set_header()
+    # short-circuits on an unchanged header and emits nothing on the wire.
+    # Discovery walks offsets ACROSS blocks, so there is no block boundary to
+    # re-key on -- one call per alive header, not one per block. At the real
+    # 256-block width, per-block keying would be 256x this.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811"})
+    census = _discover_census(s)
+
+    calls: list[str] = []
+    real_set_header = s.set_header
+    def _spy(h):
+        calls.append(h.name)
+        return real_set_header(h)
+    s.set_header = _spy
+
+    run_discover(s, census, offsets=(0x00,), lo=0x00, hi=0x0F)   # 16 blocks
+    assert calls == ["7E0"]
+    s.close(); fake.stop()
+
+
+def test_discover_rejects_an_unsafe_service_before_touching_the_link():
+    # Mode 2E is ReadDataByIdentifier's WRITE twin. Discovery builds its own
+    # requests rather than replaying a preset's, so it is the one stage that
+    # could in principle emit a mode no preset ever declared. It must fail the
+    # same way validate_preset does -- at the top, before any I/O -- so the
+    # refusal cannot depend on how far a walk happened to get.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811"})
+    census = _discover_census(s)
+    before = len(fake.requests_seen)
+
+    with pytest.raises(cat.UnsafeRequest):
+        run_discover(s, census, service=0x2E, lo=0x00, hi=0x02)
+
+    assert len(fake.requests_seen) == before        # nothing reached the adapter
+    s.close(); fake.stop()
+
+
+def test_discover_output_feeds_run_sweep():
+    # The whole point: discovery's blocks are the input a sweep needs, so an
+    # unlisted vehicle can go census -> discover -> sweep with no preset edit.
+    fake, s = _session({"ATSH7E0": "OK", "0100": "4100BE3EB811",
+                        "225800": "6258000A72", "225801": "6258010B",
+                        "225802": "7F2231"})
+    census = _discover_census(s)
+    disc = run_discover(s, census, offsets=(0x00,), lo=0x58, hi=0x58)
+
+    res = run_sweep(s, census, cat.PRESETS["generic"],
+                    blocks=[cat.Block(b.name, b.prefix, lo=0x00, hi=0x02)
+                            for b in disc["blocks"]])
+    assert {h.request for h in res["hits"]} == {"225800", "225801"}
+    assert res["negatives"] == 1
+    s.close(); fake.stop()
+
+
+def test_discover_defaults_to_every_alive_header():
+    # NOT broadcast-only. Whether enhanced Mode 22 answers a functional
+    # broadcast is vehicle-specific: the BMW F10 answered 462 DIDs on 7DF,
+    # while the Jeep WS's confirmed DIDs are physical-only (18DA18F1) and the
+    # HIL emulator models the same shape (221940 at 7E2, silent on a
+    # broadcast). Narrowing to 7DF by default would find everything on one car
+    # and nothing on the other -- and "0 blocks" would read as "this vehicle
+    # has no enhanced data", a false negative the tool must not manufacture.
+    fake, s = _session({"ATSH7DF": "OK", "ATSH7E0": "OK", "ATSH7E1": "OK",
+                        "0100": "4100BE3EB811", "220005": "620005AA"})
+    census = run_census(s, cat.PRESETS["generic"],
+                        headers=[h for h in cat.HEADERS_11BIT
+                                 if h.name in ("7DF", "7E0", "7E1")])
+    rows, scope = discover_headers(census)
+
+    assert scope == "all-alive"
+    assert [r.header.name for r in rows] == ["7DF", "7E0", "7E1"]
+    s.close(); fake.stop()
+
+
+def test_discover_probes_a_physical_only_block():
+    # The Jeep/emulator shape end to end: the block answers at a PHYSICAL
+    # header and is silent on the broadcast. Discovery must still find it.
+    fake, s = _session({"ATSH7DF": "OK", "ATSH7E2": "OK",
+                        "0100": "4100BE3EB811", "220005": "620005AA",
+                        "221940": "62194066"})       # answers only once 7E2 is set
+    census = run_census(s, cat.PRESETS["generic"],
+                        headers=[h for h in cat.HEADERS_11BIT
+                                 if h.name in ("7DF", "7E2")])
+    res = run_discover(s, census, offsets=(0x40,), lo=0x19, hi=0x19)
+
+    assert [b.name for b in res["blocks"]] == ["2219xx"]
+    s.close(); fake.stop()
+
+
+def test_discover_explicit_headers_win():
+    fake, s = _session({"ATSH7DF": "OK", "ATSH7E0": "OK",
+                        "0100": "4100BE3EB811", "220005": "620005AA"})
+    census = run_census(s, cat.PRESETS["generic"],
+                        headers=[h for h in cat.HEADERS_11BIT if h.name in ("7DF", "7E0")])
+    rows, scope = discover_headers(census, ["7E0"])
+
+    assert scope == "explicit"
+    assert [r.header.name for r in rows] == ["7E0"]     # broadcast NOT forced in
+    s.close(); fake.stop()

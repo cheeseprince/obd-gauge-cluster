@@ -382,7 +382,52 @@ JEEP_WS = VehiclePreset(
             + [h for h in HEADERS_29BIT if h.name in ("18DB33F1", "18DA18F1")],
 )
 
-PRESETS = {p.name: p for p in (FORD_67, GM_LZ0, BMW_F10, AUDI_Q5, JEEP_WS)}
+# --- Unlisted vehicles -------------------------------------------------------
+# Every preset above encodes a map that someone already built by hand. A vehicle
+# whose make is not among them has no map at all: `sweep` has no blocks to
+# target, and `--vehicle auto` aborts (see WMI_PRESET). GENERIC is the starting
+# point for that case -- powertrain headers, one legislated probe, and NO
+# blocks, because on an unlisted car the blocks are what we are trying to find.
+#
+# It carries the VehiclePreset default header set (HEADERS_11BIT_PT +
+# HEADERS_29BIT) and nothing wider. On a vehicle we cannot identify we do not
+# know which module is what, so the census stays inside the powertrain set --
+# 7DF/7E0/7E1/7E2 plus the curated 29-bit targets, never 7E3-7E7. See
+# HEADERS_11BIT_PT for why that boundary matters.
+GENERIC = VehiclePreset(
+    name="generic",
+    note="No enhanced map: powertrain headers only and no blocks, because the "
+         "blocks are DISCOVERED rather than declared. This is the preset to run "
+         "`discover` against on a vehicle whose make has no preset of its own.",
+    blocks=[],
+    probes=["0100"],          # the legislated support bitmap: on every OBD-II car
+)
+
+
+# --- Blind Mode-22 discovery -------------------------------------------------
+# Sweeping the whole 16-bit DID space is 65536 requests -- about 1.5 hours at
+# the ~10 probes/s an ELM327 link sustains under ATAT2 adaptive timing (see
+# README.md's sweep timing; three BMW F10 BLE logs measured 11.9-12.1/s), which
+# is still not something anyone will run sitting in a parked car. `discover` instead probes a few offsets in each
+# of the 256 possible blocks and then lets a normal sweep target only the blocks
+# that answered.
+#
+# The offsets are deliberately NOT uniform, because real DID blocks are
+# bottom-anchored. Measured against the BMW F10 block sweep of 2026-08-24 (1797
+# probes, 462 answering DIDs across 6 populated blocks): every populated block
+# had a hit below 0x08, 2242xx was contiguous 0x00-0x07, and 2244xx/2245xx held
+# ALL of their hits below 0x40. Probing just 0x00-0x03 found 6 blocks of 6 in
+# 1024 probes (~6 min), while a uniform 8-per-block spread needed 2048 probes to
+# reach the same coverage.
+#
+# 0x40/0x80/0xC0 are insurance, not evidence. The bottom-anchor result is n=1 --
+# one car, one manufacturer -- so these three catch a block that starts high on
+# a make nobody has swept yet. They cost 768 probes (~4 min); drop them with
+# --offsets if the link is slow and the goal is a first look.
+DISCOVER_OFFSETS = (0x00, 0x01, 0x02, 0x03, 0x40, 0x80, 0xC0)
+
+
+PRESETS = {p.name: p for p in (FORD_67, GM_LZ0, BMW_F10, AUDI_Q5, JEEP_WS, GENERIC)}
 
 
 # --- VIN-based preset auto-detection (--vehicle auto) ------------------------

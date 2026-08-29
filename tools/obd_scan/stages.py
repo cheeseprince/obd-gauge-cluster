@@ -243,6 +243,176 @@ def run_sweep(sess: ElmSession, census: dict, preset: cat.VehiclePreset,
             "aborted": aborted, "error": error}
 
 
+def discover_headers(census: dict, headers: "list[str] | None" = None):
+    """Choose which census headers `run_discover` will probe, and say why.
+
+    Split out of run_discover so the CLI can price a run before starting it:
+    the estimate and the walk must never disagree about the header count, and
+    they will if each derives it separately.
+
+    The default is EVERY alive header, and that is deliberate. The tempting
+    optimisation -- probe only the functional broadcast, since a broadcast is
+    answered by every module that implements the DID -- is not safe, because
+    whether enhanced Mode 22 answers a broadcast at all is vehicle-specific:
+
+      * BMW F10: 462 Mode-22 DIDs answered on the 7DF broadcast (sweep of
+        2026-08-24). Broadcast-only would have found everything.
+      * Jeep WS: the confirmed DIDs are physical -- gear 22051A and ATF 2204FE
+        both at 29-bit 18DA18F1, with the entire 11-bit path dead. The HIL
+        emulator models the same shape on purpose (gm_sierra answers 221940 at
+        the transmission's 7E2, not at 7E0 and not on a broadcast).
+
+    So a broadcast-only default finds everything on one of those cars and
+    NOTHING on the other -- and "0 blocks" on an unlisted vehicle reads as "this
+    car has no enhanced data", which is the exact false negative this tool
+    refuses to manufacture elsewhere. Cost is handled by pricing the run up
+    front and letting the caller narrow with `headers`, not by guessing.
+
+    Returns (rows, scope) where scope is "explicit" | "all-alive".
+    """
+    alive = [r for r in census["headers"] if r.alive]
+    if headers is not None:
+        want = set(headers)
+        return [r for r in alive if r.header.name in want], "explicit"
+    return alive, "all-alive"
+
+
+def run_discover(sess: ElmSession, census: dict,
+                 offsets: "tuple[int, ...]" = cat.DISCOVER_OFFSETS,
+                 service: int = 0x22, lo: int = 0x00, hi: int = 0xFF,
+                 headers: "list[str] | None" = None,
+                 progress=None) -> dict:
+    """Find which Mode-22 blocks a vehicle implements, with no preset to go on.
+
+    This is the stage for a car that is not in the catalog. `run_sweep` can only
+    sweep blocks a preset already lists, so on an unlisted make there is nothing
+    to sweep; discovery is what produces that list. It probes a handful of
+    offsets in each of the 256 candidate blocks (`service`<<8 | high byte) and
+    reports every block where at least one probe drew a response. The caller
+    then runs a normal sweep over those blocks only.
+
+    A block counts as PRESENT only on a POSITIVE reply. This is deliberately NOT
+    the rule run_census uses for header liveness, and the difference matters.
+
+    For a HEADER, a `7F 22 31` is decisive: something received the request, so
+    the addressing is right. For a BLOCK it proves nothing, because a module
+    that implements Mode 22 answers `7F 22 31` to every unsupported DID across
+    the whole 16-bit space -- the NAK says "this module speaks Mode 22", not
+    "this block is populated".
+
+    An earlier version of this function scored negatives as block evidence, by
+    analogy to the census rule. A Subaru run on 2026-08-25 falsified it flatly:
+    256 of 256 candidate blocks were reported present, while only 4 held any
+    data. The full sweep then chased 252 phantom blocks -- 65536 probes rather
+    than 1024 -- and was killed before it reached the real ones.
+
+    The cost of requiring a positive is recall: a populated block whose probed
+    offsets are all unimplemented is missed. DISCOVER_OFFSETS is what keeps that
+    small, and the same Subaru run supports it -- all four real blocks had a hit
+    at 0x00, and 0x00-0x03 alone would have found every one.
+
+    Negatives are still counted and reported, but as a per-header fact
+    ("speaks_mode22"), which is what they actually establish.
+
+    By DEFAULT this probes every alive header, because whether enhanced Mode 22
+    answers a functional broadcast is vehicle-specific -- see discover_headers()
+    for the BMW/Jeep split that rules out a broadcast-only shortcut. Pass
+    `headers` to narrow it; "header_scope" in the result says which rule applied.
+
+    The header is set ONCE per header, not per block: unlike run_sweep, which
+    walks 256 consecutive requests inside one block, discovery walks one offset
+    across every block, so there is no block boundary to re-key on. That is 1
+    set_header() per alive header instead of 256.
+
+    Same OSError discipline as run_census and run_sweep, for the same reason: a
+    link that dies partway must not read as "the remaining blocks are
+    unimplemented", which is indistinguishable from a real negative result.
+    On OSError the walk stops and returns what was genuinely collected with
+    "aborted"/"error" set -- the same keys, same meaning, as the other stages.
+    Blocks found before the fault are real and are kept; nothing after it is
+    inferred.
+
+    NOTE: `service` is a parameter but only Mode 22 is a legal value here, and
+    validate_request enforces that -- it is spelled out rather than hardcoded so
+    the request construction below reads honestly, not to invite Mode 2E.
+    """
+    width = 2 if service <= 0xFF else 3
+    reqs_by_block: dict[int, list[str]] = {}
+    for high in range(lo, hi + 1):
+        prefix = (service << 8) | high
+        reqs_by_block[prefix] = [f"{prefix:0{width * 2}X}{off:02X}" for off in offsets]
+
+    # Validate EVERY request before a single one goes out, not lazily as each
+    # is sent: a bad `service` must fail before the link is touched, the same
+    # way validate_preset runs at startup rather than mid-sweep.
+    for reqs in reqs_by_block.values():
+        for r in reqs:
+            cat.validate_request(r)
+
+    alive, scope = discover_headers(census, headers)
+    hits: list[Hit] = []
+    found: dict[str, set[str]] = {}     # block name -> header names that saw it
+    speaks: set[str] = set()            # headers that NAKed, i.e. implement Mode 22
+    negatives = 0
+    errors = 0
+    probes = 0
+    aborted = False
+    error: str | None = None
+
+    try:
+        for row in alive:
+            sess.set_header(row.header)              # once per header
+            for prefix, reqs in reqs_by_block.items():
+                name = f"{prefix:0{width * 2}X}xx"
+                for req in reqs:
+                    r = sess.probe(req)
+                    probes += 1
+                    present = False
+                    if r.cls is Cls.POSITIVE:
+                        hits.append(Hit(row.header.name, req, r.raw,
+                                        r.payload.hex().upper(), len(r.payload)))
+                        present = True
+                    elif r.cls in _NEG:
+                        negatives += 1
+                        # Evidence about the MODULE, not this block -- see the
+                        # docstring. Recorded per header, never as a block hit.
+                        speaks.add(row.header.name)
+                    elif r.cls is Cls.ELM_ERROR:
+                        # Counted, never inferred from -- same reasoning as
+                        # run_sweep: without this an ELM_ERROR would inflate
+                        # neither hits nor negatives and a faulting link would
+                        # read exactly like a clean "nothing here" result.
+                        errors += 1
+                    if present:
+                        found.setdefault(name, set()).add(row.header.name)
+                    if progress:
+                        progress(row.header.name, name, req, r.cls.name, len(found))
+    except OSError as exc:
+        aborted = True
+        error = str(exc) or exc.__class__.__name__
+
+    blocks = [cat.Block(name, int(name[:-2], 16),
+                        note=f"discovered: answered at {', '.join(sorted(found[name]))}")
+              for name in sorted(found)]
+    return {"blocks": blocks, "hits": hits, "probes": probes,
+            "negatives": negatives, "errors": errors,
+            "block_headers": {k: sorted(v) for k, v in found.items()},
+            # Headers that answered a Mode-22 request with a negative response.
+            # They implement the service; it says nothing about which blocks are
+            # populated. An empty list next to 0 blocks means something quite
+            # different from a full one: the former is "nothing spoke Mode 22",
+            # the latter "Mode 22 works here but these offsets found nothing".
+            "speaks_mode22": sorted(speaks),
+            # "_targeted", not "_reached" -- the full set discovery MEANT to
+            # cover, regardless of how far it got. Same convention as run_sweep;
+            # detect truncation via "aborted", never via these lengths.
+            "headers_targeted": [r.header.name for r in alive],
+            "blocks_targeted": len(reqs_by_block),
+            "offsets_probed": list(offsets),
+            "header_scope": scope,
+            "aborted": aborted, "error": error}
+
+
 # Minimal decoders for the anchor PIDs -- enough to make correlation
 # meaningful. Everything else (the candidate hits) is stored as raw hex and
 # decoded offline: a wrong decode guess made in the field must not destroy
