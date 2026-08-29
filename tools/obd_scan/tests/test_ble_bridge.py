@@ -150,3 +150,105 @@ def test_second_client_is_refused():
         return second
 
     assert asyncio.run(scenario()) == b"", "a second client must be refused"
+
+
+# --- in-process bridge: the path `obd_scan --ble` uses -----------------------
+# These cover the seam, not the radio. GATT discovery still needs hardware; what
+# is testable is that a caller gets a usable port, gets the real failure when
+# the adapter does not come up, and never gets a port it cannot connect to.
+
+def _join_bridge_threads(timeout=3.0):
+    """Wait for any bridge thread this test started to actually exit.
+
+    Not tidiness: a live daemon thread makes the whole pytest process
+    multi-threaded, and a later test that forks (test_correlate uses
+    multiprocessing) then trips a DeprecationWarning that is not its fault and
+    that varies with collection order. Joining here keeps the leak inside the
+    test that caused it.
+    """
+    import threading
+    for t in threading.enumerate():
+        if t.name == "ble-bridge":
+            t.join(timeout)
+
+
+def test_serve_reports_the_port_it_actually_bound(monkeypatch):
+    """port=0 asks the OS for a free port, so the caller must be told which one.
+
+    Echoing the requested port back would hand out ':0' -- a port nothing can
+    connect to -- which is the whole reason `ready` exists.
+    """
+
+    got = {}
+    client = StubClient()
+
+    async def drive():
+        task = asyncio.ensure_future(
+            serve(client, VLINKER_NTF, VLINKER_WR, False, "127.0.0.1", 0,
+                  mtu=23, log=lambda *a: None,
+                  ready=lambda h, p: got.update(host=h, port=p)))
+        for _ in range(200):                      # yield until the server binds
+            if got:
+                break
+            await asyncio.sleep(0.01)
+        task.cancel()
+
+    asyncio.run(drive())
+    assert got["host"] == "127.0.0.1"
+    assert got["port"] != 0                       # a REAL port, not the request
+    assert 1024 < got["port"] < 65536
+
+
+def test_start_returns_the_address_once_the_bridge_is_listening(monkeypatch):
+    from obd_scan import ble_bridge as bb
+
+    async def fake_run(args, ready=None):
+        ready(args.host, 45999)                   # stand in for a bound server
+        # Short, not "forever": a lingering daemon thread makes the whole test
+        # process multi-threaded, and a later test that forks (correlate uses
+        # multiprocessing) then trips a DeprecationWarning that is not its fault.
+        await asyncio.sleep(0.2)
+
+    monkeypatch.setattr(bb, "_run", fake_run)
+    assert bb.start(name="vlinker", log=lambda *a: None) == ("127.0.0.1", 45999)
+    _join_bridge_threads()
+
+
+def test_start_reraises_the_bring_up_failure_rather_than_timing_out():
+    """A dead adapter must surface as its own diagnosis, immediately.
+
+    The failure mode this guards against is the bridge thread dying while the
+    caller sits out the full connect timeout and then reports something vague.
+    """
+    import pytest
+    from obd_scan import ble_bridge as bb
+
+    async def fake_run(args, ready=None):
+        raise bb.NoAdapterFound("nothing answered")
+
+    bb_run = bb._run
+    bb._run = fake_run
+    try:
+        with pytest.raises(bb.NoAdapterFound):
+            bb.start(connect_timeout=5.0, log=lambda *a: None)
+    finally:
+        bb._run = bb_run
+        _join_bridge_threads()
+
+
+def test_start_times_out_with_an_actionable_message():
+    import pytest
+    from obd_scan import ble_bridge as bb
+
+    async def never_ready(args, ready=None):
+        await asyncio.sleep(0.5)          # outlives the 0.2s timeout, then exits
+
+    bb_run = bb._run
+    bb._run = never_ready
+    try:
+        with pytest.raises(bb.BleBridgeError) as e:
+            bb.start(connect_timeout=0.2, log=lambda *a: None)
+        assert "powered and in range" in str(e.value)
+    finally:
+        bb._run = bb_run
+        _join_bridge_threads()

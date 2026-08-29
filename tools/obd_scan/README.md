@@ -71,6 +71,24 @@ beyond `--host`:
 
 ```
 pip install bleak                                   # optional extra, BLE only
+python3 -m obd_scan --ble vlinker census            # that is the whole thing
+```
+
+`--ble` brings the bridge up inside the scanner process, on a port the OS
+picks, and points the session at it — so a BLE adapter is one command, the
+same as WiFi. Bare `--ble` takes the best-ranked OBD-looking adapter;
+`--ble vlinker` narrows by advertised name; `--ble-addr AA:BB:..` skips the
+scan entirely. `--ble` and `--host` name different adapters, so passing both
+is refused rather than silently resolved.
+
+`ElmSession` — the part validated across four vehicles — never learns BLE
+exists. It is a TCP socket to `127.0.0.1` either way, which is why there is
+one transport to debug rather than two.
+
+The bridge still runs standalone when you want it in its own terminal (to
+watch the byte traffic, or to keep the radio up across several scanner runs):
+
+```
 python3 -m obd_scan.ble_bridge --name vlinker       # terminal 1
 python3 -m obd_scan --host 127.0.0.1 census         # terminal 2
 ```
@@ -86,9 +104,17 @@ only bleak works on CoreBluetooth. It is an optional dependency: everything
 else in `obd_scan` imports and tests without it.
 
 **Not yet run against a real BLE adapter.** The pure logic (ranking, profile
-binding, MTU chunking) and the full byte path against a stub client are
-host-tested in `tests/test_ble_bridge.py`; GATT discovery on real hardware is
-not, because it cannot be. Treat the first use on a car as bring-up.
+binding, MTU chunking), the full byte path against a stub client, and the
+in-process startup handshake are host-tested in `tests/test_ble_bridge.py`;
+GATT discovery on real hardware is not, because it cannot be. Treat the first
+use on a car as bring-up.
+
+Two failures are worth recognising on that first run. **Nothing found** is
+usually a phone still holding the adapter's single client slot — BLE ELM327
+adapters accept one connection at a time, so quit Car Scanner/Torque first.
+**Connected, but no known profile** means the GATT characteristics matched
+none of the table in `PROFILES`; the message lists what the adapter actually
+exposes, which is the information needed to add it.
 
 ## Session flow
 
