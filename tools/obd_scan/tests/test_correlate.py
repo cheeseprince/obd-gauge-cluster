@@ -261,7 +261,7 @@ def test_report_renders_candidates(tmp_path):
     ]
     out = tmp_path / "report.md"
     write_report(cands, str(out), pdf=False, meta={"vehicle": "test"})
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "220041@7E0" in text and "u16@1" in text and "0.97" in text
     assert "constant" in text
     # n travels with the result: "r=0.97 over 1240" reads very differently
@@ -283,7 +283,7 @@ def test_report_shows_anchor_coverage_and_pairs_searched(tmp_path):
     out = tmp_path / "report.md"
     write_report(cands, str(out), pdf=False, meta={"vehicle": "test"},
                 anchor_coverage={"rpm": (1194, 1200), "ambient": (0, 1200)})
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "70" in text                       # pairs_searched surfaced
     assert "rpm 1194/1200" in text
     assert "ambient 0/1200 (UNUSABLE)" in text
@@ -362,7 +362,7 @@ def test_report_puts_enhanced_pids_ahead_of_the_mirror_block(tmp_path):
     ]
     out = tmp_path / "report.md"
     write_report(cands, str(out), pdf=False, meta={"vehicle": "ford"})
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
 
     # Both still reported -- nothing is hidden.
     assert "221E1C@7E1" in text and "22F405@7E0" in text
@@ -382,6 +382,6 @@ def test_report_omits_the_mirror_section_when_there_is_none(tmp_path):
                        1, 10, "correlated", n=64, pairs_searched=7)]
     out = tmp_path / "report.md"
     write_report(cands, str(out), pdf=False, meta={"vehicle": "ford"})
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "Standard J1979 mirror" not in text
     assert "221E60@7E1" in text

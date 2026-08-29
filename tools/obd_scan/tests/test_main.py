@@ -44,7 +44,7 @@ def test_blocks_from_discover_rebuilds_sweepable_blocks(tmp_path):
     p = tmp_path / "discover.json"
     p.write_text(json.dumps({"blocks": [
         {"name": "2258xx", "prefix": 0x2258, "note": "discovered: answered at 7DF"},
-    ]}))
+    ]}), encoding="utf-8")
     blocks = _blocks_from_discover(str(p))
 
     assert [b.name for b in blocks] == ["2258xx"]
@@ -58,7 +58,7 @@ def test_blocks_from_discover_rejects_a_write_service(tmp_path):
     # take on faith. 0x2E58 would make the sweep emit 2E58xx: WriteDataByIdentifier,
     # the write twin of Mode 22. It must be refused before the link opens.
     p = tmp_path / "evil.json"
-    p.write_text(json.dumps({"blocks": [{"name": "2E58xx", "prefix": 0x2E58}]}))
+    p.write_text(json.dumps({"blocks": [{"name": "2E58xx", "prefix": 0x2E58}]}), encoding="utf-8")
 
     with pytest.raises(cat.UnsafeRequest):
         _blocks_from_discover(str(p))
@@ -66,7 +66,7 @@ def test_blocks_from_discover_rejects_a_write_service(tmp_path):
 
 def test_blocks_from_discover_rejects_a_malformed_entry(tmp_path):
     p = tmp_path / "bad.json"
-    p.write_text(json.dumps({"blocks": [{"name": "2258xx"}]}))    # no prefix
+    p.write_text(json.dumps({"blocks": [{"name": "2258xx"}]}), encoding="utf-8")  # no prefix
 
     with pytest.raises(SystemExit):
         _blocks_from_discover(str(p))
@@ -146,25 +146,49 @@ def test_every_text_file_open_names_its_encoding():
 
     Python picks the LOCALE default for text mode when `encoding` is omitted:
     UTF-8 on Linux and macOS, but cp1252 on a stock Windows install. The scan
-    report contains '→' and '°', neither of which cp1252 can encode, so
+    report contains '\u2192' and '\u00b0', neither of which cp1252 can encode, so
     `Path.write_text()` there raised UnicodeEncodeError -- at the very last step
     of a real scan, after the drive was already done.
 
-    This is a whole class of bug, not one line, so it is guarded as a class:
-    every text-mode open and write_text in the package must say what encoding it
-    means. Binary mode is exempt -- it has no encoding to name.
-    """
-    import re
+    This is a whole class of bug, not one line, so it is guarded as a class.
+    Two things this guard learned the hard way:
 
+      * It must cover the TESTS as well as the package. The first version
+        scanned only the package root, and the next Windows run failed on an
+        unencoded read_text() in test_correlate.py -- reading back the very
+        report this guard had just made safe to write. A guard over one side of
+        the pipe gives a confident all-clear that is wrong.
+
+      * It parses rather than greps. A line-based scan flags a docstring that
+        merely mentions write_text, and flags a multi-line call whose
+        `encoding=` sits on a later line. Both are false alarms, and a guard
+        that cries wolf gets weakened until it is useless.
+    """
+    import ast
+
+    NAMES = {"open", "read_text", "write_text", "read_bytes", "write_bytes"}
+    BINARY = {"rb", "wb", "ab", "xb", "r+b", "w+b"}
     pkg = pathlib.Path(__file__).resolve().parents[1]
     offenders = []
-    for py in sorted(pkg.glob("*.py")):
-        for n, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
-            code = line.split("#", 1)[0]
-            if "encoding=" in code:
+
+    for py in sorted([*pkg.glob("*.py"), *(pkg / "tests").glob("*.py")]):
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
                 continue
-            if re.search(r"\bopen\(", code) and not re.search(r'"[rwax]b"|\'[rwax]b\'', code):
-                offenders.append(f"{py.name}:{n}: {line.strip()}")
-            elif re.search(r"\.write_text\(|\.read_text\(", code):
-                offenders.append(f"{py.name}:{n}: {line.strip()}")
-    assert not offenders, "text I/O without an explicit encoding:\n" + "\n".join(offenders)
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+            if name not in NAMES or name.endswith("_bytes"):
+                continue
+            if any(k.arg == "encoding" for k in node.keywords):
+                continue
+            # Binary mode has no encoding to name, so it is exempt.
+            mode = next((a.value for a in node.args
+                         if isinstance(a, ast.Constant) and isinstance(a.value, str)), "")
+            if mode in BINARY:
+                continue
+            offenders.append(f"{py.name}:{node.lineno}: {name}()")
+
+    assert not offenders, (
+        "text I/O without an explicit encoding (cp1252 on Windows):\n  "
+        + "\n  ".join(offenders))
