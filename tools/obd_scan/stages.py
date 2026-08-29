@@ -457,6 +457,115 @@ def estimate_samples_per_pid(n_polls: int, minutes: float = 15.0,
     return int(minutes * 60.0 / cycle_s)
 
 
+def run_triage(sess: ElmSession, hits: "list[Hit]", allowed_headers=None,
+               progress=None) -> dict:
+    """Re-probe every sweep hit once and sort the list by what it is worth logging.
+
+    THE PROBLEM THIS SOLVES. A sweep on an unlisted vehicle returns hundreds of
+    DIDs -- 462 on the F10. A drive log cannot carry them: every value is a
+    round trip, so polling 462 DIDs gives each one a sample every several
+    minutes, which is worse than useless because `correlate` then ranks noise.
+    Somebody has to choose maybe 30. Until now that somebody was a human reading
+    hex, and the choice decided whether a drive was worth taking.
+
+    THE ONE THING A SECOND PROBE ESTABLISHES. A DID whose bytes CHANGED between
+    two reads seconds apart is, necessarily, live -- something in the car is
+    updating it. That is a positive fact, and it is the only one available
+    without moving the car. A DID that did not change is NOT thereby static:
+    coolant at thermal equilibrium, or road speed at a standstill, hold still
+    too. So this ranks, it does not delete: every hit is returned, in an order,
+    with the evidence attached.
+
+    Three buckets, most-worth-logging first:
+
+      "moved"       bytes differ between the two reads. A live signal, certain.
+      "static"      identical both times. Could be a sensor at equilibrium, or
+                    could be a VIN fragment, a counter, or a config byte.
+      "unpopulated" all 0x00 or all 0xFF both times. Answering, but carrying
+                    nothing -- 224404-224407 on the F10 read 0000 every time.
+
+    Duplicates are collapsed within a bucket: on the F10, 225817 and 2258EB were
+    byte-identical on 99.51% of 1427 logged rows -- the same signal wearing two
+    DIDs, which cost a drive to discover. Two DIDs identical on BOTH probes here
+    are flagged as `duplicate_of` and dropped from the recommended list, so the
+    drive spends its budget on distinct signals.
+
+    Cost is one extra probe per hit -- 462 on the F10, about 40 s at the ~12
+    probes/s a BLE link sustains. It is the cheapest evidence in the pipeline.
+
+    NOT A DRIVE REPLACEMENT. Which of the movers is oil temperature still takes
+    `log` + `correlate` and a thermal ramp. This only decides what gets logged.
+    """
+    # Same header-scoping rule as run_log: resolve a hit's header name against
+    # the caller's header set, so a tampered sweep.json cannot steer a probe at
+    # a module the preset never sanctioned.
+    pool = allowed_headers if allowed_headers is not None else cat.all_known_headers()
+    hdr_by_name = {h.name: h for h in pool}
+
+    order = {"moved": 0, "static": 1, "unpopulated": 2}
+    rows: list[dict] = []
+    aborted = False
+    error: str | None = None
+    header_now: str | None = None
+
+    try:
+        for i, h in enumerate(hits):
+            hx = hdr_by_name.get(h.header)
+            if hx is None:                    # out of scope -> not probed at all
+                continue
+            if header_now != h.header:
+                sess.set_header(hx)           # once per header, as run_sweep does
+                header_now = h.header
+            r = sess.probe(h.request)
+            second = r.payload.hex().upper() if r.cls is Cls.POSITIVE else None
+            blank = _is_blank(h.payload_hex) and _is_blank(second)
+            if blank:
+                kind = "unpopulated"
+            elif second is None or second == h.payload_hex:
+                kind = "static"
+            else:
+                kind = "moved"
+            rows.append({"header": h.header, "request": h.request,
+                         "first": h.payload_hex, "second": second,
+                         "kind": kind, "hit": h})
+            if progress:
+                progress(i + 1, len(hits), h.request, kind)
+    except OSError as e:
+        # Same discipline as every other stage: a link that died partway must
+        # not leave the untested remainder looking like a measured "static".
+        aborted, error = True, str(e)
+
+    # Collapse DIDs that read identically on BOTH probes -- the same signal
+    # under two names. Keep the first, point the rest at it.
+    seen: dict[tuple, dict] = {}
+    for r in rows:
+        if r["kind"] == "unpopulated":
+            continue
+        key = (r["header"], r["first"], r["second"])
+        if key in seen:
+            r["duplicate_of"] = seen[key]["request"]
+        else:
+            seen[key] = r
+
+    rows.sort(key=lambda r: (order[r["kind"]], "duplicate_of" in r, r["request"]))
+    recommended = [r["hit"] for r in rows
+                   if r["kind"] == "moved" and "duplicate_of" not in r]
+    return {"probed": len(rows), "rows": rows, "recommended": recommended,
+            "moved": sum(1 for r in rows if r["kind"] == "moved"),
+            "static": sum(1 for r in rows if r["kind"] == "static"),
+            "unpopulated": sum(1 for r in rows if r["kind"] == "unpopulated"),
+            "duplicates": sum(1 for r in rows if "duplicate_of" in r),
+            "aborted": aborted, "error": error}
+
+
+def _is_blank(payload: "str | None") -> bool:
+    """True for a payload that is all zeros or all 0xFF -- answering, carrying nothing."""
+    if not payload:
+        return True
+    p = payload.strip().upper()
+    return bool(p) and (set(p) <= {"0"} or set(p) <= {"F"})
+
+
 def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
             duration_s: float | None = None, stop=None,
             allowed_headers=None) -> dict:

@@ -23,6 +23,7 @@ from .stages import (
     run_discover,
     run_log,
     run_sweep,
+    run_triage,
 )
 
 # The WiFi adapter's default address. Named so `--ble` can tell an untouched
@@ -34,6 +35,25 @@ def _json_default(o):
     if is_dataclass(o):
         return asdict(o)
     return str(o)
+
+
+def _write(path: str, obj) -> None:
+    """Write a stage result and say so. Same shape as every cmd_* writer."""
+    with open(path, "w") as fh:
+        json.dump(obj, fh, indent=1, default=_json_default)
+    print(f"wrote {path}")
+
+
+def _print_census(res: dict) -> None:
+    """The census summary, shared by `census` and `auto` so the two never drift."""
+    print(f"\n{'header':<12} {'bits':>4}  {'evidence':<9} supported")
+    for r in res["headers"]:
+        print(f"{r.header.name:<12} {r.bits:>4}  {r.evidence:<9} "
+              f"{len(r.supported_pids)} generic PIDs")
+    print(f"alive: {', '.join(res['alive']) or '(none)'}")
+    n_err = sum(1 for r in res["headers"] if r.evidence == "error")
+    if n_err:
+        print(f"*** {n_err} header(s) UNDETERMINED (transport fault) -- not a finding. ***")
 
 
 def _open_transport(args) -> "tuple[str, int]":
@@ -453,6 +473,126 @@ def cmd_log(args):
     _report_abort(res)
 
 
+def cmd_auto(args):
+    """census -> [discover] -> sweep -> triage, on ONE adapter connection.
+
+    Why this exists: the five stages were always meant to be run in order, each
+    consuming the last one's file. Doing that by hand is four invocations and
+    three filenames to keep straight -- and with --ble each one re-scans and
+    re-connects the radio, so a run spent about a minute doing nothing but
+    bringing the link up and tearing it down.
+
+    What it deliberately does NOT do is hide a stage's result. Every stage still
+    prints its own summary, and a result that should stop a run does: no live
+    headers, or a sweep with no hits, ends the run with the reason rather than
+    proceeding to a stage that cannot mean anything.
+
+    `discover` runs only when it can help -- the preset has no blocks of its
+    own, or --discover forces it. On a car with a real preset, sweeping the
+    preset's blocks is both faster and better targeted; on an unlisted one, the
+    preset has nothing and discovery is the only way to get a block list.
+
+    The DRIVE IS A HARD BREAK and this does not pretend otherwise: `log` needs
+    the car moving, and no amount of chaining changes that. The run stops after
+    triage and prints the exact `log` and `correlate` lines to use, with the
+    triaged PID list already narrowed.
+    """
+    sess = _session(args)
+    out = args.out_dir
+    os.makedirs(out, exist_ok=True)
+
+    def path(name):
+        return os.path.join(out, name)
+
+    preset = _resolve_preset(args, sess)
+    if preset is None:
+        return 2
+
+    print(f"\n=== 1/4 census ({preset.name}) ===")
+    census = run_census(sess, preset)
+    _write(path("census.json"), census)
+    _print_census(census)
+    alive = [r for r in census["headers"] if r.alive]
+    if not alive:
+        print("\nSTOP: no header answered. Nothing downstream can mean anything -- "
+              "a sweep would report 'no enhanced data' for what is really a dead link. "
+              "Check the adapter, the ignition, and the protocol before re-running.")
+        return 1
+
+    blocks = list(preset.blocks)
+    if args.discover or not blocks:
+        why = "forced by --discover" if blocks else f"preset '{preset.name}' declares no blocks"
+        print(f"\n=== 2/4 discover ({why}) ===")
+        disc = run_discover(sess, census)
+        _write(path("discover.json"), disc)
+        blocks = [cat.Block(b["name"], b["prefix"]) for b in disc.get("blocks", [])]
+        print(f"discovered {len(blocks)} block(s): "
+              f"{', '.join(b.name for b in blocks) or '(none)'}")
+        if not blocks:
+            spoke = disc.get("speaks_mode22") or []
+            print("\nSTOP: no Mode-22 block answered. " + (
+                f"{len(spoke)} header(s) DID speak Mode 22, so widening --offsets may help."
+                if spoke else
+                "Nothing spoke Mode 22 at all, so more offsets cannot help -- this car may "
+                "expose only legislated Mode-01 data."))
+            return 1
+    else:
+        print(f"\n=== 2/4 discover (skipped: preset '{preset.name}' has "
+              f"{len(blocks)} block(s)) ===")
+
+    print(f"\n=== 3/4 sweep ({len(blocks)} block(s)) ===")
+    sweep = run_sweep(sess, census, preset, blocks=blocks)
+    _write(path("sweep.json"), sweep)
+    hits = sweep["hits"]
+    print(f"{len(hits)} DID(s) answered")
+    if not hits:
+        print("\nSTOP: the sweep found nothing to log.")
+        return 1
+
+    print(f"\n=== 4/4 triage (re-probing {len(hits)} hit(s)) ===")
+    tri = run_triage(sess, hits, allowed_headers=preset.headers)
+    _write(path("triage.json"),
+           {k: v for k, v in tri.items() if k not in ("rows", "recommended")}
+           | {"rows": [{k: v for k, v in r.items() if k != "hit"} for r in tri["rows"]]})
+    print(f"moved {tri['moved']}  |  static {tri['static']}  |  "
+          f"unpopulated {tri['unpopulated']}  |  duplicates {tri['duplicates']}")
+
+    rec = tri["recommended"][:args.max_pids]
+    if not rec:
+        print("\nNothing changed between two probes at a standstill. That is NOT proof the "
+              "DIDs are dead -- temperatures at equilibrium and a stopped car hold still too. "
+              "Log the full sweep and let the drive decide.")
+        pids = None
+    else:
+        pids = ",".join(h.request for h in rec)
+        print(f"\n{len(rec)} DID(s) changed between two probes -- live signals, "
+              f"and the ones worth a drive.")
+
+    print("\n" + "=" * 62)
+    print("NOW DRIVE. Cold start if you can: a thermal ramp is what separates an")
+    print("oil temperature from a coolant temperature. Then run:\n")
+    transport = _transport_flags(args)
+    print(f"  python3 -m obd_scan {transport} log --sweep {path('sweep.json')} \\")
+    if pids:
+        print(f"       --pids {pids} \\")
+    print(f"       -o {path('drive.csv')}")
+    print(f"\n  python3 -m obd_scan correlate {path('drive.csv')}")
+    print("=" * 62)
+    return 0
+
+
+def _transport_flags(args) -> str:
+    """Echo back the transport the user actually used, so the printed next-step
+    command works as pasted instead of silently falling back to the WiFi default."""
+    if getattr(args, "ble_addr", None):
+        return f"--ble-addr {args.ble_addr}"
+    if getattr(args, "ble", None):
+        return "--ble" if args.ble is True else f"--ble {args.ble}"
+    if args.host != _DEFAULT_HOST:
+        return f"--host {args.host}"
+    return ""
+
+
 def cmd_correlate(args):
     df = pd.read_csv(args.csv, dtype=str)
     anchors = [c for c in cat.ANCHORS if c in df.columns]
@@ -530,6 +670,19 @@ def main(argv=None):
     lg.add_argument("--hz", type=float, default=1.0)
     lg.add_argument("-o", "--out", default="drive.csv")
     lg.set_defaults(func=cmd_log)
+
+    a = sub.add_parser("auto",
+                       help="census -> discover -> sweep -> triage on one connection")
+    a.add_argument("--vehicle", default="auto",
+                   choices=sorted(cat.PRESETS) + ["auto"])
+    a.add_argument("-o", "--out-dir", default=".",
+                   help="directory for census/discover/sweep/triage JSON (default: .)")
+    a.add_argument("--discover", action="store_true",
+                   help="run discovery even when the preset already declares blocks")
+    a.add_argument("--max-pids", type=int, default=30,
+                   help="cap the recommended drive list (default: 30). Sample density per "
+                        "PID is what lets correlate separate a signal from noise.")
+    a.set_defaults(func=cmd_auto)
 
     r = sub.add_parser("correlate", help="rank candidates against anchors")
     r.add_argument("csv")
