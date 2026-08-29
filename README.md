@@ -121,20 +121,20 @@ volts, since no thresholds have been sourced for any of these vehicles.
 | BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **6** — ENGINE · DRIVE · MISCELLANEOUS · TRIP · FLUIDS & FUEL · POWER | 🟢 In use — the most deeply mapped profile after the Sierra: oil temperature, fuel rate, crank torque and horsepower all measured on-car. Alarms remain off on everything but coolant and volts — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| Chevrolet | Silverado 1500 · 2500 · 3500 | *(engine not identified)* | 2014–18 (K2XX) · 2010–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
 | Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
+| Chevrolet / GMC | Silverado / Sierra 1500 | 3.0L Duramax · 5.3L · 6.2L V8 · 4.3L V6 · 2.7L I4 turbo | 2019–21 (T1XX) | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
 | Ford | F-150 | *(engine not identified)* | 2010–23 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
 | Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke | 2020–26 | **8** — ENGINE · THERMAL · POWER · TRIP · AIR · EMISSIONS · AMBIENT · RANGE | 🟡 Skeleton — scanned 2026-08-09; trans temp + gear confirmed, **not yet run on the vehicle** — [details](docs/FORD-STATUS.md) |
 | Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke (2011–19) · 6.2L · 7.3L V8 | 2011–26 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — pre-2020 diesels are the 6R140, a different transmission, so they stay on Standard+ |
-| GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
-| GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
+| Ford | F-250/350/450/550 Super Duty | 6.0L · 6.4L Power Stroke · 5.4L · 6.8L V10 | 2003–09 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — a different engine alphabet from the 2011+ Super Duty |
 | GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real vehicle** |
+| GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| GMC | Sierra 1500 · 2500 · 3500 | *(engine not identified)* | 2016–18 · 2014–15 (K2XX) · 2011–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — the tonnage alphabet changes between all three eras |
+| GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
 | Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–23 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
 | Ram | 1500 · 2500 · 3500 | 5.7L · 6.4L · 6.2L HEMI · 6.7L Cummins · 3.6L V6 · 3.0L EcoDiesel | 2013–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
 | Ram (Dodge) | 1500 · 2500 · 3500 | *(engine not identified)* | 2006–11 | **3** — Standard+ Gas | 🔵 Recognized — pre-2013 is the Dodge era (`1D7`/`3D7`); 3500 identified 2006–07 only, MY2012 is a vPIC data gap |
-| Chevrolet | Silverado 1500 · 2500 · 3500 | *(engine not identified)* | 2014–18 (K2XX) · 2010–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
-| GMC | Sierra 1500 · 2500 · 3500 | *(engine not identified)* | 2016–18 · 2014–15 (K2XX) · 2011–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — the tonnage alphabet changes between all three eras |
-| Chevrolet / GMC | Silverado / Sierra 1500 | 3.0L Duramax · 5.3L · 6.2L V8 · 4.3L V6 · 2.7L I4 turbo | 2019–21 (T1XX) | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
-| Ford | F-250/350/450/550 Super Duty | 6.0L · 6.4L Power Stroke · 5.4L · 6.8L V10 | 2003–09 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — a different engine alphabet from the 2011+ Super Duty |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
 Gas cars have no DPF, DEF or regeneration, so those pages don't exist for them — a gas car
