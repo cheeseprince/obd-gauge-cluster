@@ -10,9 +10,15 @@ pressure by hand, automated.
 ## Quick start
 
 ```
-pip install bleak                                  # BLE only; WiFi needs nothing extra
+pip install numpy pandas        # required — the CLI will not start without them
+pip install bleak               # only if your adapter is BLE
+
 python3 -m obd_scan --ble auto --vehicle auto -o scan/
 ```
+
+`numpy` and `pandas` are imported at startup, so they are needed for every stage, not just
+`correlate`. **On Windows the command is `py -m obd_scan …`** — a python.org install gives you
+`python` and the `py` launcher, not `python3`.
 
 One command does everything you can do parked: reads the VIN, finds the live
 headers, discovers the enhanced PID blocks (even on a make with no preset),

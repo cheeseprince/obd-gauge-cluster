@@ -333,10 +333,15 @@ vehicles that may not be yours.
 parked:**
 
 ```
-pip install bleak                                  # BLE only; WiFi needs nothing extra
+pip install numpy pandas        # required — the CLI will not start without them
+pip install bleak               # only if your adapter is BLE
+
 cd tools
 python3 -m obd_scan --ble auto --vehicle auto -o scan/
 ```
+
+**On Windows use `py -m obd_scan …`** — a python.org install provides `python` and the `py`
+launcher, not `python3`. Everything else is identical.
 
 That reads the VIN, finds which CAN headers answer, discovers which enhanced PID blocks
 exist, sweeps them, and works out which of the results are worth logging — on one adapter
@@ -345,7 +350,7 @@ connection, then it tells you to go drive.
 | Your adapter | Use |
 | :--- | :--- |
 | **BLE** (vLinker MS/MX, OBDLink CX, Vgate iCar Pro BLE) | `--ble` — or `--ble vlinker` to pick by name |
-| **WiFi** (iCar Pro WiFi, most cheap clones) | `--host 192.168.0.10` (the default; omit it) |
+| **WiFi** (iCar Pro WiFi, most cheap clones) | `--host 192.168.0.10` (the default; omit it) — no `bleak` needed |
 
 Then drive — **a cold start is worth more than a long drive**, because a thermal ramp is what
 separates an oil temperature from a coolant temperature — and run the two commands `auto`
