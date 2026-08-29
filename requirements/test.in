@@ -3,3 +3,16 @@
 pytest
 numpy
 pandas
+
+# Windows-only transitive dependency of pandas, listed EXPLICITLY because this
+# lock is compiled on Linux and pip-compile resolves for the platform it runs
+# on. pandas needs tzdata for timezone data on Windows (Linux and macOS read
+# the system zoneinfo); a Linux-compiled lock therefore omits it, and
+# `pip install --require-hashes` on Windows then fails with "all requirements
+# must have their versions pinned" for a package the lock never mentioned.
+# Found by the Windows CI job, not by inspection.
+#
+# It is a pure-Python universal wheel (py2.py3-none-any), so the single hash
+# below is valid on every platform. Installing it on Linux costs a few hundred
+# KB and nothing else.
+tzdata
