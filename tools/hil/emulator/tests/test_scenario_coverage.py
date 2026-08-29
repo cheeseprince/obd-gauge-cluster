@@ -54,7 +54,7 @@ def stat_id_order():
     """StatId names in declaration order. READOUTS[] is indexed by StatId, so
     the Nth table row IS the Nth enum entry — that is what lets a row be mapped
     back to the StatId the layout refers to."""
-    text = APP_TYPES.read_text()
+    text = APP_TYPES.read_text(encoding="utf-8")
     body = re.search(r"enum class StatId\s*\{(.*?)\}\s*;", text, re.S).group(1)
     body = re.sub(r"//[^\n]*", "", body)          # strip comments between entries
     names = [n.strip() for n in body.split(",") if n.strip()]
@@ -71,7 +71,7 @@ def poll_set(profile_file):
     PEDAL (22004A) but puts neither on a page nor in HELPERS, so the dash never
     asks for them and a fixture owes them nothing.
     """
-    text = (SRC / profile_file).read_text()
+    text = (SRC / profile_file).read_text(encoding="utf-8")
     hdrs = HEADERS[profile_file]
     rows = [(m.group("cmd").strip('"').upper() if m.group("cmd") != "nullptr" else None,
              hdrs[int(m.group("hdr"))], m.group("name"))

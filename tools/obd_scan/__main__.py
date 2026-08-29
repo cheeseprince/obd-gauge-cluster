@@ -39,7 +39,7 @@ def _json_default(o):
 
 def _write(path: str, obj) -> None:
     """Write a stage result and say so. Same shape as every cmd_* writer."""
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         json.dump(obj, fh, indent=1, default=_json_default)
     print(f"wrote {path}")
 
@@ -197,7 +197,7 @@ def cmd_census(args):
             print("*** No header was successfully determined. Check the adapter link "
                   "and re-run before concluding anything about this vehicle. ***")
     _report_abort(res)
-    with open(args.out, "w") as fh:
+    with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1, default=_json_default)
     print(f"wrote {args.out}")
 
@@ -245,7 +245,7 @@ def _blocks_from_discover(path: str) -> "list[cat.Block]":
     read-only whitelist, so a doctored prefix naming a write service is rejected
     before the link opens, not after.
     """
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         raw = json.load(fh)
     out: list[cat.Block] = []
     for b in raw.get("blocks", []):
@@ -261,7 +261,7 @@ def _blocks_from_discover(path: str) -> "list[cat.Block]":
 
 
 def cmd_sweep(args):
-    with open(args.census) as fh:
+    with open(args.census, encoding="utf-8") as fh:
         census_raw = json.load(fh)
     # --vehicle auto: inherit the preset the census already resolved from the VIN.
     vehicle = census_raw.get("preset") if args.vehicle == "auto" else args.vehicle
@@ -306,7 +306,7 @@ def cmd_sweep(args):
               "-- this is NOT a negative finding. Check the adapter link. ***")
     _report_abort(res)
     res["preset"] = vehicle   # record the preset so `log --vehicle auto` can scope headers safely
-    with open(args.out, "w") as fh:
+    with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1, default=_json_default)
     print(f"wrote {args.out}")
 
@@ -338,7 +338,7 @@ def _parse_offsets(text: str) -> "tuple[int, ...]":
 
 
 def cmd_discover(args):
-    with open(args.census) as fh:
+    with open(args.census, encoding="utf-8") as fh:
         census_raw = json.load(fh)
     vehicle = census_raw.get("preset") if args.vehicle == "auto" else args.vehicle
     if vehicle not in cat.PRESETS:
@@ -417,13 +417,13 @@ def cmd_discover(args):
               "tool is permitted to send).")
 
     res["preset"] = vehicle
-    with open(args.out, "w") as fh:
+    with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1, default=_json_default)
     print(f"wrote {args.out}")
 
 
 def cmd_log(args):
-    with open(args.sweep) as fh:
+    with open(args.sweep, encoding="utf-8") as fh:
         sweep = json.load(fh)
     _report_upstream_incomplete(sweep, "sweep")                  # IMPORTANT 4
     # Scope header resolution to this sweep's PRESET (from --vehicle, else the

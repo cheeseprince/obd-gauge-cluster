@@ -651,7 +651,7 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
     aborted = False
     error: str | None = None
 
-    with open(path, "w", newline="") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         w = _csv.writer(fh)
         w.writerow(header)
         fh.flush()

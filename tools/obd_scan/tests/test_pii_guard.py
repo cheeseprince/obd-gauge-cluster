@@ -132,7 +132,7 @@ def test_whitespace_split_vin_is_a_known_miss():
 # the exemption cannot come back silently.
 
 def test_guard_does_not_exempt_itself():
-    src = _GUARD.read_text()
+    src = _GUARD.read_text(encoding="utf-8")
     assert "never scan the guard itself" not in src, \
         "the self-exemption is back; it is what let a real VIN reach the public repo"
 
@@ -140,7 +140,7 @@ def test_guard_does_not_exempt_itself():
 def test_guards_own_source_is_clean_under_its_own_rules():
     """The guard's own file must pass the guard. Belt and braces: even if the
     file-walk regressed, this asserts the CONTENT directly."""
-    assert guard.vin_tokens(_GUARD.read_text()) == [], \
+    assert guard.vin_tokens(_GUARD.read_text(encoding="utf-8")) == [], \
         "the guard's own source contains a non-allowlisted VIN-shaped token"
 
 

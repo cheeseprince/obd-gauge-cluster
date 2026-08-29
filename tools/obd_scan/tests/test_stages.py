@@ -402,7 +402,7 @@ def test_log_counts_elm_errors_separately_from_blank_cells(tmp_path):
     res = run_log(s, hits, str(out), hz=50.0, duration_s=0.1)
 
     assert res["error_polls"] > 0
-    rows = list(csv.DictReader(out.open()))
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
     assert rows[0]["220041@7E0"] == ""            # cell is blank either way
     s.close(); fake.stop()
 
@@ -422,7 +422,7 @@ def test_log_writes_raw_hex_and_anchors(tmp_path):
     hits = [Hit("7E0", "220041", "620041DEAD", "DEAD", 2)]
     res = run_log(s, hits, str(out), hz=50.0, duration_s=0.1)
 
-    rows = list(csv.DictReader(out.open()))
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
     assert rows, "expected at least one logged row"
     assert rows[0]["220041@7E0"] == "DEAD"        # raw hex preserved
     assert float(rows[0]["rpm"]) > 0              # anchor decoded
@@ -449,7 +449,7 @@ def test_log_scopes_headers_to_allowed_set(tmp_path):
     allowed = [h for h in cat.PRESETS["bmw"].headers if h.name == "7DF"]
     res = run_log(s, hits, str(out), hz=50.0, duration_s=0.1, allowed_headers=allowed)
 
-    cols = csv.DictReader(out.open()).fieldnames
+    cols = csv.DictReader(out.open(encoding="utf-8")).fieldnames
     assert "225801@7DF" in cols        # legit header kept
     assert "22DEAD@7E4" not in cols     # injected 7E4 dropped — never polled
     assert res["rows"] > 0
@@ -521,7 +521,7 @@ def test_log_aborts_but_keeps_rows_written_before_link_died(tmp_path):
     assert res["aborted"] is True
     assert res["error"]                                  # non-empty reason
 
-    rows = list(csv.DictReader(out.open()))
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
     assert res["rows"] == 1                              # only cycle 1 completed
     assert len(rows) == 1                                # CSV matches: readable, intact
     assert rows[0]["220041@7E0"] == "DEAD"
@@ -615,7 +615,7 @@ def _log_once(responses, tmp_path, name="drive.csv", cycles=4):
         return False
 
     res = run_log(s, hits, str(out), hz=1000.0, stop=stop)
-    rows = list(csv.DictReader(out.open()))
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
     s.close(); fake.stop()
     return res, rows, fake.requests_seen
 

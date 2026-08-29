@@ -27,9 +27,9 @@ def main(argv=None) -> int:
         return 2
 
     try:
-        with open(argv[0]) as fh:
+        with open(argv[0], encoding="utf-8") as fh:
             sweep = json.load(fh)
-        with open(argv[1]) as fh:
+        with open(argv[1], encoding="utf-8") as fh:
             expect = json.load(fh)
     except (OSError, json.JSONDecodeError) as e:
         print(f"could not read inputs: {e}")
