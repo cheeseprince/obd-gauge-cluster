@@ -36,6 +36,45 @@ jobs:
         # and it is transport-only.
         run: cd tools/hil/emulator && python -m pytest tests -q
 
+  scanner-windows:
+    # The SCANNER, not the firmware, on Windows.
+    #
+    # This is a separate job rather than another entry in the host-tests matrix
+    # because that job's first step is `cd test && make` -- g++ with sanitizers,
+    # building host tests for firmware that targets an ESP32. There is no reason
+    # to build that on Windows and no toolchain there to do it with. What is
+    # worth knowing is whether `obd_scan` runs on a Windows laptop in a car,
+    # which is the part with an actual user.
+    #
+    # The specific risk this exists to catch: correlate.py uses
+    # multiprocessing.Pool. POSIX forks; Windows SPAWNS, re-importing the module
+    # in every child. That path has never run. It should work -- _analyze_column
+    # is module-level and picklable on purpose, and __main__.py has the
+    # if __name__ == "__main__" guard that stops spawn re-running the CLI
+    # recursively -- but "should" is not "does", and the failure mode is a
+    # pickling error or a process storm at the moment someone is trying to
+    # analyse a drive they just took.
+    #
+    # Second thing it establishes: whether the hash-pinned requirements resolve
+    # on Windows at all. Hashes are platform-independent, but the SET of wheels
+    # pip picks is not, so --require-hashes can fail on a platform whose wheel
+    # was never added to the lock.
+    name: Scanner tests (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install pinned test dependencies
+        run: python -m pip install --quiet --require-hashes -r requirements/test.txt
+      - name: OBD scanner tests
+        run: cd tools/obd_scan && python -m pytest tests -q
+      - name: HIL rig tests (pure logic, no board)
+        run: cd tools/hil && python -m pytest tests -q
+      - name: HIL emulator tests (ELM327 protocol, no board or Bluetooth)
+        run: cd tools/hil/emulator && python -m pytest tests -q
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
