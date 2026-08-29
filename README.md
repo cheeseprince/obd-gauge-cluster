@@ -233,10 +233,20 @@ settings menu.
 **5. Set the clock** (optional) via **Set date/time** — it backs up to the coin cell, so you
 only do it once.
 
-**6. Set the fuel tank size** if the DIESEL FILL tile reads `SET UP`, via **Fuel tank**. Most
-profiles already know their capacity; a Ford Super Duty's is 29/34/48 gal depending on
-wheelbase, which the VIN does not encode, so it has to be picked once. Also how you tell the
-dash about a larger aftermarket tank.
+**6. Set the fuel tank size — only if a FILL tile reads `SET UP`.** Usually there is nothing
+to do: the vehicle profile already carries its own capacity, and the dash uses it
+automatically. There is no auto-detection, because **a VIN does not encode tank size** — the
+figure is a constant in the profile, with a Settings override that wins when you set one.
+
+You only need this in two cases: a variant the VIN cannot distinguish (a Ford Super Duty is
+29 / 34 / 48 gal depending on wheelbase), or an **aftermarket tank**.
+
+Capacity feeds exactly two tiles — `DSL+` and `DEF+`, which turn fuel level % into **gallons
+to fill** (they sit on the RANGE page on profiles that have one). **Every other readout,
+including MPG, is unaffected**, so if you do not care about a gallons-to-fill number you can
+ignore tank size entirely. When the capacity is unknown the tile says `SET UP` rather than
+showing a number, deliberately: zero capacity would otherwise render a confident
+"0.0 gal — nothing to add" at any real fuel level.
 
 Gauges appear once the adapter links. From here, updates are over-the-air — no cable.
 **Full walkthrough, per-OS notes and troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md).
