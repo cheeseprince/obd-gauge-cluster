@@ -25,6 +25,10 @@ from .stages import (
     run_sweep,
 )
 
+# The WiFi adapter's default address. Named so `--ble` can tell an untouched
+# default from a deliberate --host and refuse the ambiguous combination.
+_DEFAULT_HOST = "192.168.0.10"
+
 
 def _json_default(o):
     if is_dataclass(o):
@@ -32,8 +36,35 @@ def _json_default(o):
     return str(o)
 
 
+def _open_transport(args) -> "tuple[str, int]":
+    """Resolve where ElmSession should connect: a WiFi adapter, or a BLE one.
+
+    WiFi is the default and is unchanged -- `--host` still means what it always
+    meant. `--ble` starts the bridge inside THIS process on an OS-assigned port
+    and hands back its address, so a BLE scan is one command instead of two
+    terminals. ElmSession itself never learns that BLE exists: it is the piece
+    validated across four vehicles and it stays a plain TCP socket.
+    """
+    if not getattr(args, "ble", None) and not getattr(args, "ble_addr", None):
+        return args.host, args.port
+
+    # An explicit --host alongside --ble is a contradiction worth refusing
+    # rather than silently resolving: the two name different adapters.
+    if args.host != _DEFAULT_HOST:
+        raise SystemExit("--ble and --host name different adapters; pass only one.")
+
+    from . import ble_bridge
+    name = args.ble if isinstance(args.ble, str) else None
+    try:
+        return ble_bridge.start(name=name, addr=args.ble_addr,
+                                scan_timeout=args.ble_scan_timeout)
+    except ble_bridge.BleBridgeError as e:
+        raise SystemExit(f"BLE: {e}") from None
+
+
 def _session(args) -> ElmSession:
-    s = ElmSession(args.host, args.port)
+    host, port = _open_transport(args)
+    s = ElmSession(host, port)
     s.connect()
     print(f"adapter: {s.init()}")
     print(f"protocol: {s.detect_protocol()}")
@@ -448,8 +479,18 @@ def cmd_correlate(args):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="obd_scan",
                                 description="Discover an unknown vehicle's OBD-II PID map.")
-    p.add_argument("--host", default="192.168.0.10", help="adapter IP (default: iCar Pro WiFi)")
+    p.add_argument("--host", default=_DEFAULT_HOST,
+                   help="WiFi adapter IP (default: iCar Pro WiFi)")
     p.add_argument("--port", type=int, default=35000)
+    # BLE adapters go through the same TCP path: --ble brings the bridge up in
+    # this process and points the session at it. Bare --ble takes the
+    # best-ranked OBD-looking adapter; give it a substring to narrow.
+    p.add_argument("--ble", nargs="?", const=True, default=None, metavar="NAME",
+                   help="use a BLE adapter instead of WiFi; optional name substring "
+                        "(e.g. --ble vlinker). Needs the optional 'bleak' package.")
+    p.add_argument("--ble-addr", default=None, metavar="ADDR",
+                   help="connect to this BLE address directly, skipping the scan")
+    p.add_argument("--ble-scan-timeout", type=float, default=10.0)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("census", help="discover addressing and live modules")

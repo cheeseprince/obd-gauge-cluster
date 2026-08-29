@@ -1,3 +1,4 @@
+import argparse
 import json
 import pathlib
 import sys
@@ -69,3 +70,74 @@ def test_blocks_from_discover_rejects_a_malformed_entry(tmp_path):
 
     with pytest.raises(SystemExit):
         _blocks_from_discover(str(p))
+
+
+# --- transport selection: WiFi stays the default, --ble opts in --------------
+
+def test_open_transport_is_a_passthrough_without_ble():
+    """The WiFi path must be byte-identical to what it was before --ble existed."""
+    from obd_scan.__main__ import _open_transport
+    args = argparse.Namespace(host="192.168.4.1", port=35000, ble=None, ble_addr=None)
+    assert _open_transport(args) == ("192.168.4.1", 35000)
+
+
+def test_open_transport_refuses_ble_and_an_explicit_host_together():
+    """Two flags naming two different adapters is a contradiction, not a priority
+    question. Silently picking one is how you scan the wrong thing and trust it."""
+    from obd_scan.__main__ import _DEFAULT_HOST, _open_transport
+    args = argparse.Namespace(host="192.168.4.1", port=35000, ble=True,
+                              ble_addr=None, ble_scan_timeout=10.0)
+    with pytest.raises(SystemExit) as e:
+        _open_transport(args)
+    assert "only one" in str(e.value)
+    # ...but the UNTOUCHED default is not an explicit host, so this is allowed.
+    args.host = _DEFAULT_HOST
+    args.ble = None
+    args.ble_addr = None
+    assert _open_transport(args) == (_DEFAULT_HOST, 35000)
+
+
+def test_open_transport_starts_the_bridge_and_returns_its_port(monkeypatch):
+    from obd_scan import ble_bridge
+    from obd_scan.__main__ import _DEFAULT_HOST, _open_transport
+
+    seen = {}
+
+    def fake_start(name=None, addr=None, scan_timeout=10.0, **kw):
+        seen.update(name=name, addr=addr, scan_timeout=scan_timeout)
+        return ("127.0.0.1", 46001)
+
+    monkeypatch.setattr(ble_bridge, "start", fake_start)
+    args = argparse.Namespace(host=_DEFAULT_HOST, port=35000, ble="vlinker",
+                              ble_addr=None, ble_scan_timeout=7.5)
+    assert _open_transport(args) == ("127.0.0.1", 46001)
+    assert seen == {"name": "vlinker", "addr": None, "scan_timeout": 7.5}
+
+
+def test_bare_ble_flag_means_best_ranked_not_a_name_match(monkeypatch):
+    """`--ble` with no value must not be passed on as the literal string 'True'."""
+    from obd_scan import ble_bridge
+    from obd_scan.__main__ import _DEFAULT_HOST, _open_transport
+
+    seen = {}
+    monkeypatch.setattr(ble_bridge, "start",
+                        lambda name=None, **kw: seen.update(name=name) or ("127.0.0.1", 1))
+    args = argparse.Namespace(host=_DEFAULT_HOST, port=35000, ble=True,
+                              ble_addr=None, ble_scan_timeout=10.0)
+    _open_transport(args)
+    assert seen["name"] is None
+
+
+def test_a_bring_up_failure_becomes_a_sentence_not_a_traceback(monkeypatch):
+    from obd_scan import ble_bridge
+    from obd_scan.__main__ import _DEFAULT_HOST, _open_transport
+
+    def boom(**kw):
+        raise ble_bridge.NoAdapterFound("nothing answered the scan")
+
+    monkeypatch.setattr(ble_bridge, "start", boom)
+    args = argparse.Namespace(host=_DEFAULT_HOST, port=35000, ble=True,
+                              ble_addr=None, ble_scan_timeout=10.0)
+    with pytest.raises(SystemExit) as e:
+        _open_transport(args)
+    assert "nothing answered the scan" in str(e.value)

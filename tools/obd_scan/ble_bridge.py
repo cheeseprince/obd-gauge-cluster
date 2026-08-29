@@ -53,6 +53,24 @@ NAME_HINTS = ("obd", "vlink", "elm", "icar", "veepeak", "konnwei", "carista", "o
 MIN_CHUNK = 20
 
 
+class BleBridgeError(Exception):
+    """A bring-up failure the caller can report as a diagnosis.
+
+    The standalone CLI turns these back into the exit codes it always used, so
+    running the bridge in its own terminal is unchanged. They exist so that
+    obd_scan's in-process `--ble` path can fail the same way `--host` does --
+    with a sentence about the adapter -- instead of a traceback or a bare code.
+    """
+
+
+class NoAdapterFound(BleBridgeError):
+    """Scanned, and nothing OBD-looking answered."""
+
+
+class NoKnownProfile(BleBridgeError):
+    """Connected, but the GATT characteristics match no ELM327 profile."""
+
+
 def looks_like_obd(name):
     """True when an advertised name hints at an OBD adapter (case-insensitive)."""
     return bool(name) and any(h in name.lower() for h in NAME_HINTS)
@@ -107,7 +125,7 @@ def chunk(data, size):
 
 
 async def serve(client, notify_uuid, write_uuid, needs_response, host, port,
-                mtu=23, log=print):
+                mtu=23, log=print, ready=None):
     """Run the TCP server, forwarding bytes both ways over an open BLE client.
 
     `client` is duck-typed (anything with is_connected / write_gatt_char /
@@ -156,8 +174,15 @@ async def serve(client, notify_uuid, write_uuid, needs_response, host, port,
             log("[tcp] client gone")
 
     server = await asyncio.start_server(handle, host, port)
-    log(f"[tcp] listening on {host}:{port} - now run:")
-    log(f"      python -m tools.obd_scan --host {host} census")
+    # Read the port back rather than echoing the argument: `port=0` asks the OS
+    # for a free one, which is what the in-process path uses so it can never
+    # collide with the HIL emulator on 35000 or with a second scanner run.
+    bound = server.sockets[0].getsockname()[1] if server.sockets else port
+    log(f"[tcp] listening on {host}:{bound}")
+    if ready is not None:
+        ready(host, bound)               # unblocks a caller waiting to connect
+    else:
+        log(f"      python -m obd_scan --host {host} --port {bound} census")
     async with server:
         await server.serve_forever()
 
@@ -175,7 +200,7 @@ def _bleak():
     return BleakScanner, BleakClient
 
 
-async def _run(args):
+async def _run(args, ready=None):
     BleakScanner, BleakClient = _bleak()
 
     address = args.addr
@@ -188,11 +213,11 @@ async def _run(args):
             devices = [x for x in devices if args.name.lower() in (x[1] or "").lower()]
         ranked = [r for r in rank_devices(devices) if r[0] == 0 or r[1] == 0 or args.name]
         if not ranked:
-            print("[ble] no OBD-looking adapter found. Re-run with --addr, or --name to "
-                  "match loosely.", file=sys.stderr)
-            for _, _, negr, addr, nm, _ in rank_devices(devices)[:10]:
-                print(f"      seen: {addr}  {nm or '(no name)'}  {-negr} dBm", file=sys.stderr)
-            return 2
+            seen = "".join(f"\n      seen: {addr}  {nm or '(no name)'}  {-negr} dBm"
+                           for _, _, negr, addr, nm, _ in rank_devices(devices)[:10])
+            raise NoAdapterFound(
+                "no OBD-looking adapter answered the scan. Re-run with --ble-addr, or "
+                "widen the name match." + seen)
         _, _, negr, address, nm, svc_hit = ranked[0]
         print(f"[ble] chose {address}  '{nm}'  {-negr} dBm  "
               f"({'advertises our service' if svc_hit else 'matched by name'})", flush=True)
@@ -206,15 +231,67 @@ async def _run(args):
                 chars[ch.uuid.lower()] = list(ch.properties)
         bound = bind_profile(chars)
         if not bound:
-            print("[ble] connected, but no known ELM327 GATT profile is present. "
-                  "Characteristics seen:", file=sys.stderr)
-            for uuid_, props in sorted(chars.items()):
-                print(f"      {uuid_}  {','.join(props)}", file=sys.stderr)
-            return 3
+            seen = "".join(f"\n      {uuid_}  {','.join(props)}"
+                           for uuid_, props in sorted(chars.items()))
+            raise NoKnownProfile(
+                "connected, but no known ELM327 GATT profile is present. "
+                "Characteristics seen:" + seen)
         label, notify, write, needs_response = bound
         print(f"[ble] profile {label}  write needs response: {needs_response}", flush=True)
-        await serve(client, notify, write, needs_response, args.host, args.port, mtu)
+        await serve(client, notify, write, needs_response, args.host, args.port,
+                    mtu, ready=ready)
     return 0
+
+
+def start(name=None, addr=None, scan_timeout=10.0, host="127.0.0.1",
+          connect_timeout=45.0, log=print):
+    """Bring a BLE adapter up and serve it on a local TCP port, in this process.
+
+    Returns (host, port) once the bridge is LISTENING, which is only after the
+    BLE link is connected and a GATT profile is bound -- so a caller that gets a
+    port back can connect immediately without racing the radio.
+
+    Why a thread rather than a second transport in ElmSession: `ElmSession` is
+    the piece validated across four vehicles, and it stays a plain TCP socket.
+    The BLE specifics live here, exactly as they do for the standalone bridge,
+    and the scanner talks to 127.0.0.1 either way. One code path, one place to
+    fix a GATT quirk.
+
+    The thread is a daemon and the loop is never stopped: the bridge lives for
+    the length of the scan and dies with the process. That is deliberate -- a
+    scan stage that finished should not tear the radio down while a later stage
+    in the same run still wants it, and the OS reclaims both on exit.
+    """
+    import threading
+
+    box: "dict[str, object]" = {}
+    done = threading.Event()
+
+    def _ready(h, p_):
+        box["addr"] = (h, p_)
+        done.set()
+
+    def _thread():
+        args = argparse.Namespace(addr=addr, name=name, scan_timeout=scan_timeout,
+                                  host=host, port=0)      # 0 = OS picks a free port
+        try:
+            asyncio.run(_run(args, ready=_ready))
+        except BaseException as e:                          # noqa: BLE001 - reported to the caller
+            box.setdefault("error", e)
+        finally:
+            done.set()
+
+    threading.Thread(target=_thread, daemon=True, name="ble-bridge").start()
+    if not done.wait(timeout=connect_timeout):
+        raise BleBridgeError(
+            f"the BLE adapter did not come up within {connect_timeout:.0f}s. "
+            "Is it powered and in range? A phone already connected to it holds "
+            "its single client slot.")
+    if "addr" not in box:
+        err = box.get("error")
+        raise err if isinstance(err, BaseException) else BleBridgeError("bridge exited during startup")
+    log(f"[ble] bridged to {box['addr'][0]}:{box['addr'][1]}")
+    return box["addr"]
 
 
 def main(argv=None):
@@ -229,6 +306,12 @@ def main(argv=None):
     args = p.parse_args(argv)
     try:
         return asyncio.run(_run(args))
+    except NoAdapterFound as e:
+        print(f"[ble] {e}", file=sys.stderr)
+        return 2
+    except NoKnownProfile as e:
+        print(f"[ble] {e}", file=sys.stderr)
+        return 3
     except KeyboardInterrupt:
         print("\n[bye]")
         return 0
