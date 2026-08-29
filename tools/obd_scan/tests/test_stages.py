@@ -20,6 +20,7 @@ from obd_scan.stages import (
     run_discover,
     run_log,
     run_sweep,
+    run_triage,
 )
 
 
@@ -917,3 +918,89 @@ def test_discover_explicit_headers_win():
     assert scope == "explicit"
     assert [r.header.name for r in rows] == ["7E0"]     # broadcast NOT forced in
     s.close(); fake.stop()
+
+
+# --- triage: which of a few hundred hits are worth a drive -------------------
+
+class _ScriptedProbe:
+    """Session stub that returns a scripted payload per request, per call."""
+
+    def __init__(self, script):
+        self.script = {k: list(v) for k, v in script.items()}
+        self.headers = []
+
+    def set_header(self, h):
+        self.headers.append(h.name)
+
+    def probe(self, req):
+        from obd_scan.reply import Cls, Reply
+        payload = self.script[req].pop(0)
+        if payload is None:
+            return Reply(cls=Cls.NO_DATA, raw="NO DATA", payload=b"")
+        return Reply(cls=Cls.POSITIVE, raw="", payload=bytes.fromhex(payload))
+
+
+def _hit(req, first):
+    return Hit("7DF", req, "", first, len(first) // 2)
+
+
+def _hdrs():
+    return [h for h in cat.HEADERS_11BIT if h.name == "7DF"]
+
+
+def test_triage_separates_movers_from_static_and_unpopulated():
+    hits = [_hit("2258BA", "05CD"), _hit("224517", "0F95"), _hit("224404", "0000")]
+    sess = _ScriptedProbe({
+        "2258BA": ["0A11"],      # changed -> a live signal, certain
+        "224517": ["0F95"],      # identical -> could be equilibrium, could be config
+        "224404": ["0000"],      # blank both times -> answering, carrying nothing
+    })
+    res = run_triage(sess, hits, allowed_headers=_hdrs())
+    kinds = {r["request"]: r["kind"] for r in res["rows"]}
+    assert kinds == {"2258BA": "moved", "224517": "static", "224404": "unpopulated"}
+    assert res["moved"] == 1 and res["static"] == 1 and res["unpopulated"] == 1
+    # Only the proven-live one is recommended for the drive.
+    assert [h.request for h in res["recommended"]] == ["2258BA"]
+    # Ordering puts movers first -- the drive list is read off the top.
+    assert res["rows"][0]["request"] == "2258BA"
+
+
+def test_triage_collapses_two_dids_carrying_the_same_signal():
+    """225817/2258EB were byte-identical on 99.51% of a 1427-row F10 drive.
+    Finding that cost a drive; two probes at a standstill find it for free."""
+    hits = [_hit("225817", "6E"), _hit("2258EB", "6E"), _hit("22587E", "68")]
+    sess = _ScriptedProbe({"225817": ["70"], "2258EB": ["70"], "22587E": ["9D"]})
+    res = run_triage(sess, hits, allowed_headers=_hdrs())
+    assert res["duplicates"] == 1
+    dup = next(r for r in res["rows"] if r.get("duplicate_of"))
+    assert dup["request"] == "2258EB" and dup["duplicate_of"] == "225817"
+    # The duplicate is not spent on the drive; the distinct signals are.
+    assert [h.request for h in res["recommended"]] == ["225817", "22587E"]
+
+
+def test_triage_never_probes_a_header_outside_the_preset():
+    """A sweep.json is an ordinary file. A hit naming a header the preset never
+    sanctioned must not steer a probe at it -- same rule run_log applies."""
+    hits = [_hit("2258BA", "05CD")]
+    hits.append(Hit("7E4", "22F190", "", "AA", 1))     # driver-assist on an Audi
+    sess = _ScriptedProbe({"2258BA": ["0A11"]})        # 7E4 request is NOT scripted
+    res = run_triage(sess, hits, allowed_headers=_hdrs())
+    assert res["probed"] == 1                          # the stranger was skipped
+    assert "7E4" not in sess.headers
+
+
+def test_triage_aborts_cleanly_and_keeps_what_it_measured():
+    """A link that dies partway must not leave the untested remainder looking
+    like a measured 'static' -- the same discipline every other stage applies."""
+    hits = [_hit("2258BA", "05CD"), _hit("224517", "0F95")]
+
+    class Dying(_ScriptedProbe):
+        def probe(self, req):
+            if req == "224517":
+                raise OSError("link dropped")
+            return super().probe(req)
+
+    res = run_triage(Dying({"2258BA": ["0A11"]}), hits, allowed_headers=_hdrs())
+    assert res["aborted"] is True and "link dropped" in res["error"]
+    assert res["probed"] == 1                          # only the one it really read
+    assert [r["request"] for r in res["rows"]] == ["2258BA"]
