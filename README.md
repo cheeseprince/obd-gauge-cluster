@@ -22,12 +22,12 @@ scans, and an Audi Q5 (2.0T) and Jeep Wagoneer (5.7L Hemi) are skeleton profiles
 recognized by VIN and named on the boot splash** — Ford Super Duty (2003–26) and F-150
 (2010–23), Ram 1500/2500/3500 across both the Dodge (2006–11) and Ram (2013–24) eras, and
 Chevrolet/GMC 1500, HD, 2500 and 3500 through the GMT900, K2XX, T1XX and current platforms
-(2010–26). Recognized trucks run the standard Mode-01 gauges rather than an enhanced profile
+(2010–26). Recognized vehicles run the standard Mode-01 gauges rather than an enhanced profile
 (see [Vehicles it works on](#vehicles-it-works-on)).
 
 Each of those eras needed its own VIN research pass, because **the tonnage alphabet changes
 between them** — the same character means 2500 in one generation and 3500 in the next. Where a
-pattern could not be verified the truck is deliberately left unidentified rather than guessed:
+pattern could not be verified the vehicle is deliberately left unidentified rather than guessed:
 the derivation method, and the two ways it goes wrong, are written up in
 [`docs/VEHICLES.md`](docs/VEHICLES.md).
 The enhanced parameters above are not standardized and no manufacturer publishes them, so adding
@@ -104,14 +104,14 @@ There are **three tiers**, and the difference between the first two is worth bei
 | 🔵 **Recognized** | Names the vehicle, and picks a **Standard+** layout from the engine in its VIN | **3–4 pages** of legislated SAE J1979 parameters |
 | ⚪ **Unknown** | Nothing vehicle-specific | 2 Generic pages, no caption |
 
-**Recognized is not the same as profiled.** A recognized truck has never been scanned, so it gets
+**Recognized is not the same as profiled.** A recognized vehicle has never been scanned, so it gets
 **Standard+** — every parameter that SAE J1979 legislates (oil temp, EGT, fuel rate, torque,
 barometric, ambient, EGR, NOx…), laid out for the diesel or gas engine its VIN identifies. What
 it does *not* get is manufacturer-specific data — transmission temp, DPF differential pressure,
 regeneration state, DEF level — because those are undocumented and can only be discovered by
 scanning the vehicle itself.
 
-**Standard+ cannot show a wrong number.** A truck that doesn't support one of these PIDs answers
+**Standard+ cannot show a wrong number.** A vehicle that doesn't support one of these PIDs answers
 NO DATA and the tile stays blank. Alarms are off on every Standard+ tile except coolant and
 volts, since no thresholds have been sourced for any of these vehicles.
 
@@ -121,23 +121,23 @@ volts, since no thresholds have been sourced for any of these vehicles.
 | BMW | 535i (F10) | N55 3.0L turbo I6 | 2011–15 | **6** — ENGINE · DRIVE · MISCELLANEOUS · TRIP · FLUIDS & FUEL · POWER | 🟢 In use — the most deeply mapped profile after the Sierra: oil temperature, fuel rate, crank torque and horsepower all measured on-car. Alarms remain off on everything but coolant and volts — [details](docs/BMW-STATUS.md) |
 | Chevrolet | Silverado 1500 | 3.0L Duramax LZ0 | 2023–26 | 7 — same profile as the Sierra | ✅ Expected, not separately tested |
 | Chevrolet | Silverado 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| Chevrolet | Silverado 1500 · 2500 · 3500 | *(engine not identified)* | 2014–18 (K2XX) · 2010–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
 | Chevrolet | Silverado HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
+| Chevrolet / GMC | Silverado / Sierra 1500 | 3.0L Duramax · 5.3L · 6.2L V8 · 4.3L V6 · 2.7L I4 turbo | 2019–21 (T1XX) | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
 | Ford | F-150 | *(engine not identified)* | 2010–23 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
-| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke | 2020–26 | **8** — ENGINE · THERMAL · POWER · TRIP · AIR · EMISSIONS · AMBIENT · RANGE | 🟡 Skeleton — scanned 2026-08-09; trans temp + gear confirmed, **not yet run on the truck** — [details](docs/FORD-STATUS.md) |
+| Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke | 2020–26 | **8** — ENGINE · THERMAL · POWER · TRIP · AIR · EMISSIONS · AMBIENT · RANGE | 🟡 Skeleton — scanned 2026-08-09; trans temp + gear confirmed, **not yet run on the vehicle** — [details](docs/FORD-STATUS.md) |
 | Ford | F-250/350/450/550 Super Duty | 6.7L Power Stroke (2011–19) · 6.2L · 7.3L V8 | 2011–26 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — pre-2020 diesels are the 6R140, a different transmission, so they stay on Standard+ |
+| Ford | F-250/350/450/550 Super Duty | 6.0L · 6.4L Power Stroke · 5.4L · 6.8L V10 | 2003–09 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — a different engine alphabet from the 2011+ Super Duty |
+| GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real vehicle** |
 | GMC | Sierra 1500 (gas) | 5.3L · 6.2L V8 · 2.7L I4 turbo | 2022–26 | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
+| GMC | Sierra 1500 · 2500 · 3500 | *(engine not identified)* | 2016–18 · 2014–15 (K2XX) · 2011–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — the tonnage alphabet changes between all three eras |
 | GMC | Sierra HD | 6.6L Duramax · 6.6L V8 | 2020–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — 2500/3500 not distinguished |
-| GMC | Sierra 1500 | 3.0L Duramax LZ0 | 2023–26 | **7** — TOWING · POWER · REGENERATION · RANGE · TRIP · DIAGNOSTICS · MISCELLANEOUS | ✅ **Validated on a real truck** |
 | Jeep | Wagoneer (WS) | 5.7L Hemi eTorque | 2022–23 | **4** — TEMPERATURES · DRIVE · POWER · MISCELLANEOUS | 🟡 Skeleton — [details](docs/VEHICLES.md#jeep) |
 | Ram | 1500 · 2500 · 3500 | 5.7L · 6.4L · 6.2L HEMI · 6.7L Cummins · 3.6L V6 · 3.0L EcoDiesel | 2013–24 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
 | Ram (Dodge) | 1500 · 2500 · 3500 | *(engine not identified)* | 2006–11 | **3** — Standard+ Gas | 🔵 Recognized — pre-2013 is the Dodge era (`1D7`/`3D7`); 3500 identified 2006–07 only, MY2012 is a vPIC data gap |
-| Chevrolet | Silverado 1500 · 2500 · 3500 | *(engine not identified)* | 2014–18 (K2XX) · 2010–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — never scanned |
-| GMC | Sierra 1500 · 2500 · 3500 | *(engine not identified)* | 2016–18 · 2014–15 (K2XX) · 2011–13 (GMT900) | **3** — Standard+ Gas | 🔵 Recognized — the tonnage alphabet changes between all three eras |
-| Chevrolet / GMC | Silverado / Sierra 1500 | 3.0L Duramax · 5.3L · 6.2L V8 · 4.3L V6 · 2.7L I4 turbo | 2019–21 (T1XX) | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — never scanned |
-| Ford | F-250/350/450/550 Super Duty | 6.0L · 6.4L Power Stroke · 5.4L · 6.8L V10 | 2003–09 | **4** / **3** — Standard+ Diesel or Gas | 🔵 Recognized — a different engine alphabet from the 2011+ truck |
 | *(any other)* | — | — | — | **2** — ENGINE · AIR | ⚪ **Generic** — standard OBD-II only |
 
-Gas cars have no DPF, DEF or regeneration, so those truck pages don't exist for them — a gas car
+Gas cars have no DPF, DEF or regeneration, so those pages don't exist for them — a gas car
 gets pages of what its engine actually reports. The BMW is the worked example: a 1,792-probe
 sweep of its enhanced blocks took it from 3 pages to 6, including **crank torque and horsepower**
 from a DID (`2258BA`) that appears in no published BMW PID table. Its `224402` oil temperature
@@ -157,7 +157,7 @@ detail and how VIN selection works:** [`docs/VEHICLES.md`](docs/VEHICLES.md).
 | Encoder cable | [SparkFun Qwiic-to-Grove cable](https://www.sparkfun.com/qwiic-cable-grove-adapter-100mm.html) (the board is Grove, the encoder is Qwiic) |
 | Storage | A microSD card (FAT32) for logging — the slot is on-board |
 | OBD adapter | A **BLE** ELM327 — see [Adapters](docs/ADAPTERS.md) |
-| Power | Truck USB (switched 5 V) → board USB-C |
+| Power | Vehicle USB (switched 5 V) → board USB-C |
 
 **Assembly is one cable.** The panel has a **Grove** I²C plug and the knob has a **Qwiic** plug,
 so the SparkFun adapter cable bridges them. Everything else is on-board or plug-in. Full guide:
@@ -180,9 +180,10 @@ This is the only supported board. An earlier Elecrow WROVER-B was retired — se
 
 ## Install it
 
-**Prerequisites:** PlatformIO Core, Python 3.12, and git. Verified on macOS and Linux; Windows
-is untested. The first install is over USB; everything after that is done from your phone and
-the knob.
+**Prerequisites:** PlatformIO Core, Python 3.12, and git. **Flashing the firmware** is verified
+on macOS and Linux; Windows is untested. **The scanner** (`tools/obd_scan`) runs on all three —
+its full test suite is a required CI job on `windows-latest`. The first install is over USB;
+everything after that is done from your phone and the knob.
 
 **1. Flash the firmware (once, over USB).** Connect the CrowPanel with a **data** USB-C cable
 and, from a clone of this repo:
@@ -205,14 +206,15 @@ location (enables automatic day/night). Tap **Done** and the dash reboots.
 ![Settings menu, reached by a long knob-press](docs/images/settings.png)
 
 **4. Plug in the OBD adapter.** Get a **BLE / "Bluetooth 4.0"** ELM327 — the dash scans and
-auto-connects, no pairing step.
+auto-connects, no pairing step. **It must be BLE**: the CrowPanel's ESP32-S3 has a BLE-only
+radio with no Bluetooth Classic support, so a classic/SPP adapter cannot be made to work.
 
 | Adapter | Transport | Build | Status |
 | :--- | :--- | :--- | :--- |
 | Vgate **vLinker MS** | BLE | `crowpanel_obd` | ✅ **Validated** — ⚠️ ships in Classic/MFi mode; see below |
 | Vgate **iCar Pro BLE 4.0** | BLE | `crowpanel_obd` | ✅ **Validated** — and works out of the box |
 | Generic CC2541 / `0xFFE0` / `0xFFF0` clones | BLE | `crowpanel_obd` | 🟡 Should work — not bench-tested |
-| Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** — the dash is BLE-only |
+| Any PIN-pairing classic-BT ELM327 | Classic BT | — | ❌ **Unsupported** — the ESP32-S3 on the CrowPanel has **no Bluetooth Classic radio at all**, only BLE. Not a software limit; nothing can be done in firmware |
 | **OBDLink MX+ / CX** | BLE (proprietary) | — | ❌ **Unsupported** |
 
 > ⚠️ **The vLinker MS does not work out of the box.** It ships in a Classic/MFi-only
@@ -231,10 +233,20 @@ settings menu.
 **5. Set the clock** (optional) via **Set date/time** — it backs up to the coin cell, so you
 only do it once.
 
-**6. Set the fuel tank size** if the DIESEL FILL tile reads `SET UP`, via **Fuel tank**. Most
-profiles already know their capacity; a Ford Super Duty's is 29/34/48 gal depending on
-wheelbase, which the VIN does not encode, so it has to be picked once. Also how you tell the
-dash about a larger aftermarket tank.
+**6. Set the fuel tank size — only if a FILL tile reads `SET UP`.** Usually there is nothing
+to do: the vehicle profile already carries its own capacity, and the dash uses it
+automatically. There is no auto-detection, because **a VIN does not encode tank size** — the
+figure is a constant in the profile, with a Settings override that wins when you set one.
+
+You only need this in two cases: a variant the VIN cannot distinguish (a Ford Super Duty is
+29 / 34 / 48 gal depending on wheelbase), or an **aftermarket tank**.
+
+Capacity feeds exactly two tiles — `DSL+` and `DEF+`, which turn fuel level % into **gallons
+to fill** (they sit on the RANGE page on profiles that have one). **Every other readout,
+including MPG, is unaffected**, so if you do not care about a gallons-to-fill number you can
+ignore tank size entirely. When the capacity is unknown the tile says `SET UP` rather than
+showing a number, deliberately: zero capacity would otherwise render a confident
+"0.0 gal — nothing to add" at any real fuel level.
 
 Gauges appear once the adapter links. From here, updates are over-the-air — no cable.
 **Full walkthrough, per-OS notes and troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md).
@@ -267,7 +279,7 @@ Gauges appear once the adapter links. From here, updates are over-the-air — no
 > and the handshake is the problem (1 or 2). **"Joined WiFi but no traffic"** means 3.
 >
 > An earlier version of this note named the engine as *the* cause, generalised from one incident.
-> It was wrong on a truck with the engine running — and a bench board running that same firmware
+> It was wrong on a vehicle with the engine running — and a bench board running that same firmware
 > updated over the air on the first try, which is how the firmware was ruled out.
 
 The dash updates itself over WiFi — **Settings → Check update**. It fetches the published
@@ -275,11 +287,28 @@ manifest, refuses anything not signed by this project's key, verifies a SHA-256 
 and flashes into a spare slot. Failure at any step leaves the running firmware untouched. No
 cable.
 
-Cutting a release (maintainers): push a version tag.
+Cutting a release (maintainers): **dry-run the pipeline, then push an annotated tag.**
 
 ```
-git tag vX.Y.Z && git push origin vX.Y.Z
+gh workflow run release.yml --ref main      # builds and SIGNS, publishes nothing
+git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z
 ```
+
+The dry run matters because **signing is mandatory on a tag push**: if `OTA_SIGNING_KEY`
+does not match `src/ota_pubkey.h`, the run fails before it can publish, and a tag has
+already been pushed at something that cannot ship. `workflow_dispatch` builds and signs a
+`dev-<hash>` artifact with the publish step gated to tags, so a key problem costs nothing
+to discover. Confirm `gh-pages` is unchanged afterwards rather than assuming the gate held.
+
+Then **verify the release by state change, not by a green check** — a workflow that
+published nothing looks identical to success:
+
+```
+gh api repos/OWNER/REPO/contents/manifest.txt?ref=gh-pages --jq .content | base64 -d
+```
+
+The version, SHA-256 and byte count must all differ from the previous release. There is no
+version string to bump anywhere in the tree: the firmware is stamped from the tag itself.
 
 Releases publish **one image, `crowpanel_obd.bin`** — not one per vehicle, since all profiles
 ship together and are selected at runtime by VIN. Signing, the release pipeline,
@@ -298,17 +327,65 @@ construction** — only OBD read services and an allow-listed set of AT commands
 transmitted; writes, routines, resets and clears are rejected in code, because it runs on
 vehicles that may not be yours.
 
+### One command, any adapter, any OS
+
+**Windows, macOS and Linux. Bluetooth or WiFi. One command for everything you can do
+parked:**
+
 ```
+pip install numpy pandas        # required — the CLI will not start without them
+pip install bleak               # only if your adapter is BLE
+
 cd tools
-python3 -m obd_scan census    --vehicle gm -o census.json
-python3 -m obd_scan sweep     --census census.json -o sweep.json
-python3 -m obd_scan log       --sweep sweep.json -o drive.csv   # during a drive
+python3 -m obd_scan --ble auto --vehicle auto -o scan/
+```
+
+**On Windows use `py -m obd_scan …`** — a python.org install provides `python` and the `py`
+launcher, not `python3`. Everything else is identical.
+
+That reads the VIN, finds which CAN headers answer, discovers which enhanced PID blocks
+exist, sweeps them, and works out which of the results are worth logging — on one adapter
+connection, then it tells you to go drive.
+
+| Your adapter | Use |
+| :--- | :--- |
+| **BLE** (vLinker MS/MX, OBDLink CX, Vgate iCar Pro BLE) | `--ble` — or `--ble vlinker` to pick by name |
+| **WiFi** (iCar Pro WiFi, most cheap clones) | `--host 192.168.0.10` (the default; omit it) — no `bleak` needed |
+
+Then drive — **a cold start is worth more than a long drive**, because a thermal ramp is what
+separates an oil temperature from a coolant temperature — and run the two commands `auto`
+prints for you:
+
+```
+python3 -m obd_scan --ble log --sweep scan/sweep.json --pids <the list auto chose> -o drive.csv
 python3 -m obd_scan correlate drive.csv -o report.md
 ```
 
-1. **Scan** the OBD port to discover which PIDs answer (about an hour parked, plus a drive).
-2. **Correlate** the results to identify each PID.
-3. **Add** a `src/vehicles/<your_vehicle>.cpp` profile and open a pull request.
+1. **`auto`** — discover and sweep the vehicle, parked. Minutes, not the hour the old
+   stage-by-stage flow took.
+2. **Drive** — cold start if you can, then `log`.
+3. **`correlate`** — rank every candidate against known reference signals (RPM, speed,
+   coolant) and write a report naming the likely identities.
+4. **Add** a `src/vehicles/<your_vehicle>.cpp` profile and open a pull request.
+
+**Your vehicle does not need to be one of the six.** `auto` falls back to discovering the
+enhanced blocks by measurement rather than needing a preset that already lists them — which is
+how a BMW oil-temperature PID was found in a block no preset had ever swept.
+
+<details>
+<summary>Running the stages by hand</summary>
+
+`auto` chains these, but each still runs on its own — useful for re-sweeping one block, or
+resuming after a link drops:
+
+```
+python3 -m obd_scan --ble census    --vehicle auto -o census.json
+python3 -m obd_scan --ble discover  --census census.json -o discover.json   # unlisted makes
+python3 -m obd_scan --ble sweep     --census census.json --blocks-from discover.json -o sweep.json
+python3 -m obd_scan --ble log       --sweep sweep.json -o drive.csv         # during a drive
+python3 -m obd_scan correlate drive.csv -o report.md
+```
+</details>
 
 Start with [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) (the method and its pitfalls)
 and [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) (a worked example).
@@ -343,6 +420,7 @@ Repository layout and the contribution workflow are in
 | [`docs/CUSTOMIZING-VIEWS.md`](docs/CUSTOMIZING-VIEWS.md) | Rearranging the tiles and pages |
 | [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) | The method for mapping a new vehicle, and the traps |
 | [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) | A worked example of the discovery method |
+| [`tools/obd_scan/README.md`](tools/obd_scan/README.md) | **Running the scanner** — BLE/WiFi, `auto`, every stage and flag |
 | [`docs/obd-scan-design.md`](docs/obd-scan-design.md) | The scanner's design |
 | [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) · [`docs/JEEP-STATUS.md`](docs/JEEP-STATUS.md) | Per-vehicle port status |
 | [`ROADMAP.md`](ROADMAP.md) | Where the project is going, and where help is most useful |

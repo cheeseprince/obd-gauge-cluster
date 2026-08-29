@@ -1,11 +1,47 @@
 # obd_scan
 
-A host-side OBD-II discovery scanner: point it at an unknown vehicle over a
-WiFi ELM327 adapter (or a BLE one, via `ble_bridge` below) and it works out
-which CAN headers answer, which PID
-blocks exist, logs a drive, and statistically ranks which decoded byte
-offsets correlate with known reference signals (RPM, speed, coolant, etc.) —
-the same reasoning that identified GM oil pressure by hand, automated.
+A host-side OBD-II discovery scanner. Point it at an unknown vehicle over a
+**Bluetooth or WiFi** ELM327 adapter, from **Windows, macOS or Linux**, and it
+works out which CAN headers answer, which PID blocks exist, logs a drive, and
+statistically ranks which decoded byte offsets correlate with known reference
+signals (RPM, speed, coolant, etc.) — the same reasoning that identified GM oil
+pressure by hand, automated.
+
+## Quick start
+
+```
+pip install numpy pandas        # required — the CLI will not start without them
+pip install bleak               # only if your adapter is BLE
+
+python3 -m obd_scan --ble auto --vehicle auto -o scan/
+```
+
+`numpy` and `pandas` are imported at startup, so they are needed for every stage, not just
+`correlate`. **On Windows the command is `py -m obd_scan …`** — a python.org install gives you
+`python` and the `py` launcher, not `python3`.
+
+One command does everything you can do parked: reads the VIN, finds the live
+headers, discovers the enhanced PID blocks (even on a make with no preset),
+sweeps them, and triages which results are worth a drive — on **one adapter
+connection**. Then it prints the two commands to run after you drive.
+
+| | |
+| :--- | :--- |
+| **BLE adapter** | `--ble`, or `--ble vlinker` to match by advertised name, or `--ble-addr AA:BB:…` to skip the scan |
+| **WiFi adapter** | `--host 192.168.0.10` — the default, so omit it |
+| **Not in the catalog** | `--vehicle generic`; `auto` discovers the blocks by measurement |
+| **Windows** | Same command. CI runs the full suite on `windows-latest` |
+
+Then drive — **a cold start beats a long drive**, since a thermal ramp is what
+separates an oil temperature from a coolant temperature — and finish with:
+
+```
+python3 -m obd_scan --ble log --sweep scan/sweep.json --pids <auto's list> -o drive.csv
+python3 -m obd_scan correlate drive.csv -o report.md
+```
+
+Everything below is detail: the safety model, what each stage does on its own,
+and how to read the output.
 
 ## Safety: this tool is read-only by construction
 
