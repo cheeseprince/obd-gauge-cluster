@@ -368,6 +368,21 @@ python3 -m obd_scan correlate drive.csv -o report.md
    coolant) and write a report naming the likely identities.
 4. **Add** a `src/vehicles/<your_vehicle>.cpp` profile and open a pull request.
 
+### No laptop? Use the Android app
+
+[**obd-discover**](https://github.com/radiohound/obd-discover) does the same job from an
+Android phone and a BLE adapter — no laptop in the passenger seat. It is a separate
+project by [@radiohound](https://github.com/radiohound) (MIT), built to feed this one:
+it probes the same Mode-22 address space, and **exports in the formats `obd_scan`
+already reads**, so a capture can be contributed without editing anyone's source or
+forking anything.
+
+It also probes **Mode-21** on pre-CAN vehicles, which `obd_scan` does not — so it reaches
+older cars this scanner cannot. Tested on one adapter (Vgate iCar Pro BLE 4.0).
+
+Either tool produces a capture worth sending. If you have a laptop, the command above is
+the shortest path; if you do not, that app is.
+
 **Your vehicle does not need to be one of the six.** `auto` falls back to discovering the
 enhanced blocks by measurement rather than needing a preset that already lists them — which is
 how a BMW oil-temperature PID was found in a block no preset had ever swept.
@@ -421,6 +436,7 @@ Repository layout and the contribution workflow are in
 | [`docs/PORTING-LESSONS.md`](docs/PORTING-LESSONS.md) | The method for mapping a new vehicle, and the traps |
 | [`docs/SIERRA-GATE-RUNBOOK.md`](docs/SIERRA-GATE-RUNBOOK.md) | A worked example of the discovery method |
 | [`tools/obd_scan/README.md`](tools/obd_scan/README.md) | **Running the scanner** — BLE/WiFi, `auto`, every stage and flag |
+| [obd-discover](https://github.com/radiohound/obd-discover) | The same job from an Android phone, no laptop — separate project, MIT, exports into `obd_scan`'s formats |
 | [`docs/obd-scan-design.md`](docs/obd-scan-design.md) | The scanner's design |
 | [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) · [`docs/JEEP-STATUS.md`](docs/JEEP-STATUS.md) | Per-vehicle port status |
 | [`ROADMAP.md`](ROADMAP.md) | Where the project is going, and where help is most useful |

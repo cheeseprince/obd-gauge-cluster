@@ -40,6 +40,12 @@ python3 -m obd_scan --ble log --sweep scan/sweep.json --pids <auto's list> -o dr
 python3 -m obd_scan correlate drive.csv -o report.md
 ```
 
+**No laptop?** [obd-discover](https://github.com/radiohound/obd-discover) (MIT, separate
+project) runs the same method from an Android phone and a BLE adapter, and writes the
+capture formats this tool reads — `census.json`, `sweep.json`, the drive CSV — so its
+output goes straight into `correlate`. It also probes Mode-21 on pre-CAN vehicles, which
+this scanner does not.
+
 Everything below is detail: the safety model, what each stage does on its own,
 and how to read the output.
 
