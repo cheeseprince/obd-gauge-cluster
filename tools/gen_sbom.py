@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 import uuid
+from typing import NamedTuple
 
 # "├── Name @ 1.2.3 (required: spec)" / "│   ├── Name @ 1.2.3 (required: spec)"
 ENTRY = re.compile(r"^[│\s]*[├└]──\s+(?P<name>.+?)\s+@\s+(?P<version>\S+)"
@@ -49,30 +50,74 @@ def pio_list(env, flag):
     return rows
 
 
-# SPDX identifier per package. `pio pkg list` does not report licences, so this
-# table is curated -- each entry was read from the upstream project's own licence
-# file on 2026-08-04, not inferred from a registry summary.
+# WHAT IS IN THE FIRMWARE, AND WHERE EACH NOTICE HAS TO APPEAR.
+#
+# `pio pkg list` does not report licences, so this table is curated -- each entry
+# was read from the upstream project's own licence file on 2026-08-04, not
+# inferred from a registry summary.
 #
 # An SBOM that omits licences omits the main thing an SBOM is consulted for, so
 # an UNKNOWN package is surfaced loudly (see main()) rather than silently
 # emitting a component with no licence field.
 #
-# Full texts and notices: THIRD-PARTY-NOTICES.md.
-LICENCES = {
-    # linked into the shipped image
-    "framework-arduinoespressif32":      "LGPL-2.1-or-later",
-    "framework-arduinoespressif32-libs": "Apache-2.0",   # prebuilt ESP-IDF
-    "NimBLE-Arduino":                    "Apache-2.0",
-    "lvgl":                              "MIT",
-    "Arduino_Modulino":                  "MPL-2.0",
+# THE THREE GROUPS ARE MACHINE-READABLE ON PURPOSE. Only SHIPPED carries a
+# redistribution obligation, because only those components are inside the .bin.
+# scripts/check_notices.py imports SHIPPED from this file and fails CI when a
+# component is missing from THIRD-PARTY-NOTICES.md, when its version disagrees
+# with platformio.ini, or when platformio.ini gains a dependency that no row
+# claims. Until 2026-08-29 the split lived only in the prose of these comments
+# and NOTHING checked the notices file: a new dependency could be added here to
+# quiet the SBOM warning while THIRD-PARTY-NOTICES.md -- the document that
+# actually ships beside the binary to satisfy the licence -- silently stayed
+# behind. Keep this the single source of truth. The guard must not restate it,
+# or the two copies become the same class of drift one file later.
+
+
+class Shipped(NamedTuple):
+    """A component linked into the distributed firmware image."""
+
+    notices: str      # exact text of the Component cell in THIRD-PARTY-NOTICES.md
+    package: str      # `pio pkg list` package name; "" when it never appears there
+    licence: str      # SPDX id recorded in the SBOM
+    ini: str          # platformio.ini name whose pin fixes the version, or ""
+                      # when the version is NOT derivable from that file
+    notices_licence: str = ""   # only when the notices Licence cell cannot be the
+                                # bare SPDX id -- see LovyanGFX
+
+
+# Linked into the shipped image. `ini` is empty for the two framework packages:
+# platformio.ini pins the PLATFORM (53.03.13) and the Arduino core and ESP-IDF
+# versions live inside that package, so they are knowable only from `pio pkg
+# list` at build time. The guard reports them as unverifiable rather than
+# quietly skipping them -- the Arduino core is the LGPL-2.1 row, and a check
+# that appears to cover it while not covering it is worse than no check.
+SHIPPED = (
+    Shipped("Arduino core for ESP32", "framework-arduinoespressif32",
+            "LGPL-2.1-or-later", ""),
+    Shipped("ESP-IDF", "framework-arduinoespressif32-libs",
+            "Apache-2.0", ""),                          # prebuilt ESP-IDF
+    Shipped("NimBLE-Arduino", "NimBLE-Arduino", "Apache-2.0", "NimBLE-Arduino"),
+    Shipped("LVGL", "lvgl", "MIT", "lvgl"),
+    Shipped("Modulino", "Arduino_Modulino", "MPL-2.0", "Modulino"),
     # LovyanGFX's licence file is a composite -- FreeBSD/BSD-2 for LovyanGFX
     # itself plus retained Adafruit (MIT/BSD) and TFT_eSPI (FreeBSD) notices.
     # BSD-2-Clause is the closest single SPDX id; the file is reproduced whole in
-    # THIRD-PARTY-NOTICES.md because no identifier captures it.
-    "LovyanGFX":                         "BSD-2-Clause",
-    # Resolved as dependencies of Modulino and compiled, but NOT present in the
-    # firmware: --gc-sections discards them, verified 2026-08-04 with `nm` on
-    # firmware.elf (zero surviving symbols for each). Recorded for completeness.
+    # THIRD-PARTY-NOTICES.md because no identifier captures it, which is also why
+    # the notices Licence cell cannot be the bare id.
+    Shipped("LovyanGFX", "LovyanGFX", "BSD-2-Clause", "LovyanGFX",
+            notices_licence="FreeBSD/BSD-2"),
+    # The platform package itself is a declared, pinned dependency and is listed
+    # in the notices file. `package` is empty because it does not appear in the
+    # SBOM under a name this table would match -- see the note in main().
+    Shipped("platform-espressif32", "", "Apache-2.0", "platform-espressif32"),
+)
+
+# Resolved as dependencies of Modulino and compiled, but NOT present in the
+# firmware: --gc-sections discards them, verified 2026-08-04 with `nm` on
+# firmware.elf (zero surviving symbols for each). Recorded for completeness, and
+# deliberately absent from THIRD-PARTY-NOTICES.md -- reproducing a notice for
+# code that is not in the binary would misstate what is being redistributed.
+NOT_LINKED = {
     "ArduinoGraphics":                   "MPL-2.0",
     "Arduino_HS300x":                    "LGPL-2.1-only",
     "Arduino_LPS22HB":                   "LGPL-2.1-only",
@@ -80,7 +125,11 @@ LICENCES = {
     "Arduino_LTR381RGB":                 "MPL-2.0",
     "STM32duino VL53L4CD":               "BSD-3-Clause",
     "STM32duino VL53L4ED":               "BSD-3-Clause",
-    # build tools -- they produce the image, none of their code is inside it
+}
+
+# Build tools -- they produce the image, none of their code is inside it, so none
+# of them belongs in THIRD-PARTY-NOTICES.md.
+BUILD_ONLY = {
     "framework-espidf":                  "Apache-2.0",
     "tool-cmake":                        "BSD-3-Clause",
     "tool-ninja":                        "Apache-2.0",
@@ -97,6 +146,15 @@ LICENCES = {
     # the position of every compiled artefact here.
     "toolchain-riscv32-esp":             "GPL-3.0-or-later WITH GCC-exception-3.1",
     "toolchain-xtensa-esp-elf":          "GPL-3.0-or-later WITH GCC-exception-3.1",
+}
+
+# Flat lookup used when emitting a component. Derived, never hand-maintained:
+# adding a row above is the only edit needed, and the guard reads the groups
+# rather than this.
+LICENCES = {
+    **{c.package: c.licence for c in SHIPPED if c.package},
+    **NOT_LINKED,
+    **BUILD_ONLY,
 }
 
 

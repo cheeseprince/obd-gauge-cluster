@@ -63,6 +63,17 @@ jobs:
           sed -i "s/#define FW_GIT \".*\"/#define FW_GIT \"$GIT\"/" src/fw_git.h
           sed -i "s/#define FW_VERSION \".*\"/#define FW_VERSION \"$VERSION\"/" src/fw_git.h
           echo "version=$VERSION git=$GIT"
+      - name: Notices match what is about to ship
+        # BEFORE the build, not after: this is the last cheap moment to stop a
+        # release whose THIRD-PARTY-NOTICES.md disagrees with the dependencies
+        # it is about to link. That file is copied into the release assets and
+        # onto gh-pages a few steps below, and it is the whole of how the binary
+        # meets the notice terms of LGPL-2.1, Apache-2.0 and MPL-2.0. CI runs the
+        # same guard on every PR (tools/obd_scan/tests/test_notices_guard.py);
+        # it is repeated here because a tag can be cut from any commit, and a
+        # release is the point where the obligation actually attaches.
+        run: python3 scripts/check_notices.py
+
       - name: Build crowpanel_obd
         run: pio run -e crowpanel_obd
       - name: Assemble the release
