@@ -64,6 +64,31 @@ def read_vin(sess: ElmSession) -> "str | None":
     return cat.parse_vin_from_payload(r.payload)
 
 
+def _stamp(started: float) -> dict:
+    """Wall-clock start, end and elapsed for a stage result.
+
+    WHY EVERY STAGE CARRIES THIS. A capture file that does not say when it was
+    taken cannot be ordered against another, cannot be matched to a drive log,
+    and cannot be used to check the run-time estimate the CLI printed before it
+    started. That last one is not hypothetical: a 2026-08-29 capture from a
+    phone app using this same format could not be timed at all afterwards --
+    the only bound available was the app's install time against the file's
+    mtime, an hour-wide window for a run whose real duration was the question.
+    An estimate nobody can grade against a measurement stays a guess forever.
+
+    UTC and ISO-8601, matching run_log's per-row `iso_time` column, so a stage
+    result and the drive that followed it sort together without conversion.
+    `elapsed_s` is recorded rather than left to subtraction because a consumer
+    should not have to parse two timestamps to answer "how long did this take".
+    """
+    finished = _time.time()
+    return {
+        "started_at": datetime.fromtimestamp(started, timezone.utc).isoformat(timespec="seconds"),
+        "finished_at": datetime.fromtimestamp(finished, timezone.utc).isoformat(timespec="seconds"),
+        "elapsed_s": round(finished - started, 1),
+    }
+
+
 def run_census(sess: ElmSession, preset: cat.VehiclePreset,
                headers: list[cat.Header] | None = None) -> dict:
     """Probe every candidate header in both addressing modes.
@@ -82,6 +107,7 @@ def run_census(sess: ElmSession, preset: cat.VehiclePreset,
     "aborted"/"error" so a caller can say "the link died" instead of
     "nothing is there."
     """
+    _t0 = _time.time()
     cat.validate_preset(preset)
     candidates = headers if headers is not None else preset.headers
     results: list[HeaderResult] = []
@@ -117,6 +143,7 @@ def run_census(sess: ElmSession, preset: cat.VehiclePreset,
             results.append(row)
 
     return {
+        **_stamp(_t0),
         "protocol": sess.cur_protocol,
         "preset": preset.name,
         "headers": results,
@@ -193,6 +220,7 @@ def run_sweep(sess: ElmSession, census: dict, preset: cat.VehiclePreset,
     Everything collected before the failure is real and is kept; nothing
     after it is inferred.
     """
+    _t0 = _time.time()
     cat.validate_preset(preset)
     use_blocks = blocks if blocks is not None else preset.blocks
     alive = [r for r in census["headers"] if r.alive]
@@ -230,7 +258,7 @@ def run_sweep(sess: ElmSession, census: dict, preset: cat.VehiclePreset,
         aborted = True
         error = str(exc) or exc.__class__.__name__
 
-    return {"hits": hits, "probes": probes, "negatives": negatives, "errors": errors,
+    return {**_stamp(_t0), "hits": hits, "probes": probes, "negatives": negatives, "errors": errors,
             # NOTE: "_targeted" (not "_reached"): unlike census's "headers"
             # (objects for headers actually REACHED before any truncation),
             # these are the full set sweep MEANT to cover regardless of how
@@ -336,6 +364,7 @@ def run_discover(sess: ElmSession, census: dict,
     validate_request enforces that -- it is spelled out rather than hardcoded so
     the request construction below reads honestly, not to invite Mode 2E.
     """
+    _t0 = _time.time()
     width = 2 if service <= 0xFF else 3
     reqs_by_block: dict[int, list[str]] = {}
     for high in range(lo, hi + 1):
@@ -394,7 +423,7 @@ def run_discover(sess: ElmSession, census: dict,
     blocks = [cat.Block(name, int(name[:-2], 16),
                         note=f"discovered: answered at {', '.join(sorted(found[name]))}")
               for name in sorted(found)]
-    return {"blocks": blocks, "hits": hits, "probes": probes,
+    return {**_stamp(_t0), "blocks": blocks, "hits": hits, "probes": probes,
             "negatives": negatives, "errors": errors,
             "block_headers": {k: sorted(v) for k, v in found.items()},
             # Headers that answered a Mode-22 request with a negative response.
@@ -496,6 +525,7 @@ def run_triage(sess: ElmSession, hits: "list[Hit]", allowed_headers=None,
     NOT A DRIVE REPLACEMENT. Which of the movers is oil temperature still takes
     `log` + `correlate` and a thermal ramp. This only decides what gets logged.
     """
+    _t0 = _time.time()
     # Same header-scoping rule as run_log: resolve a hit's header name against
     # the caller's header set, so a tampered sweep.json cannot steer a probe at
     # a module the preset never sanctioned.
@@ -550,7 +580,7 @@ def run_triage(sess: ElmSession, hits: "list[Hit]", allowed_headers=None,
     rows.sort(key=lambda r: (order[r["kind"]], "duplicate_of" in r, r["request"]))
     recommended = [r["hit"] for r in rows
                    if r["kind"] == "moved" and "duplicate_of" not in r]
-    return {"probed": len(rows), "rows": rows, "recommended": recommended,
+    return {**_stamp(_t0), "probed": len(rows), "rows": rows, "recommended": recommended,
             "moved": sum(1 for r in rows if r["kind"] == "moved"),
             "static": sum(1 for r in rows if r["kind"] == "static"),
             "unpopulated": sum(1 for r in rows if r["kind"] == "unpopulated"),
@@ -585,6 +615,7 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
     completed and flushed before the fault is real and stays on disk.
     "aborted"/"error" are the same keys, same meaning, as the other stages.
     """
+    _t0 = _time.time()
     # Reconstruct each hit's header from its name. Scope resolution to the
     # caller-provided header set (the sweep's PRESET headers) so a tampered or
     # shared sweep.json cannot name an unsafe module (e.g. an ADAS 7E4) the
@@ -725,7 +756,7 @@ def run_log(sess: ElmSession, hits: list[Hit], path: str, hz: float = 1.0,
             if sleep_for > 0:
                 _time.sleep(sleep_for)
 
-    return {"rows": rows, "columns": header, "path": path,
+    return {**_stamp(_t0), "rows": rows, "columns": header, "path": path,
             "error_polls": error_polls, "aborted": aborted, "error": error,
             "dropped_headers": sorted(set(dropped)),
             "anchor_requests": dict(anchor_req),
