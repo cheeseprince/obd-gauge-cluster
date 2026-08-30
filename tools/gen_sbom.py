@@ -16,6 +16,13 @@ Build tools (compilers, cmake, ninja, esptool) are recorded separately from
 runtime components. They shape the binary but are not shipped inside it, and
 conflating the two is how an SBOM becomes noise.
 
+WHAT `scope` MEANS HERE. It answers "is this inside the shipped binary?" and is
+decided by the SHIPPED / NOT_LINKED / BUILD_ONLY table below, not by whether
+PlatformIO happens to call a package a tool. Deriving it from `pio pkg list
+--only-tools` -- which is what v0.4.10 and earlier did -- made the field
+uncorrelated with the binary: it scoped the statically-linked, LGPL-2.1 Arduino
+core `excluded`, and scoped seven --gc-sections-discarded libraries `required`.
+
 Usage:
     python3 tools/gen_sbom.py --env crowpanel_obd --bin out/crowpanel_obd.bin \\
         --version v0.1.3 --output out/crowpanel_obd.bin.cdx.json
@@ -148,6 +155,26 @@ BUILD_ONLY = {
     "toolchain-xtensa-esp-elf":          "GPL-3.0-or-later WITH GCC-exception-3.1",
 }
 
+# WHY a component is excluded, recorded on the component itself. CycloneDX has
+# one `excluded` value and no way to distinguish "never linked, it is a compiler"
+# from "linked object discarded at link time" -- they read identically to a
+# consumer. That distinction is load-bearing for three entries in NOT_LINKED:
+# Arduino_HS300x, Arduino_LPS22HB and Arduino_LSM6DSOX are LGPL-2.1-only, so
+# scoping them `excluded` is an assertion that LGPL code is NOT in the artefact.
+# If that assertion is wrong it is an unmet copyleft obligation, so the evidence
+# for it belongs in the published document rather than only in this comment.
+# Uniform per group by construction: one reason each, so they cannot drift
+# entry by entry.
+GC_SECTIONED_REASON = ("resolved and compiled, then discarded at link by "
+                       "--gc-sections; nm on firmware.elf showed zero surviving "
+                       "symbols (verified 2026-08-04)")
+BUILD_TOOL_REASON = ("build tool: it produces the image, none of its code is "
+                     "linked into it")
+
+# The packages that are actually INSIDE the image. This, not `pio pkg list
+# --only-tools`, is what decides a component's CycloneDX scope -- see component().
+IN_IMAGE = frozenset(c.package for c in SHIPPED if c.package)
+
 # Flat lookup used when emitting a component. Derived, never hand-maintained:
 # adding a row above is the only edit needed, and the guard reads the groups
 # rather than this.
@@ -158,18 +185,61 @@ LICENCES = {
 }
 
 
+def linkage(name):
+    """True if the package is inside the image, False if not, None if unknown.
+
+    NOT derived from `pio pkg list --only-tools`. That answers "is this a build
+    tool or a library?", which is a different question from "is this in the
+    binary?", and using it for scope got BOTH answers wrong in v0.4.10: the two
+    framework packages are reported as tools by PlatformIO and were scoped
+    `excluded` despite being statically linked, while the seven Modulino
+    transitive dependencies were scoped `required` despite --gc-sections having
+    discarded them. Nine of nineteen components, in both directions.
+    """
+    if name in IN_IMAGE:
+        return True
+    if name in NOT_LINKED or name in BUILD_ONLY:
+        return False
+    return None
+
+
 def component(name, version, spec, scope, direct):
     c = {
         "type": "library",
         "name": name,
         "version": version,
-        "scope": "required" if scope == "runtime" else "excluded",
         "properties": [
+            # What PlatformIO resolved it as. Kept because it is a true fact
+            # about the build, and deliberately no longer the basis for scope.
             {"name": "platformio:scope", "value": scope},
             {"name": "platformio:relationship",
              "value": "direct" if direct else "transitive"},
         ],
     }
+    # CycloneDX 1.5 defines `excluded` as "not reachable within a call graph at
+    # runtime" and `required` as "required for runtime" (bom-1.5.xsd). Those are
+    # statements about the shipped binary, so they are answered from the table:
+    #
+    #   SHIPPED     linked into the image                     -> required
+    #   NOT_LINKED  --gc-sections discarded it; `nm` shows
+    #               zero surviving symbols, which is literally
+    #               "not reachable within a call graph"       -> excluded
+    #   BUILD_ONLY  produces the image, never inside it       -> excluded
+    #
+    # An UNCLASSIFIED package gets no scope at all. The spec says a consumer
+    # SHOULD assume `required` when scope is absent, so silence over-discloses
+    # rather than under-discloses -- the safe direction for a licence document.
+    # Emitting `excluded` instead would assert non-reachability nobody verified.
+    linked = linkage(name)
+    if linked is not None:
+        c["scope"] = "required" if linked else "excluded"
+        c["properties"].append(
+            {"name": "firmware:linked", "value": "true" if linked else "false"})
+    if linked is False:
+        c["properties"].append(
+            {"name": "firmware:exclusion-reason",
+             "value": GC_SECTIONED_REASON if name in NOT_LINKED
+                      else BUILD_TOOL_REASON})
     licence = LICENCES.get(name)
     if licence:
         # CycloneDX: an SPDX id goes in `license.id`; an expression carrying a
@@ -207,7 +277,7 @@ def main():
     # -- the exact build-vs-runtime conflation this file exists to avoid.
     tool_names = {name for name, _, _, _ in pio_list(a.env, "--only-tools")}
 
-    comps, floating, seen, unlicensed = [], [], set(), []
+    comps, floating, seen, unlicensed, unclassified = [], [], set(), [], []
     for flag in ("--only-tools", "--only-libraries", "--only-platforms"):
         for name, version, spec, depth in pio_list(a.env, flag):
             # Same package appears under more than one listing; keep it once.
@@ -221,6 +291,8 @@ def main():
                 floating.append(f"[{scope}] {name} {version} (spec {spec})")
             if "licenses" not in c:
                 unlicensed.append(f"[{scope}] {name} {version}")
+            if linkage(name) is None:
+                unclassified.append(f"[{scope}] {name} {version}")
 
     # serialNumber is OPTIONAL in the CycloneDX spec but MANDATORY for GitHub's
     # attestation action, whose format sniffing is:
@@ -254,10 +326,17 @@ def main():
                 {"name": "sbom:generator", "value": "tools/gen_sbom.py"},
                 {"name": "sbom:source", "value": "pio pkg list"},
                 {"name": "sbom:note",
-                 "value": "Runtime components are compiled into the image. Build-scope "
-                          "components shape it but are not shipped inside it. CI-only "
-                          "Python packages are deliberately excluded: they never reach "
-                          "the device."},
+                 "value": "scope=required means the component is linked into this "
+                          "image; scope=excluded means it is not reachable in the "
+                          "binary -- either a build tool, or a resolved library "
+                          "that --gc-sections discarded (firmware:linked=false). "
+                          "platformio:scope records what PlatformIO resolved the "
+                          "package as and does NOT determine scope. CI-only Python "
+                          "packages appear nowhere: they never reach the device. "
+                          "Every excluded component carries a "
+                          "firmware:exclusion-reason saying which kind of "
+                          "exclusion it is, because the spec's single `excluded` "
+                          "value cannot distinguish them."},
             ],
         },
         "components": comps,
@@ -276,6 +355,18 @@ def main():
               f"commit can build a different binary later:", file=sys.stderr)
         for f_ in floating:
             print(f"    - {f_}", file=sys.stderr)
+
+    if unclassified:
+        # Scope is omitted for these, so a consumer assumes `required` -- the
+        # over-disclosing direction, which is the right default but not an
+        # answer. A new linked library landing here silently would be a
+        # component whose licence obligation nobody has looked at.
+        print(f"  WARNING: {len(unclassified)} component(s) are in NO group in "
+              f"tools/gen_sbom.py (SHIPPED / NOT_LINKED / BUILD_ONLY), so their "
+              f"CycloneDX scope is left unstated. Decide whether each is linked "
+              f"into the image and add it to a group:", file=sys.stderr)
+        for u in unclassified:
+            print(f"    - {u}", file=sys.stderr)
 
     if unlicensed:
         # Also not fatal -- a release must stay cuttable -- but stated loudly.
