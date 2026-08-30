@@ -1004,3 +1004,38 @@ def test_triage_aborts_cleanly_and_keeps_what_it_measured():
     assert res["aborted"] is True and "link dropped" in res["error"]
     assert res["probed"] == 1                          # only the one it really read
     assert [r["request"] for r in res["rows"]] == ["2258BA"]
+
+
+# --- every stage records when it ran ----------------------------------------
+
+def test_every_stage_result_carries_a_timestamp():
+    """A capture that does not say when it was taken cannot be ordered against
+    another, matched to a drive log, or used to check the run-time estimate the
+    CLI printed before it started.
+
+    That last one is not hypothetical: a 2026-08-29 phone capture in this same
+    format could not be timed afterwards at all -- the only bound available was
+    the app's install time against the file's mtime, an hour-wide window for a
+    run whose duration was the question being asked."""
+    import datetime as _dt
+
+    _fake, sess = _session({})
+    census = run_census(sess, cat.PRESETS["gm"])
+    results = {
+        "census": census,
+        "sweep": run_sweep(sess, census, cat.PRESETS["gm"]),
+        "triage": run_triage(sess, [], allowed_headers=[]),
+    }
+    for name, res in results.items():
+        for key in ("started_at", "finished_at", "elapsed_s"):
+            assert key in res, f"{name} result has no {key}"
+        # ISO-8601 UTC, same shape as run_log's per-row iso_time so a stage
+        # result and the drive that followed it sort together without conversion.
+        start = _dt.datetime.fromisoformat(res["started_at"])
+        end = _dt.datetime.fromisoformat(res["finished_at"])
+        assert start.tzinfo is not None, f"{name} started_at is not timezone-aware"
+        assert end >= start, f"{name} finished before it started"
+        assert res["elapsed_s"] >= 0.0
+        # elapsed is RECORDED, not left to subtraction -- a consumer should not
+        # have to parse two timestamps to answer "how long did this take".
+        assert abs(res["elapsed_s"] - (end - start).total_seconds()) < 2.0
