@@ -119,6 +119,49 @@ def test_multiframe_rejects_duplicate_and_missing_index():
     assert assemble_multiframe(lines) == b""
 
 
+# The ISO-TP sequence number is a FOUR-BIT field. The ELM prints its low nibble,
+# so a reply of 17 or more frames counts 0..F and then wraps back to 0 -- our own
+# tools/hil/emulator iso_tp_frames says exactly that in its docstring, and these
+# fixtures were generated with it. A reply longer than 111 bytes cannot be read
+# without handling the wrap, and classify() is on the elm.py read path, so
+# census / sweep / discover / log all depend on this.
+_WRAPPED_17_FRAMES = [
+    "070",                       # 0x70 = 112 bytes
+        "0:620077010203",
+        "1:0405060708090A",
+        "2:0B0C0D0E0F1011",
+        "3:12131415161718",
+        "4:191A1B1C1D1E1F",
+        "5:20212223242526",
+        "6:2728292A2B2C2D",
+        "7:2E2F3031323334",
+        "8:35363738393A3B",
+        "9:3C3D3E3F404142",
+        "A:43444546474849",
+        "B:4A4B4C4D4E4F50",
+        "C:51525354555657",
+        "D:58595A5B5C5D5E",
+        "E:5F606162636465",
+        "F:666768696A6B6C",
+        "0:6D",
+]
+
+
+def test_multiframe_accepts_wrapped_sequence_index():
+    out = assemble_multiframe(_WRAPPED_17_FRAMES)
+    assert len(out) == 0x70
+    assert out[:3] == bytes([0x62, 0x00, 0x77])
+    assert out[-1] == 0x6D          # the byte carried by the wrapped frame
+
+
+def test_multiframe_rejects_duplicate_after_the_wrap():
+    # Widening the index check must not become "accept anything". Frame 0
+    # arrives, wraps to 0 correctly, and then repeats -- the second copy sits
+    # where sequence 1 belongs, so the reply is still corrupt and still refused.
+    lines = _WRAPPED_17_FRAMES + ["0:6D"]
+    assert assemble_multiframe(lines) == b""
+
+
 def test_classify_handles_multiframe_positive():
     # Header corrected to "00C" (12) for the same reason as
     # test_multiframe_assembly above -- these fragments sum to 12 bytes.

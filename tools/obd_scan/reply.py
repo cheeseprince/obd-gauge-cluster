@@ -98,9 +98,9 @@ def assemble_multiframe(lines: list[str]) -> bytes:
     Format: a bare length line (3 hex digits = total byte count) followed by
     `N:<hex>` fragment lines in order. Returns b'' if the fragments do not
     supply at least the declared length (a dropped fragment must not silently
-    decode as short-but-valid data), or if the fragment indices are not
-    exactly the complete set 0..N-1 (a duplicate index masking a missing one
-    must not silently decode as valid data either).
+    decode as short-but-valid data), or if the fragment indices are not the
+    ISO-TP sequence 0,1,..,F,0,1,.. in arrival order (a duplicate index masking
+    a missing one must not silently decode as valid data either).
     """
     if not lines:
         return b""
@@ -125,12 +125,19 @@ def assemble_multiframe(lines: list[str]) -> bytes:
 
     if not frags:
         return b""
-    frags.sort(key=lambda t: t[0])
-    # Fragment indices must be exactly the complete set 0..N-1 -- no gaps,
-    # no duplicates. Otherwise a duplicate index can mask a missing one and
-    # still coincidentally reach the declared length below.
-    if [idx for idx, _ in frags] != list(range(len(frags))):
-        return b""
+    # The fragment index is the ISO-TP sequence number, a FOUR-BIT field: the
+    # ELM prints its low nibble, so frame 16 prints "0:" again and a reply of
+    # 17+ frames counts 0..F,0,1,... Validate against a running counter in
+    # ARRIVAL order -- no gaps, no duplicates, no reordering, since a duplicate
+    # index can otherwise mask a missing one and still coincidentally reach the
+    # declared length below.
+    #
+    # Sorting cannot do this job once the index wraps: 0..F,0 sorts to 0,0,1,...
+    # Mirrors assembleVinFrames() in src/vin.cpp, which masks the nibble the
+    # same way against the same counter.
+    for expect, (idx, _frag) in enumerate(frags):
+        if idx != (expect & 0x0F):
+            return b""
     body = b"".join(b for _, b in frags)
     # Do NOT rstrip 0x55 here: the declared length is the true data length,
     # so ELM padding always sits beyond `total`. Truncating to `total` below
