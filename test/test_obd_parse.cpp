@@ -1,6 +1,7 @@
 // Host unit tests for obd_parse. Response strings are realistic ELM327 replies.
 #include "obd_parse.h"
 #include <cstdio>
+#include <string>
 #include <vector>
 
 static int g_failures = 0;
@@ -129,6 +130,41 @@ int main() {
   check("multiframe-pad-strip", parseObdResponse("00C\r0:620083C3008E\r1:0004FFFFFFFF55\r\r", 0x22, 0x0083, d), true);
   checkbyte("multiframe-pad-d1", (int)d[1], 0x00);
   checkbyte("multiframe-pad-d2", (int)d[2], 0x8E);
+
+  // --- ISO-TP frame-index validation -------------------------------------------
+  // assembleMultiFrame() concatenated every "N:" line without ever looking at N,
+  // so a duplicated or out-of-order fragment decoded as valid data as long as the
+  // bytes happened to reach the declared length. src/vin.cpp has always validated
+  // the ordinal for exactly this reason -- a wrong VIN picks a wrong profile --
+  // and the live-data path had no such guard. Reported alongside obd-discover#6.
+  //
+  // A duplicate index masking a missing fragment: 0: arrives twice, 1: never
+  // does, and 6+7=13 bytes clears the declared 12. Must be REFUSED, not decoded.
+  check("multiframe-duplicate-index",
+        parseObdResponse("00C\r0:6200780706E1\r0:07770777000055\r\r", 0x22, 0x0078, d), false);
+  // A gap: fragment 1 was dropped and 2 arrived, again reaching the declared
+  // length. Splicing 2 into 1's position shifts every byte after it.
+  check("multiframe-index-gap",
+        parseObdResponse("00C\r0:6200780706E1\r2:07770777000055\r\r", 0x22, 0x0078, d), false);
+  // Reordering: the right fragments, the wrong order.
+  check("multiframe-out-of-order",
+        parseObdResponse("00C\r1:07770777000055\r0:6200780706E1\r\r", 0x22, 0x0078, d), false);
+
+  // ...and the wrap the validation must NOT break. The sequence number is four
+  // bits, so the ELM prints F then 0 again: a reply of 17+ frames is legal and
+  // must still assemble. 6 + 16*7 = 118 bytes = 0x76 declared.
+  {
+    std::string wide = "076\r0:620077010203";
+    for (int i = 1; i <= 16; i++) {
+      char idx = "0123456789ABCDEF"[i & 0x0F];       // wraps to '0' at i == 16
+      wide += "\r"; wide += idx; wide += ":11223344556677";
+    }
+    wide += "\r\r";
+    check("multiframe-sequence-wraps", parseObdResponse(wide.c_str(), 0x22, 0x0077, d), true);
+    checkbyte("multiframe-wrap-size", (int)d.size(), 118 - 3);
+    checkbyte("multiframe-wrap-first", (int)d[0], 0x01);
+    checkbyte("multiframe-wrap-last", (int)d[d.size() - 1], 0x77);
+  }
 
   if (g_failures == 0) { std::printf("\nALL PASS\n"); return 0; }
   std::printf("\n%d FAILURE(S)\n", g_failures);
