@@ -37,6 +37,20 @@ int main() {
     // falls well under the declared 40 (014 = 20 bytes), so this is a dropped-
     // frame/under-length fragment, not an odd-nibble parity error.
     check(!parseVinReply(short_reply,vin), "dropped-frame/under-length reply -> false"); }
+
+  // A long run of hex digits before the colon. The ordinal used to accumulate
+  // into a signed int with no bound, which overflows -- undefined behaviour,
+  // caught by the fuzzer against the identical loop in obd_parse.cpp. It is now
+  // masked to a byte as it accumulates, so this is deterministic: FFFFFFFFFF
+  // has low nibble F, frame 0 was expected, and the reply is refused.
+  check(!parseVinReply("014\rFFFFFFFFFF:490201314754\r1:3031323334353637\r2:3839\r>", vin),
+        "long nonzero ordinal -> false (was undefined behaviour)");
+  // The wrap itself must still work: a sequence index is four bits, so F is
+  // legally followed by 0. Not reachable for a 17-byte VIN, but the loop is
+  // shared with the live-data path where it is.
+  { char v2[18];
+    check(!parseVinReply("014\r0:490201314754\r1:3031323334353637\r1:3839\r>", v2),
+          "duplicate ordinal -> false"); }
   // No "LLL" declared-length header line at all (still multi-frame: has "N:"
   // lines). assembleIsoTpFrames must fail closed here rather than use the
   // accumulated hex unbounded -- an uncapped headerless assembly could let

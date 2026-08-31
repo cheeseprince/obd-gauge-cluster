@@ -179,7 +179,14 @@ HEADERS_11BIT = [
 # powertrain ECUs (GM uses 7E2). Sweeping the full 7E0-7E7 range can reach
 # chassis/ADAS modules — on the 2018 Audi Q5, 7E4 is a driver-assist controller,
 # and reading its DIDs tripped pre-sense / "RPM too high" dashboard warnings. A
-# powertrain scan must never probe 7E3-7E7. Presets default to this pool.
+# powertrain scan must never probe 7E3, 7E4, 7E6 or 7E7. Presets default to this
+# pool.
+#
+# 7E5 is excluded from this pool but is NOT part of that hazard — it is the HV
+# battery on VAG cars (575 documented signals; see AUDI_EV). Only a preset that
+# opts in reaches it. Stating the range as "7E3-7E7" previously put a battery
+# module inside a warning about a driver-assist one, which is how the entire HV
+# dataset came to be discarded silently.
 HEADERS_11BIT_PT = [h for h in HEADERS_11BIT if h.name in ("7DF", "7E0", "7E1", "7E2")]
 
 # 29-bit physical addressing is 18DA<target><source>; F1 is the tester. The
@@ -340,10 +347,36 @@ AUDI_Q5 = VehiclePreset(
         Block("2210xx", 0x2210, note="trans 7E1: DL382 clutch temps/pressures"),
     ],
     probes=["0100", "221135", "222104"],
-    # Audi powertrain only: engine 7E0, TCM 7E1. NEVER 7E2-7E7 — 7E4 is a
-    # driver-assist module and reading it trips pre-sense warnings. Skip 29-bit
-    # (Audi is 11-bit UDS).
+    # Audi powertrain only: engine 7E0, TCM 7E1. NEVER 7E2/7E3/7E4/7E6/7E7 —
+    # 7E4 is a driver-assist module and reading it trips pre-sense warnings.
+    # Skip 29-bit (Audi is 11-bit UDS).
+    #
+    # 7E5 is deliberately absent HERE but is not part of that hazard: it is the
+    # HV battery (see AUDI_EV below). This car is a 2.0T with no HV battery, and
+    # 7E5 has never been probed on a non-electrified VAG car — so it stays out
+    # of the preset that scans ours.
     headers=[h for h in HEADERS_11BIT if h.name in ("7DF", "7E0", "7E1")],
+)
+
+AUDI_EV = VehiclePreset(
+    name="audi-ev",
+    note="Electrified VAG (Audi e-tron, VW ID., Porsche Taycan, Skoda Enyaq). AUDI_Q5's "
+         "powertrain set PLUS 7E5, the high-voltage battery. ⚠️ NOT VALIDATED ON A CAR — "
+         "no electrified VAG vehicle has ever been scanned by this project. The evidence "
+         "is OBDb's own signalsets, reported by radiohound in obd-discover#9: 7E5 carries "
+         "575 signals on Audi/VW/Porsche/Skoda (537 HVBAT_*, 37 BMS_* — per-cell voltages "
+         "and SOC across 33 modules, module/coolant/shunt temperatures, charge and "
+         "discharge current limits, SOH, cumulative kWh), while 7E2/7E3/7E4/7E6/7E7 "
+         "document zero. ⚠️ Those four marques are BYTE-IDENTICAL in OBDb, so that is ONE "
+         "characterisation propagated across the group, not four confirmations, and it is "
+         "crowd-sourced. Blocks are inherited from AUDI_Q5 unchanged: no HV battery DID is "
+         "claimed here, because we have measured none. Run `discover` to find 7E5's blocks "
+         "rather than assuming them.",
+    blocks=AUDI_Q5.blocks,
+    probes=AUDI_Q5.probes,
+    # The powertrain set plus the HV battery. Same exclusions otherwise: the
+    # ADAS hazard at 7E4 is unchanged by anything in obd-discover#9.
+    headers=[h for h in HEADERS_11BIT if h.name in ("7DF", "7E0", "7E1", "7E5")],
 )
 
 JEEP_WS = VehiclePreset(
@@ -427,7 +460,7 @@ GENERIC = VehiclePreset(
 DISCOVER_OFFSETS = (0x00, 0x01, 0x02, 0x03, 0x40, 0x80, 0xC0)
 
 
-PRESETS = {p.name: p for p in (FORD_67, GM_LZ0, BMW_F10, AUDI_Q5, JEEP_WS, GENERIC)}
+PRESETS = {p.name: p for p in (FORD_67, GM_LZ0, BMW_F10, AUDI_Q5, AUDI_EV, JEEP_WS, GENERIC)}
 
 
 # --- VIN-based preset auto-detection (--vehicle auto) ------------------------

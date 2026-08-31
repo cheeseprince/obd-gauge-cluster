@@ -183,12 +183,51 @@ def test_allowed_modes_is_exactly_the_read_services():
 
 
 def test_presets_never_sweep_chassis_modules():
-    # SAFETY: a powertrain scan must never probe 7E3-7E7. On a 2018 Audi Q5, 7E4
-    # is a driver-assist (ADAS) module and reading it tripped pre-sense warnings.
+    # SAFETY: a powertrain scan must never probe the ADAS/chassis headers. On a
+    # 2018 Audi Q5, 7E4 is a driver-assist module and reading it tripped
+    # pre-sense warnings.
+    #
+    # 7E5 is NOT in this set, and the omission is deliberate. radiohound pulled
+    # OBDb's signalsets (radiohound/obd-discover#9): on Audi, VW, Porsche and
+    # Skoda alike, 7E2/7E3/7E4/7E6/7E7 document ZERO signals while 7E5 carries
+    # 575 -- all high-voltage battery (537 HVBAT_*, 37 BMS_*). It is a battery
+    # module, not the ADAS module the warning is about. Excluding it cost the
+    # entire HV dataset on any electrified VAG car and protected nothing.
     for name, preset in cat.PRESETS.items():
         names = {h.name for h in preset.headers}
-        bad = names & {"7E3", "7E4", "7E5", "7E6", "7E7"}
+        bad = names & {"7E3", "7E4", "7E6", "7E7"}
         assert not bad, f"preset {name} sweeps chassis/ADAS module(s) {bad}"
+
+
+def test_only_the_ev_preset_may_reach_the_hv_battery_header():
+    # 7E5 is allowed, but not everywhere: it has never been probed on a
+    # non-electrified VAG car, and the evidence for it is OBDb crowd data about
+    # electrified ones. Opting in is an explicit --vehicle choice, so a scan of
+    # a 2.0T Q5 cannot reach it by accident.
+    for name, preset in cat.PRESETS.items():
+        has = "7E5" in {h.name for h in preset.headers}
+        assert has == (name == "audi-ev"), \
+            f"preset {name} {'must not' if has else 'must'} carry 7E5"
+
+
+def test_audi_preset_is_unchanged_by_the_ev_split():
+    # The car we actually own is a 2018 2.0T. Its header set must stay exactly
+    # what it has always been -- the EV preset is additive, not a rewrite.
+    assert {h.name for h in cat.PRESETS["audi"].headers} == {"7DF", "7E0", "7E1"}
+
+
+def test_audi_ev_adds_only_the_battery_header():
+    assert {h.name for h in cat.PRESETS["audi-ev"].headers} == \
+        {"7DF", "7E0", "7E1", "7E5"}
+
+
+def test_audi_ev_is_never_selected_automatically_from_a_vin():
+    # A VIN cannot say whether a VAG car is electrified -- WAU/WA1 cover both --
+    # so auto-detection must keep landing on the safe preset. Picking the EV one
+    # is a decision a person makes, per [[one-binary-principle]].
+    assert cat.preset_for_vin("WAU0123456789ABCD") == "audi"
+    assert cat.preset_for_vin("WA10123456789ABCD") != "audi-ev"
+    assert "audi-ev" not in cat.WMI_PRESET.values()
 
 
 def test_preset_for_vin_maps_wmi():

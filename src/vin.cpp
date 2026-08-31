@@ -71,13 +71,17 @@ bool assembleIsoTpFrames(const std::string& resp, std::vector<uint8_t>& bytes) {
       // spliced into the accumulator — a wrong VIN maps to a wrong vehicle
       // profile, so this fails closed rather than hand back corrupt bytes.
       if (colon == 0) return false;                 // ":HEX" — no frame index
-      int idx = 0;
+      // Masked to a byte as it accumulates. The unbounded version overflowed a
+      // signed int on a long run of hex digits -- undefined behaviour, found by
+      // the fuzzer against the identical code in obd_parse.cpp. Only the low
+      // nibble is ever compared, so a byte is both bounded and correct.
+      unsigned idx = 0;
       for (size_t k = 0; k < colon; k++) {
         int hv = hexVal(t[k]);
         if (hv < 0) return false;                    // non-hex frame index
-        idx = (idx << 4) | hv;
+        idx = ((idx << 4) | (unsigned)hv) & 0xFFu;
       }
-      if ((idx & 0x0F) != (expectFrame & 0x0F)) return false;  // out-of-order/dup/missing
+      if ((idx & 0x0Fu) != ((unsigned)expectFrame & 0x0Fu)) return false;  // reorder/dup/miss
       expectFrame++;
       sawFrame = true;
       for (size_t k = colon + 1; k < t.size(); k++)

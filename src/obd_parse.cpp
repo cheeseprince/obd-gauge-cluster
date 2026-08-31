@@ -13,11 +13,15 @@ static int hexVal(char c) {
 // length and each "N:" line carries one CAN frame's data (8-byte frames padded
 // with 0x55). Returns true and fills hexOut (uppercase hex, truncated to LLL
 // bytes) when `resp` is multi-frame; returns false when there is no "N:" frame
-// line, so the caller uses its normal single-frame path.
+// line, so the caller uses its normal single-frame path. A multi-frame reply
+// whose fragments fall short of LLL, or whose ordinals are not the ISO-TP
+// sequence 0,1,..,F,0,1,.. in arrival order, yields an EMPTY hexOut with a true
+// return — multi-frame, but refused.
 static bool assembleMultiFrame(const std::string& resp, std::string& hexOut) {
   hexOut.clear();
   bool sawFrame = false;
   int  declaredLen = -1;
+  int  expectFrame = 0;
   std::string acc;
 
   size_t start = 0;
@@ -33,7 +37,33 @@ static bool assembleMultiFrame(const std::string& resp, std::string& hexOut) {
 
     size_t colon = t.find(':');
     if (colon != std::string::npos) {
-      // Frame line "N:HEX" — keep the hex chars after the colon.
+      // Frame line "N:HEX". Validate the ISO-TP frame ordinal N BEFORE keeping
+      // any of its bytes. This path used to concatenate every "N:" line without
+      // ever reading N, so a duplicated fragment could substitute for a missing
+      // one, reach the declared length, and decode as a plausible wrong value —
+      // on a gauge, silently. assembleVinFrames() in vin.cpp has always
+      // validated the ordinal because a wrong VIN picks a wrong profile; live
+      // data deserves the same guarantee, so this fails closed the same way
+      // (empty -> parseObdResponse returns false -> caller keeps last good).
+      //
+      // The ELM cycles the sequence index in the LOW NIBBLE (0..F), so the 17th
+      // frame prints "0:" again — masking is what lets a reply longer than 111
+      // bytes assemble at all.
+      if (colon == 0) { hexOut.clear(); return true; }   // ":HEX" — no ordinal
+      // Masked to a byte as it accumulates: unbounded shifting overflows a
+      // signed int on a long run of hex digits (UBSan caught exactly that from
+      // the fuzzer), and only the low nibble is ever compared anyway.
+      unsigned idx = 0;
+      for (size_t k = 0; k < colon; k++) {
+        int hv = hexVal(t[k]);
+        if (hv < 0) { hexOut.clear(); return true; }     // non-hex ordinal
+        idx = ((idx << 4) | (unsigned)hv) & 0xFFu;
+      }
+      if ((idx & 0x0Fu) != ((unsigned)expectFrame & 0x0Fu)) {  // reorder/dup/miss
+        hexOut.clear();
+        return true;
+      }
+      expectFrame++;
       sawFrame = true;
       for (size_t k = colon + 1; k < t.size(); k++)
         if (hexVal(t[k]) >= 0) acc += t[k];
