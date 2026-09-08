@@ -1,34 +1,35 @@
 # Firmware build dependencies (CI jobs: "Device build", and the Release job that
 # handles OTA_SIGNING_KEY). Compile with:
-#   pip-compile --generate-hashes --output-file=requirements/build.txt requirements/build.in
+#   pip-compile --upgrade --generate-hashes --output-file=requirements/build.txt --strip-extras requirements/build.in
+#
+# `--upgrade` matters: without it pip-compile keeps every pin already in
+# build.txt, so a bare `platformio` here silently re-locks to whatever version
+# was there before. That is how a bump can look done and not be.
 #
 # ---------------------------------------------------------------------------
-# KNOWN, ACCEPTED: 5 Dependabot alerts on `starlette` (2 high, 2 medium, 1 low)
-# Investigated 2026-07-26. Do not re-derive this; re-check only when the
-# constraint below changes.
+# HISTORY, kept short. From 2026-07-26 to 2026-09-07 this file carried a
+# KNOWN, ACCEPTED note for five starlette Dependabot alerts: platformio 6.1.19
+# capped `starlette<0.53` while every patched starlette was >=1.0.1, so there
+# was no upgrade path, and the vulnerable code (the `pio home` web UI) never
+# loaded during `pio run`. platformio 6.2.0 widened that bound to `<2` (and
+# uvicorn<1, click<8.6, marshmallow<5), so the lock now resolves to patched
+# versions and the note is gone. If a future platformio release re-tightens a
+# bound, hold platformio itself rather than pinning around it.
 #
-# THERE IS NO UPGRADE PATH. platformio 6.1.19 — the LATEST release — declares
-# `starlette >=0.19, <0.53` (see its dependencies.py). Every patched starlette
-# is >=1.0.1, i.e. outside that cap. Forcing one here breaks resolution; it does
-# not fix anything.
+# The bump was checked the way a change to the toolchain that produces the
+# signed OTA image has to be: crowpanel_obd built from the same source under
+# 6.1.19 (twice) and 6.2.0, and the three firmware.bin compared byte for byte.
+# This image is NOT reproducible as-is -- the core stamps __TIME__ into its
+# "Software Info" block, and the app descriptor carries the ELF's SHA-256 and
+# the image its own digest -- so two 6.1.19 builds already differ in exactly
+# 67 bytes. The 6.2.0 build differs from either in the same 67 bytes and
+# nowhere else; with those regions masked all three hash identically.
+# tools/gen_sbom.py was run under both and produced the same 25 components.
+# See the PR that introduced 6.2.0 for the offsets.
 #
-# THE VULNERABLE CODE IS NEVER REACHED IN CI. All five advisories require a
-# RUNNING Starlette HTTP server handling requests (StaticFiles SSRF, Host-header
-# validation, form-size limits, HTTPEndpoint method dispatch). Only three
-# platformio modules touch starlette:
-#   * home/run.py, home/rpc/server.py — the `pio home` web UI. CI runs `pio run`
-#     and never starts it.
-#   * compat.py:42 — `if sys.version_info >= (3, 9): from asyncio import
-#     to_thread`, ELSE starlette. CI pins Python 3.12, so it takes the asyncio
-#     branch and starlette is not imported at all.
-# Verified empirically: zero starlette/uvicorn modules load during `pio run`.
-#
-# WHY THE ALERTS APPEARED NOW: they are not new. platformio has always installed
-# a vulnerable starlette in CI; before requirements/*.txt existed there was no
-# manifest for Dependabot to read. Pinning made existing risk visible, which is
-# the point of pinning.
-#
-# WHEN TO REVISIT: if platformio relaxes `<0.53`, drop this note and let
-# Dependabot bump starlette normally.
+# pip-compile warns that `pip` (a declared dependency of platformio 6.2.0) is
+# left unpinned as "unsafe". Expected: the venv's own pip satisfies it, and
+# `pip install --require-hashes -r requirements/build.txt` exits 0 with
+# `pip check` clean.
 # ---------------------------------------------------------------------------
 platformio
