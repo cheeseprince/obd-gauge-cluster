@@ -13,7 +13,31 @@ on any vehicle, and where a profile exists it also reads the **manufacturer-spec
 parameters — transmission temperature, oil pressure, EGT, DPF pressure, fuel rail pressure,
 DEF level — over a cheap Bluetooth adapter on a small dashboard screen.
 
+**[Install it](#install-it)** ·
+**[Supported vehicles](#vehicles-it-works-on)** ·
+**[Add your vehicle](https://github.com/cheeseprince/obd-gauge-cluster/issues/new?template=new-vehicle.md)** ·
+**[Report a bug](https://github.com/cheeseprince/obd-gauge-cluster/issues/new?template=bug_report.md)** ·
+**[Case STLs](https://www.printables.com/model/1788789-obd-gauge-cluster-case)**
+
 ![The unit on the dash, running the towing page](docs/images/dash.jpg)
+
+<details>
+<summary><b>Contents</b></summary>
+
+- [AI assistance](#ai-assistance)
+- [What it does](#what-it-does)
+- [Vehicles it works on](#vehicles-it-works-on)
+- [Hardware you need](#hardware-you-need)
+- [Install it](#install-it)
+- [Updates](#updates)
+- [Port your vehicle](#port-your-vehicle)
+- [Building from source](#building-from-source)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Safety and scope](#safety-and-scope)
+- [License](#license)
+
+</details>
 
 One firmware image holds **every vehicle profile** and picks the right one automatically from the
 car's **VIN** on connect (with a **Pick Vehicle** menu override). It's **validated on a 2025 GM
@@ -253,67 +277,19 @@ Gauges appear once the adapter links. From here, updates are over-the-air — no
 
 ## Updates
 
-> ### ⚡ If the update says the server is unreachable
->
-> The WiFi TLS handshake is by a wide margin the highest-current, least
-> fault-tolerant thing this device does — many round trips, where everything else it does is a
-> single small exchange. So it is the first thing to fail, and it fails with a negative
-> `net` code meaning **the connection never opened**.
->
-> Everything else keeps working right up to that point — the dash joins WiFi, syncs its clock
-> over NTP and talks to the OBD adapter — so the symptom appears *only* at update time and looks
-> like a network fault even when it is not.
->
-> **Three causes share that signature.** Work through them in this order:
->
-> 1. **Supply.** Accessory power with the engine off cannot sustain the handshake — but neither
->    can a current-limited USB port *with the engine running*. Try the other USB-C port, another
->    cable, or a second supply.
-> 2. **Signal.** A link too weak or lossy for a multi-round-trip handshake can still carry the
->    single UDP packet NTP needs. If the dash says the clock synced, the network is up and this
->    is the likelier of the two.
-> 3. **Route.** An access point that associates but has no way out — a hotspot with no data, or a
->    captive portal.
->
-> The dash tells you which half it got to: **"WiFi OK (clock synced)"** means the network works
-> and the handshake is the problem (1 or 2). **"Joined WiFi but no traffic"** means 3.
->
-> An earlier version of this note named the engine as *the* cause, generalised from one incident.
-> It was wrong on a vehicle with the engine running — and a bench board running that same firmware
-> updated over the air on the first try, which is how the firmware was ruled out.
-
 The dash updates itself over WiFi — **Settings → Check update**. It fetches the published
 manifest, refuses anything not signed by this project's key, verifies a SHA-256 of the image,
 and flashes into a spare slot. Failure at any step leaves the running firmware untouched. No
 cable.
 
-Cutting a release (maintainers): **dry-run the pipeline, then push an annotated tag.**
-
-```
-gh workflow run release.yml --ref main      # builds and SIGNS, publishes nothing
-git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z
-```
-
-The dry run matters because **signing is mandatory on a tag push**: if `OTA_SIGNING_KEY`
-does not match `src/ota_pubkey.h`, the run fails before it can publish, and a tag has
-already been pushed at something that cannot ship. `workflow_dispatch` builds and signs a
-`dev-<hash>` artifact with the publish step gated to tags, so a key problem costs nothing
-to discover. Confirm `gh-pages` is unchanged afterwards rather than assuming the gate held.
-
-Then **verify the release by state change, not by a green check** — a workflow that
-published nothing looks identical to success:
-
-```
-gh api repos/OWNER/REPO/contents/manifest.txt?ref=gh-pages --jq .content | base64 -d
-```
-
-The version, SHA-256 and byte count must all differ from the previous release. There is no
-version string to bump anywhere in the tree: the firmware is stamped from the tag itself.
+**If an update says the server is unreachable**, suspect power or signal before the network —
+the message on screen tells you which half failed. Diagnosis, in order:
+[`docs/OTA.md`](docs/OTA.md#if-an-update-says-the-server-is-unreachable).
 
 Releases publish **one image, `crowpanel_obd.bin`** — not one per vehicle, since all profiles
-ship together and are selected at runtime by VIN. Signing, the release pipeline,
-anti-rollback and hosting updates
-for a fork: [`docs/OTA.md`](docs/OTA.md).
+ship together and are selected at runtime by VIN. Signing, anti-rollback, hosting updates for
+a fork, and **cutting and verifying a release (maintainers)**:
+[`docs/OTA.md`](docs/OTA.md#cutting-a-release).
 
 ## Port your vehicle
 
@@ -440,6 +416,19 @@ Repository layout and the contribution workflow are in
 | [`docs/obd-scan-design.md`](docs/obd-scan-design.md) | The scanner's design |
 | [`docs/AUDI-STATUS.md`](docs/AUDI-STATUS.md) · [`docs/BMW-STATUS.md`](docs/BMW-STATUS.md) · [`docs/FORD-STATUS.md`](docs/FORD-STATUS.md) · [`docs/JEEP-STATUS.md`](docs/JEEP-STATUS.md) | Per-vehicle port status |
 | [`ROADMAP.md`](ROADMAP.md) | Where the project is going, and where help is most useful |
+
+## Contributing
+
+The most useful contribution is **another vehicle** — it needs something the maintainer cannot
+do remotely: the vehicle.
+
+| You want to… | Do this |
+| :--- | :--- |
+| Add a vehicle, or share a scan / drive log you couldn't finish | Open a [**New vehicle** issue](https://github.com/cheeseprince/obd-gauge-cluster/issues/new?template=new-vehicle.md) — a partial map is still useful. Method: [Port your vehicle](#port-your-vehicle) |
+| Report something broken | Open a [**Bug report**](https://github.com/cheeseprince/obd-gauge-cluster/issues/new?template=bug_report.md) |
+| Report a security problem | **Not** a public issue — use private reporting, see [`SECURITY.md`](SECURITY.md) |
+| Send code or docs | Read [`CONTRIBUTING.md`](CONTRIBUTING.md) (layout, tests, PR checks, pre-commit hooks) |
+| Find where help is needed | [`ROADMAP.md`](ROADMAP.md) |
 
 ## Safety and scope
 

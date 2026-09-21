@@ -89,10 +89,11 @@ Plug it into a switched USB port. The dash boots to a connecting screen.
 
 **Use a port that can actually supply current, and a short cable.** Everyday running is
 undemanding, but the OTA update's TLS handshake is not: on a marginal supply the board browns
-out mid-handshake and the update fails with `HTTP -1` while everything else — WiFi, the clock,
-the OBD link — keeps working normally. Measured on a real truck (2026-08-05): updates fail on
-accessory power with the engine off and succeed with the engine running. **Run the engine when
-you update** — see [`OTA.md`](OTA.md).
+out mid-handshake and the update reports **server unreachable** while everything else — WiFi,
+the clock, the OBD link — keeps working normally. Engine-off accessory power is one way to get
+there, but not the only one: a current-limited port does it with the engine running too. If an
+update fails that way, see
+[`OTA.md` → If an update says the server is unreachable](OTA.md#if-an-update-says-the-server-is-unreachable).
 
 ## 4. Provision over WiFi
 
