@@ -6,40 +6,47 @@ update channel on a fork.
 
 There is one board and one OTA image; everything below describes it.
 
-## ⚡ Before you update: run the engine
+## If an update says the server is unreachable
 
-**Update with the engine running, not on accessory power.**
+The WiFi TLS handshake is by a wide margin the highest-current, least fault-tolerant thing this
+device does — many round trips, where everything else it does is a single small exchange. So it
+is the first thing to fail, and it fails with a negative `net` code meaning **the connection
+never opened**.
 
-The TLS handshake is the highest-current operation this device performs — sustained WiFi
-transmit plus the crypto — and a truck USB port with the engine off cannot hold it up. The
-board browns out mid-handshake and the dash shows:
+Everything else keeps working right up to that point — the dash joins WiFi, syncs its clock over
+NTP and talks to the OBD adapter — so the symptom appears *only* at update time and looks like a
+network fault even when it is not.
 
-```
-Update: manifest
-HTTP -1
-```
+**Three causes share that signature.** Work through them in this order:
 
-`-1` is `HTTPC_ERROR_CONNECTION_REFUSED`: the connection never opened, so there is no HTTP
-status to report. **It looks exactly like a network fault and is not one.**
+1. **Supply.** Accessory power with the engine off cannot sustain the handshake — but neither can
+   a current-limited USB port *with the engine running*. Try the other USB-C port, another cable,
+   or a second supply.
+2. **Signal.** A link too weak or lossy for a multi-round-trip handshake can still carry the
+   single UDP packet NTP needs. If the dash says the clock synced, the network is up and this is
+   the likelier of the two.
+3. **Route.** An access point that associates but has no way out — a hotspot with no data, or a
+   captive portal.
 
-What makes this genuinely misleading is that everything *else* works on accessory power. In one
-diagnosis (2026-08-05) the dash on engine-off power:
+The dash tells you which half it got to:
 
-- associated with WiFi normally,
-- **synced its clock over NTP**, which proves DNS and outbound connectivity are fine,
-- ran the BLE link to the OBD adapter,
+| On screen | Means | Check |
+| :--- | :--- | :--- |
+| **Update: server unreachable** / **WiFi OK (clock synced)** | The network works; the handshake did not | 1 or 2 |
+| **Update: no route out** / **Joined WiFi but no traffic** | Associated, but nothing gets out | 3 |
 
-and still failed every update attempt. It failed on multiple SSIDs, parked close to the access
-point, with the SD card removed, and with the OBD adapter unplugged. It succeeded the moment a
-laptop was plugged into the second USB-C port — a second power source — and succeeded reliably
-with the engine running.
+### What was ruled out, and a correction
 
-None of the software-side suspects held up: heap before the handshake measured **61,964 bytes**
-on the vehicle versus **60,764** on a bench board that never fails, and the certificate path does
-not check validity dates (`CONFIG_MBEDTLS_HAVE_TIME_DATE` is unset in the prebuilt libraries), so
-a wrong clock cannot cause it either.
+An earlier version of this section said **"update with the engine running"**, generalised from
+one diagnosis (2026-08-05) in which updates failed on engine-off accessory power and succeeded
+with the engine running or a second supply plugged into the other USB-C port. That was wrong as
+a rule: it later failed on a vehicle *with* the engine running, while a bench board running the
+same firmware updated over the air on the first try — which is how the firmware was ruled out.
 
-**If you see `HTTP -1`, check power before you debug anything else.**
+None of the software-side suspects held up either: heap before the handshake measured
+**61,964 bytes** on the vehicle versus **60,764** on a bench board that never fails, and the
+certificate path does not check validity dates (`CONFIG_MBEDTLS_HAVE_TIME_DATE` is unset in the
+prebuilt libraries), so a wrong clock cannot cause it.
 
 ## How a device updates
 
@@ -112,9 +119,28 @@ among several.
 
 ## Cutting a release
 
+**Dry-run the pipeline, then push an annotated tag, then verify by state change.**
+
 ```
-git tag vX.Y.Z && git push origin vX.Y.Z
+gh workflow run release.yml --ref main      # builds and SIGNS, publishes nothing
+git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z
 ```
+
+The dry run matters because **signing is mandatory on a tag push**: if `OTA_SIGNING_KEY`
+does not match `src/ota_pubkey.h`, the run fails before it can publish, and a tag has
+already been pushed at something that cannot ship. `workflow_dispatch` builds and signs a
+`dev-<hash>` artifact with the publish step gated to tags, so a key problem costs nothing
+to discover. Confirm `gh-pages` is unchanged afterwards rather than assuming the gate held.
+
+Then **verify the release by state change, not by a green check** — a workflow that
+published nothing looks identical to success:
+
+```
+gh api repos/OWNER/REPO/contents/manifest.txt?ref=gh-pages --jq .content | base64 -d
+```
+
+The version, SHA-256 and byte count must all differ from the previous release. There is no
+version string to bump anywhere in the tree: the firmware is stamped from the tag itself.
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which:
 
