@@ -17,7 +17,7 @@
 # rotting fuzzing toolchain is worse than an unpinned one, exactly as the
 # original comment argued. This image never touches OTA_SIGNING_KEY or any
 # secret; it builds a fuzz target in an isolated job.
-FROM gcr.io/oss-fuzz-base/base-builder:latest@sha256:23f294580c94a53c1625f5b98c7c22d7155fb030b877d0c2f937fbc8156b5aca
+FROM gcr.io/oss-fuzz-base/base-builder:latest@sha256:4d95d77396ce573bbfca794166cd2f1e28df5b3445a45132e52ef0e4ff7f566b
 
 COPY . $SRC/obd-gauge-cluster
 COPY .clusterfuzzlite/build.sh $SRC/build.sh
