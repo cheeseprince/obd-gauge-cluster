@@ -223,7 +223,7 @@ marshmallow==4.3.1 \
 platformio==6.2.0 \
     --hash=sha256:880ea06734908b3d6c0a96598ca7be572c2b6755585784aa63a201bbdfb8c59d \
     --hash=sha256:c3de675539f90cbd51466dd326f2fb64c7b83a54c7229b6c30c55865a85eddc2
-    # via -r requirements/build.in
+    # via -r build.in
 pyelftools==0.33 \
     --hash=sha256:660d82dcbeb8e83d1702bd97f223f761625da06111c0cc988eac6b8ab0c1b61f \
     --hash=sha256:f215ad5f47d3f1373a21496a6c9e0707c622840d0622f23ff7ce08678b020036
@@ -254,9 +254,9 @@ typing-extensions==4.16.0 \
     # via
     #   anyio
     #   starlette
-urllib3==2.7.0 \
-    --hash=sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c \
-    --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897
+urllib3==2.8.0 \
+    --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3 \
+    --hash=sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63
     # via requests
 uvicorn==0.52.4 \
     --hash=sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86 \
