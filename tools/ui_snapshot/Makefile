@@ -37,15 +37,25 @@ obj/lvgl/%.o: $(LVGL)/src/%.c
 APP_H  := $(wildcard $(SRC)/*.h) $(wildcard $(SRC)/vehicles/*.h) $(wildcard $(INC)/*.h) Arduino.h
 
 # App objects land in a flat obj/app/ but their sources are spread across $(SRC)
-# and $(SRC)/vehicles, so the prerequisite is recovered from APP_CPP by name via
-# secondary expansion. This rule previously declared NO prerequisites at all:
-# once obj/app was populated, make answered "'snapshot' is up to date" after any
-# src/ edit and ./snapshot re-emitted the OLD pixels — a silent way to commit
-# stale README renders. Keep the prerequisites.
-.SECONDEXPANSION:
-obj/app/%.o: $$(filter %/$$*.cpp %$$*.cpp,$(APP_CPP)) $(APP_H)
+# and $(SRC)/vehicles, so one explicit rule is generated per entry in APP_CPP,
+# naming that exact source as the first prerequisite. This rule previously
+# declared NO prerequisites at all: once obj/app was populated, make answered
+# "'snapshot' is up to date" after any src/ edit and ./snapshot re-emitted the
+# OLD pixels — a silent way to commit stale README renders. Keep the
+# prerequisites.
+#
+# Not a pattern rule with .SECONDEXPANSION and $$(filter ...$$*...): on the
+# ubuntu-26.04 runner that filter came back empty, so $< fell through to the
+# first header in APP_H and every object was "compiled" from alarm_ack.h —
+# a precompiled header the linker then rejected. Not vpath either: src/main.cpp
+# and this tool's main.cpp share a name, and which one vpath picks would hang
+# on lookup order.
+define APP_RULE
+obj/app/$(notdir $(1:.cpp=.o)): $(1) $(APP_H)
 	@mkdir -p obj/app
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$$(CXX) $$(CXXFLAGS) -c $$< -o $$@
+endef
+$(foreach src,$(APP_CPP),$(eval $(call APP_RULE,$(src))))
 
 clean:
 	rm -rf obj snapshot *.ppm
